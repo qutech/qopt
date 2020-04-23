@@ -44,13 +44,11 @@ import copy
 
 import qutip.logging_utils as qutip_logging
 
-import matrix
-import noise
-import matrix as q_mat
+from qsim import noise, matrix, matrix as q_mat
 
-from transfer_function import TransferFunction
-from amplitude_functions import AmplitudeFunction
-from util import needs_refactoring
+from qsim.transfer_function import TransferFunction
+from qsim.amplitude_functions import AmplitudeFunction
+from qsim.util import needs_refactoring
 
 logger = qutip_logging.get_logger()
 

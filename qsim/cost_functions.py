@@ -64,9 +64,8 @@ from scipy.linalg import sqrtm, inv
 from typing import Sequence, Union, List, Optional, Callable, Dict
 # QuTiP
 from qutip import vec2mat
-import matrix
-import solver_algorithms
-from util import needs_refactoring, deprecated
+from qsim import matrix, solver_algorithms
+from qsim.util import needs_refactoring, deprecated
 import filter_functions.numeric
 
 from abc import ABC, abstractmethod

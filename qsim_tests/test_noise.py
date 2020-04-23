@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 
-from noise import NTGColoredNoise
+from qsim.noise import NTGColoredNoise
 
 random_scaling_factor = 50
 

@@ -1,7 +1,7 @@
 import numpy as np
 
-from matrix import OperatorDense
-from energy_spectrum import plot_energy_spectrum
+from qsim.matrix import OperatorDense
+from qsim.energy_spectrum import plot_energy_spectrum
 
 pauli_z = OperatorDense(np.asarray([[1, 0], [0, -1]]))
 pauli_x = OperatorDense(np.asarray([[0, 1], [1, 0]]))

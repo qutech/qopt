@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-import data_container
+from qsim import data_container
 
 
 class Analyser:

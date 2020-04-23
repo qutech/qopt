@@ -34,7 +34,7 @@ import scipy.linalg as la
 from qutip import Qobj
 from qutip.sparse import sp_eigs, sp_expm
 # from qutip.cy.spmath import (zcsr_adjoint, zcsr_trace)
-from util import needs_refactoring
+from qsim.util import needs_refactoring
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional, Union, Sequence
 

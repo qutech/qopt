@@ -5,8 +5,7 @@ import copy
 
 from typing import Optional, List
 
-import optimization_data
-import stats
+from qsim import optimization_data, stats
 
 
 # TODO: rewrite as serializable

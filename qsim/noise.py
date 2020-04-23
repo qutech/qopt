@@ -38,7 +38,7 @@ from typing import Callable, Tuple, Optional, List, Union
 from abc import ABC, abstractmethod
 from scipy import signal
 
-from util import deprecated
+from qsim.util import deprecated
 
 
 def bell_curve_1dim(x: Union[np.ndarray, float],

@@ -69,7 +69,7 @@ from scipy import interpolate
 from scipy.special import erf
 from typing import Tuple, Callable, Optional
 from abc import ABC, abstractmethod
-from util import deprecated, needs_refactoring
+from qsim.util import deprecated, needs_refactoring
 import copy
 
 

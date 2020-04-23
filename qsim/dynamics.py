@@ -23,11 +23,9 @@ from typing import Optional, Sequence
 import numpy as np
 import time
 
-import solver_algorithms
-import cost_functions
-import stats
+from qsim import cost_functions, stats, solver_algorithms
 
-from util import needs_refactoring
+from qsim.util import needs_refactoring
 
 
 class Dynamics(object):

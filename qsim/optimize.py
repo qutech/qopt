@@ -56,8 +56,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable
 
-import optimization_data
-import dynamics
+from qsim import optimization_data, dynamics
 import simanneal
 
 default_termination_conditions = {

@@ -1,10 +1,8 @@
 import math
 import unittest
-import matrix
-import cost_functions as q_fc
+from qsim import matrix, cost_functions as q_fc, solver_algorithms, \
+    transfer_function
 import numpy as np
-import solver_algorithms
-import transfer_function
 
 sig_0 = matrix.OperatorDense(np.eye(2))
 sig_x = matrix.OperatorDense(np.asarray([[0, 1], [1, 0]]))

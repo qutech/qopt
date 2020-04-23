@@ -1,4 +1,4 @@
-import matrix
+from qsim import matrix
 
 import unittest
 import math

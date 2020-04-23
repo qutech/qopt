@@ -1,13 +1,12 @@
-from matrix import OperatorDense
-from noise import NTGQuasiStatic
-from solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
+from qsim.matrix import OperatorDense
+from qsim.noise import NTGQuasiStatic
+from qsim.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
     SchroedingerSolver
-from amplitude_functions import CustomAmpFunc
-from transfer_function import IdentityTF
+from qsim.amplitude_functions import CustomAmpFunc
+from qsim.transfer_function import IdentityTF
 
 import tests.rabi_driving_setup as rabi
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy.optimize
 
 from unittest import TestCase

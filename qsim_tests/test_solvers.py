@@ -1,6 +1,4 @@
-import solver_algorithms
-import matrix
-import noise
+from qsim import noise, matrix, solver_algorithms
 import qutip
 import numpy as np
 import math
@@ -15,14 +13,14 @@ class TestTslots(unittest.TestCase):
             for _ in range(4)]
         h_control = [.5 * matrix.OperatorDense(
             qutip.sigmax()),
-                      .5 * matrix.OperatorDense(
+                     .5 * matrix.OperatorDense(
                           qutip.sigmaz())]
 
         ctrl_amps = np.asarray([[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * np.pi
         n_t = 4
         tau = [1 for _ in range(4)]
         initial_state = matrix.OperatorDense(np.eye(2)) \
-            * (1 + 0j)
+                        * (1 + 0j)
         tslot_obj = solver_algorithms.SchroedingerSolver(
             h_ctrl=h_control, h_drift=h_drift, tau=tau,
             initial_state=initial_state, ctrl_amps=ctrl_amps,
@@ -84,7 +82,7 @@ class TestTslots(unittest.TestCase):
         tau = [1, 1, 1, 1]
         n_t = len(tau)
         initial_state = matrix.OperatorDense(np.eye(2)) \
-            * (1 + 0j)
+                        * (1 + 0j)
         mocked_noise = np.asarray([0, .5, 0, 0]) * 2 * math.pi
         mocked_noise = np.expand_dims(mocked_noise, 0)
         mocked_noise = np.expand_dims(mocked_noise, 0)

@@ -1,10 +1,10 @@
 import numpy as np
 import unittest
 
-from noise import NTGQuasiStatic
-from matrix import OperatorDense
-from solver_algorithms import SchroedingerSMonteCarlo
-from cost_functions import OperationNoiseInfidelity
+from qsim.noise import NTGQuasiStatic
+from qsim.matrix import OperatorDense
+from qsim.solver_algorithms import SchroedingerSMonteCarlo
+from qsim.cost_functions import OperationNoiseInfidelity
 
 
 class PureDephasing(unittest.TestCase):

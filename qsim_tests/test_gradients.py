@@ -6,12 +6,12 @@ This test uses the rabi driving as test case. So far it covers:
 """
 
 import qsim_tests.rabi_driving_setup as rabi
-from solver_algorithms import SchroedingerSMonteCarlo
-from matrix import OperatorDense
-from cost_functions import OperationNoiseInfidelity, \
+from qsim.solver_algorithms import SchroedingerSMonteCarlo
+from qsim.matrix import OperatorDense
+from qsim.cost_functions import OperationNoiseInfidelity, \
     OperationInfidelity
-from dynamics import Dynamics
-from noise import NTGQuasiStatic
+from qsim.dynamics import Dynamics
+from qsim.noise import NTGQuasiStatic
 import numpy as np
 import unittest
 
