@@ -93,7 +93,7 @@ class TransferFunction(ABC):
     >>> transfer_function.set_times(x_times)
     >>> control_amplitudes = transfer_function(optimization_variables)
     >>> gradient_fidelity_by_optimization_variables = \
-    >>>     transfer_function.gradient_u2x(
+    >>>     transfer_function.gradient_chain_rule(
     >>>         gradient_fidelity_by_control_amplitudes)
 
     Attributes
@@ -142,13 +142,7 @@ class TransferFunction(ABC):
     Methods
     -------
     __call__(x):
-        Return the amplitudes (u) from the optimisation variables (x).
 
-    reverse_state(target):
-        Return the x which best match the provided amplitudes.
-
-    gradient_u2x(self, gradient):
-        return the gradient of the x from a gradient in the u basis.
 
     set_times(times):
         Set the times of the optimization variables and calculates the times
@@ -158,19 +152,8 @@ class TransferFunction(ABC):
         Set the absolute times (time points of beginning and ending a time step)
         of the optimization variables.
 
-    set_amp_bound(amp_lbound=None, amp_ubound=None):
-        Input the amplitude bounds: (int, float) or list
-
     plot_pulse(x):
         For the optimisation variables (x), plot the resulting pulse.
-
-    get_xlimit():
-        Return the bound for the optimisation variables in the format fitting
-        scipy optimize.
-
-    reverse_state(amplitudes):
-        Obtain the best fitting optimisation variables to match the given
-        amplitudes.
 
     T: ndarray, shape (num_u, num_x, num_ctrl)
         Returns the transfer matrix, which is the linearization of the
@@ -285,7 +268,7 @@ class TransferFunction(ABC):
         else:
             raise ValueError('Unknown bound type ' + str(self.bound_type[0]))
 
-    def gradient_u2x(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
+    def gradient_chain_rule(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
         """
         Obtain the derivatives of a quantity a i.e. da/dx by the optimization
         variables from the derivatives by the amplitude of the control fields.
@@ -439,180 +422,6 @@ class TransferFunction(ABC):
         """Create the transfer matrix. """
         pass
 
-    @deprecated
-    def set_amp_bound(self, amp_lbound=None, amp_ubound=None):
-        """
-        Input the amplitude bounds
-        * For some transfer functions (fourier)
-          take the bound on the optimisation variables.
-        """
-        if amp_lbound is not None and not \
-                isinstance(amp_lbound, (int, float, list, np.ndarray)):
-            raise Exception("bounds must be a real or list of real")
-        if amp_ubound is not None and not \
-                isinstance(amp_ubound, (int, float, list, np.ndarray)):
-            raise Exception("bounds must be a real or list of real")
-        self._x_min = amp_lbound
-        self._x_max = amp_ubound
-
-    @deprecated
-    def _compute_xlim(self):
-        """Computes the limits on the control variables fitting the scipy
-        optimize interface."""
-        if self._x_max is None and self._x_min is None:
-            return
-
-        if self._x_max is not None:
-            if isinstance(self._x_max, list):
-                self._x_max = np.array(self._x_max)
-            if isinstance(self._x_max, (int, float)):
-                self._x_max = self._x_max * np.ones((self._num_x, self.num_ctrls))
-            elif isinstance(self._x_max, np.ndarray):
-                if self._x_max.shape == (self._num_x, self.num_ctrls):
-                    pass
-                elif self._x_max.shape == self._num_x or \
-                        self._x_max.shape == (self._num_x, 1):
-                    self._x_max = np.einsum("i,j->ij",
-                                            np.ones(self._num_x),
-                                            self._x_max)
-                else:
-                    raise Exception("shape of the amb_ubound not right")
-        else:
-            self._x_max = np.array([[None] * self.num_ctrls] * self._num_x)
-
-        if self._x_min is not None:
-            if isinstance(self._x_min, list):
-                self._x_min = np.array(self._x_min)
-            if isinstance(self._x_min, (int, float)):
-                self._x_min = self._x_min * np.ones((self._num_x, self.num_ctrls))
-            elif isinstance(self._x_min, np.ndarray):
-                if self._x_min.shape == (self._num_x, self.num_ctrls):
-                    pass
-                elif self._x_min.shape == self._num_x or \
-                        self._x_min.shape == (self._num_x, 1):
-                    self._x_min = np.einsum("i,j->ij",
-                                            np.ones(self._num_x),
-                                            self._x_min)
-                else:
-                    raise Exception("shape of the amb_lbound not right")
-        else:
-            self._x_min = np.array([[None] * self.num_ctrls] * self._num_x)
-
-    @deprecated
-    def originalTimesAmps(self, x):
-        """
-        Amps as a function to the given times.
-        """
-        return x, self._x_times
-
-    @deprecated
-    def interpolatedAmpsAndTimes(self, x):
-        """
-        Amps as a function to the given times.
-        """
-        return self(x), self._u_times
-
-    @deprecated
-    def get_xlimit(self):
-        """
-        Return the bound for the optimisation variables in the format fitting
-        scipy optimize.
-        """
-        self._compute_xlim()
-        if self._x_max is None and self._x_min is None:
-            return None  # No constrain
-        xmax = self._x_max.astype(object)
-        xmax[np.isinf(self._x_max)] = None
-        xmax = list(self._x_max.flatten())
-        xmin = self._x_min.astype(object)
-        xmin[np.isinf(self._x_min)] = None
-        xmin = list(self._x_min.flatten())
-        return zip(xmin, xmax)
-
-    @needs_refactoring
-    def reverse_state(self, amplitudes=None, times=None, targetfunc=None):
-        """
-        Return the best fitting optimisation variables from amplitudes.
-
-        There are 2 calling methods:
-
-        Parameters
-        ----------
-        amplitudes: np.array shape(Nt, num_ctrls)
-            The amplitudes of the control fields.
-
-        times: np.array shape(Nt)
-
-
-        Parameters
-        ----------
-        targetfunc: callable
-            targetfunc(times, num_ctrls):
-                return amplitudes(len(times), num_ctrls)
-
-        """
-        x_shape = (self._num_x, self.num_ctrls)
-        xx = np.zeros(x_shape)
-        target_time = .5 * np.asarray(self._u_times[1:] + self._u_times[:-1])
-
-        if amplitudes is not None:
-            amplitudes = np.array(amplitudes)
-            if times is None:
-                times = target_time
-                if len(times) != amplitudes.shape[0]:
-                    raise Exception("Please add times")
-            else:
-                times = np.array(times)
-                if amplitudes.shape[0] + 1 == len(times):
-                    times = (times[1:] + times[:-1]) * 0.5
-                elif amplitudes.shape[0] == len(times):
-                    raise Exception("Length of times does not fit the "
-                                    "shape of amplitudes")
-
-            if len(amplitudes.shape) == 1 or amplitudes.shape[1] == 1:
-                amplitudes = amplitudes.reshape((amplitudes.shape[0], 1))
-                amplitudes = np.einsum("i,j->ij", amplitudes,
-                                       np.ones(self.num_ctrls))
-
-            if amplitudes.shape[1] != self.num_ctrls:
-                raise Exception("amplitudes' shape must be (Nt, num_ctrls)")
-
-            if np.all(times == target_time):
-                target = amplitudes
-            else:
-                target = np.zeros((len(target_time), self.num_ctrls))
-                for i in range(self.num_ctrls):
-                    tck = interpolate.splrep(times, amplitudes[:, i], s=0)
-                    target[:, i] = interpolate.splev(target_time, tck, der=0)
-
-        elif targetfunc is not None:
-            try:
-                target = targetfunc(target_time, self.num_ctrls)
-                if target.shape != (len(target_time), self.num_ctrls):
-                    raise Exception()
-            except:
-                raise Exception(
-                    targetfunc.__name__ + " call failed:\n "
-                                          "expected signature:\n"
-                                          "targetfunc(times, num_ctrls) "
-                                          "-> amplitudes "
-                                          "shape = (Nt, num_ctrls)")
-        else:
-            # no target, set to zeros
-            target = np.zeros((len(target_time), self.num_ctrls))
-
-        def diff(y):
-            yy = self(y.reshape(x_shape))
-            return np.sum((yy - target) ** 2)
-
-        def gradient(y):
-            yy = self(y.reshape(x_shape))
-            grad = self.gradient_u2x((yy - target) * 2)
-            return grad.reshape(np.prod(x_shape))
-
-        rez = opt.minimize(fun=diff, jac=gradient, x0=xx)
-        return rez.x.reshape(x_shape)
-
 
 class IdentityTF(TransferFunction):
     """Identity as transfer function."""
@@ -729,11 +538,11 @@ class ConcatenateTF(TransferFunction):
         return self.tf1.reverse_state(amplitudes=intermediate_state,
                                       times=times, targetfunc=targetfunc)
 
-    def gradient_u2x(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
+    def gradient_chain_rule(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
         """Applies the concatenation formula for both transfer functions."""
-        intermediate_gradient = self.tf2.gradient_u2x(
+        intermediate_gradient = self.tf2.gradient_chain_rule(
             deriv_by_ctrl_amps=deriv_by_ctrl_amps)
-        return self.tf1.gradient_u2x(deriv_by_ctrl_amps=intermediate_gradient)
+        return self.tf1.gradient_chain_rule(deriv_by_ctrl_amps=intermediate_gradient)
 
     def set_times(self, x_times: np.ndarray) -> None:
         """
@@ -1075,7 +884,7 @@ class ExponentialTF(TransferFunction):
             np.expand_dims(dudx, axis=2), repeats=self.num_ctrls, axis=2)
         self._T = dudx
 
-    def gradient_u2x(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
+    def gradient_chain_rule(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
         """See base class. """
         if self._T is None:
             self._make_T()
@@ -1209,7 +1018,7 @@ class Gaussian(TransferFunction):
             self.make_T()
         return self._T
 
-    def gradient_u2x(self, deriv_by_ctrl_amps):
+    def gradient_chain_rule(self, deriv_by_ctrl_amps):
         """See base class. """
         # index i over the u_values
         # index j over the x_values

@@ -167,7 +167,7 @@ class DataContainer:
 
     def append_optim_result(
             self,
-            optim_result: optimization_data.OptimResult):
+            optim_result: optimization_data.OptimizationResult):
 
         self.append(final_costs=optim_result.final_cost,
                     indices=optim_result.indices,
@@ -182,7 +182,7 @@ class DataContainer:
     def append(self, final_costs: List, indices: List[str],
                init_parameters: List, final_parameters: List,
                costs: List, parameters: List, status: int,
-               optimization_stats: Optional[stats.Stats]):
+               optimization_stats: Optional[stats.OptimizationStatistics]):
         if len(self) == 0:
             self.indices = indices
         else:

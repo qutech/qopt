@@ -1,12 +1,10 @@
 """
 Statistics of the use of computational resources.
 
-Note that some of the stats here are redundant copies from the optimiser
-used here for calculations
 """
 
 
-class Stats(object):
+class OptimizationStatistics(object):
     """Stores and processes performance statistics.
 
     """

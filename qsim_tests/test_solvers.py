@@ -9,17 +9,17 @@ class TestTslots(unittest.TestCase):
 
     def test_comp_all_save_exp(self):
         h_drift = [
-            matrix.OperatorDense(np.zeros((2, 2), dtype=complex))
+            matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.OperatorDense(
+        h_control = [.5 * matrix.DenseOperator(
             qutip.sigmax()),
-                     .5 * matrix.OperatorDense(
+                     .5 * matrix.DenseOperator(
                           qutip.sigmaz())]
 
         ctrl_amps = np.asarray([[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * np.pi
         n_t = 4
         tau = [1 for _ in range(4)]
-        initial_state = matrix.OperatorDense(np.eye(2)) \
+        initial_state = matrix.DenseOperator(np.eye(2)) \
                         * (1 + 0j)
         tslot_obj = solver_algorithms.SchroedingerSolver(
             h_ctrl=h_control, h_drift=h_drift, tau=tau,
@@ -60,7 +60,7 @@ class TestTslots(unittest.TestCase):
             np.testing.assert_array_almost_equal(reverse_propagators[i].data,
                                                  correct_rev_prop[i])
 
-        sx = matrix.OperatorDense(.5 * qutip.sigmax())
+        sx = matrix.DenseOperator(.5 * qutip.sigmax())
         A = sx * -1j * .5 * 2 * math.pi
         B = sx * -1j
         prop, deriv = A.dexp(direction=B, tau=1, compute_expm=True)
@@ -72,16 +72,16 @@ class TestTslots(unittest.TestCase):
 
     def test_save_all_noise(self):
         h_drift = [
-            matrix.OperatorDense(np.zeros((2, 2), dtype=complex))
+            matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.OperatorDense(
+        h_control = [.5 * matrix.DenseOperator(
             qutip.sigmax()), ]
-        h_noise = [.5 * matrix.OperatorDense(
+        h_noise = [.5 * matrix.DenseOperator(
             qutip.sigmaz()), ]
         ctrl_amps = np.asarray([[.5, 0, .25, .25], ]).T * 2 * math.pi
         tau = [1, 1, 1, 1]
         n_t = len(tau)
-        initial_state = matrix.OperatorDense(np.eye(2)) \
+        initial_state = matrix.DenseOperator(np.eye(2)) \
                         * (1 + 0j)
         mocked_noise = np.asarray([0, .5, 0, 0]) * 2 * math.pi
         mocked_noise = np.expand_dims(mocked_noise, 0)
@@ -135,7 +135,7 @@ class TestTslots(unittest.TestCase):
             np.testing.assert_array_almost_equal(reverse_propagators[i].data,
                                                  correct_rev_prop[i].data)
 
-        sx = matrix.OperatorDense(.5 * qutip.sigmax())
+        sx = matrix.DenseOperator(.5 * qutip.sigmax())
         A = sx * -1j * .5 * 2 * math.pi
         B = sx * -1j
         prop, deriv = A.dexp(direction=B, tau=1, compute_expm=True)
@@ -150,17 +150,17 @@ class TestTslots(unittest.TestCase):
         """
 
         h_drift = [
-            matrix.OperatorDense(np.zeros((2, 2), dtype=complex))
+            matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.OperatorDense(qutip.sigmax()),
-                     .5 * matrix.OperatorDense(qutip.sigmaz())]
+        h_control = [.5 * matrix.DenseOperator(qutip.sigmax()),
+                     .5 * matrix.DenseOperator(qutip.sigmaz())]
         ctrl_amps = np.asarray(
             [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
         tau = [1, 1, 1, 1]
 
-        dissipation_sup_op = [matrix.OperatorDense(
+        dissipation_sup_op = [matrix.DenseOperator(
             np.zeros((4, 4)))]
-        initial_state = matrix.OperatorDense(np.eye(4))
+        initial_state = matrix.DenseOperator(np.eye(4))
 
         lindblad_tslot_obj = solver_algorithms.LindbladSolver(
             h_ctrl=h_control, h_drift=h_drift, tau=tau,
@@ -201,10 +201,10 @@ class TestTslots(unittest.TestCase):
         """
         # method 1.
         h_drift = [
-            matrix.OperatorDense(np.zeros((2, 2), dtype=complex))
+            matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.OperatorDense(qutip.sigmax()),
-                     .5 * matrix.OperatorDense(qutip.sigmaz())]
+        h_control = [.5 * matrix.DenseOperator(qutip.sigmax()),
+                     .5 * matrix.DenseOperator(qutip.sigmaz())]
         ctrl_amps = np.asarray(
             [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
         tau = [1, 1, 1, 1]
@@ -215,8 +215,8 @@ class TestTslots(unittest.TestCase):
         identity = h_control[0].identity_like()
         dissipation_sup_op = [(identity.kron(h) - h.kron(identity)) * -1j
                               for h in h_control]
-        h_control = [matrix.OperatorDense(np.zeros((2, 2)))]
-        initial_state = matrix.OperatorDense(np.eye(4))
+        h_control = [matrix.DenseOperator(np.zeros((2, 2)))]
+        initial_state = matrix.DenseOperator(np.eye(4))
 
         lindblad_tslot_obj = solver_algorithms.LindbladSolver(
             h_ctrl=h_control, h_drift=h_drift, tau=tau,
@@ -264,7 +264,7 @@ class TestTslots(unittest.TestCase):
 
         # method 2
 
-        lindblad = [matrix.OperatorDense(
+        lindblad = [matrix.DenseOperator(
             np.asarray([[0, 1j], [1, 0]], dtype=complex))]
 
         lind_lindblad_tslot_obj = solver_algorithms.LindbladSolver(

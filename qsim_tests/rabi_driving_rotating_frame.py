@@ -1,16 +1,16 @@
-from qsim.matrix import OperatorDense
+from qsim.matrix import DenseOperator
 from qsim.noise import NTGQuasiStatic
 from qsim.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver
 
-import tests.rabi_driving_setup as rabi
+import examples.rabi_driving.setup as rabi
 import numpy as np
 import scipy.optimize
 
 from unittest import TestCase
 
 
-sigma_z = OperatorDense(np.asarray([[1, 0], [0, -1]]))
-h_drift = OperatorDense(np.zeros((2, 2)))
+sigma_z = DenseOperator(np.asarray([[1, 0], [0, -1]]))
+h_drift = DenseOperator(np.zeros((2, 2)))
 
 n_time_steps = 120
 n_noise_traces = 200  # int(10 * 60 * 1e6 / 35)
@@ -70,7 +70,7 @@ class RabiDrivingRotatingFrame(TestCase):
             h_drift=[h_drift, ] * n_time_steps,
             h_ctrl=[.5 * sigma_z, ],
             h_noise=[.5 * sigma_z],
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[delta_t, ] * n_time_steps,
             noise_trace_generator=ntg,
             exponential_method='Frechet'
@@ -138,12 +138,12 @@ class RabiDrivingRotatingFrame(TestCase):
         expected_t2_lindbladt = 2 / variance_lindbladt
 
         lindbladt_operators = [
-            .5 * OperatorDense(np.asarray([[0, 1], [1, 0]])), ]
+            .5 * DenseOperator(np.asarray([[0, 1], [1, 0]])), ]
 
         tslot_comp_lindblad = LindbladSolver(
             h_drift=[h_drift, ] * n_time_steps,
             h_ctrl=[.5 * sigma_z, ],
-            initial_state=OperatorDense(np.eye(4)),
+            initial_state=DenseOperator(np.eye(4)),
             tau=[delta_t, ] * n_time_steps,
             exponential_method='Frechet',
             lindblad_operators=lindbladt_operators,

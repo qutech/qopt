@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 from qsim.noise import NTGQuasiStatic
-from qsim.matrix import OperatorDense
+from qsim.matrix import DenseOperator
 from qsim.solver_algorithms import SchroedingerSMonteCarlo
 from qsim.cost_functions import OperationNoiseInfidelity
 
@@ -11,8 +11,8 @@ class PureDephasing(unittest.TestCase):
     def test_quasi_static_noise_deterministic_sampling(self):
         """ The same problem has also been positively tested with two time
         steps. """
-        h_ctrl = [OperatorDense(np.diag([.5, -.5])), ]
-        h_drift = [OperatorDense(np.zeros((2, 2)))]
+        h_ctrl = [DenseOperator(np.diag([.5, -.5])), ]
+        h_drift = [DenseOperator(np.zeros((2, 2)))]
 
         noise_levels = 1e-4 * np.arange(1, 101)
         actual_noise_levels = np.zeros((100,))
@@ -27,7 +27,7 @@ class PureDephasing(unittest.TestCase):
             t_slot_comp = SchroedingerSMonteCarlo(
                 h_drift=h_drift,
                 h_ctrl=h_ctrl,
-                initial_state=OperatorDense(np.eye(2)),
+                initial_state=DenseOperator(np.eye(2)),
                 tau=[1],
                 h_noise=h_ctrl,
                 noise_trace_generator=ntg
@@ -36,7 +36,7 @@ class PureDephasing(unittest.TestCase):
 
             quasi_static_infid = OperationNoiseInfidelity(
                 t_slot_comp=t_slot_comp,
-                target=OperatorDense(np.eye(2)),
+                target=DenseOperator(np.eye(2)),
                 neglect_systematic_errors=True,
                 fidelity_measure='entanglement'
             )
@@ -55,8 +55,8 @@ class PureDephasing(unittest.TestCase):
 
     def test_quasi_static_noise_monte_carlo(self):
         np.random.seed(0)
-        h_ctrl = [OperatorDense(np.diag([.5, -.5])), ]
-        h_drift = [OperatorDense(np.zeros((2, 2)))]
+        h_ctrl = [DenseOperator(np.diag([.5, -.5])), ]
+        h_drift = [DenseOperator(np.zeros((2, 2)))]
 
         n_noise_values = 20
         noise_levels = 1e-4 * np.arange(1, n_noise_values + 1)
@@ -72,7 +72,7 @@ class PureDephasing(unittest.TestCase):
             t_slot_comp = SchroedingerSMonteCarlo(
                 h_drift=h_drift,
                 h_ctrl=h_ctrl,
-                initial_state=OperatorDense(np.eye(2)),
+                initial_state=DenseOperator(np.eye(2)),
                 tau=[1],
                 h_noise=h_ctrl,
                 noise_trace_generator=ntg
@@ -81,7 +81,7 @@ class PureDephasing(unittest.TestCase):
 
             quasi_static_infid = OperationNoiseInfidelity(
                 t_slot_comp=t_slot_comp,
-                target=OperatorDense(np.eye(2)),
+                target=DenseOperator(np.eye(2)),
                 neglect_systematic_errors=False,
                 fidelity_measure='entanglement'
             )

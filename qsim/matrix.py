@@ -445,7 +445,7 @@ TODO:
         pass
 
 
-class OperatorDense(OperatorMatrix):
+class DenseOperator(OperatorMatrix):
     """
     Dense control matrix.
 
@@ -473,23 +473,18 @@ class OperatorDense(OperatorMatrix):
     """
 
     def __init__(
-            self, obj: Union[Qobj, np.ndarray, sp.csr_matrix, 'OperatorDense']) \
+            self, obj: Union[Qobj, np.ndarray, sp.csr_matrix, 'DenseOperator']) \
             -> None:
         super().__init__()
-        self.full = True
         self.data = None
         if type(obj) is Qobj:
             self.data = np.array(obj.data.todense())
-            self._size = self.data.shape[0]
         elif type(obj) is np.ndarray:
             self.data = obj
-            self._size = self.data.shape[0]
         elif type(obj) is sp.csr_matrix:
             self.data = obj.toarray()
-            self._size = obj.shape[0]
-        elif type(obj) is OperatorDense:
+        elif type(obj) is DenseOperator:
             self.data = obj.data
-            self._size = obj._size
         else:
             raise ValueError("Data of this type can not be broadcasted into a "
                              "dense control matrix. Type: " + str(type(obj)))
@@ -497,12 +492,12 @@ class OperatorDense(OperatorMatrix):
 
     def copy(self):
         """See base class. """
-        copy_ = OperatorDense(self.data.copy())
+        copy_ = DenseOperator(self.data.copy())
         # numpy copy are deep
         return copy_
 
     def __imul__(self, other: Union[
-        'OperatorDense', complex, float, int, np.generic]) -> 'OperatorDense':
+        'DenseOperator', complex, float, int, np.generic]) -> 'DenseOperator':
         """
         In place matrix or scalar multiplication.
 
@@ -525,7 +520,7 @@ class OperatorDense(OperatorMatrix):
             If the implementation with objects of type other is not implemented.
 
         """
-        if type(other) == OperatorDense:
+        if type(other) == DenseOperator:
             np.matmul(self.data, other.data, out=self.data)
         elif type(other) == np.ndarray:
             np.matmul(self.data, other, out=self.data)
@@ -535,8 +530,8 @@ class OperatorDense(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return self
 
-    def __mul__(self, other: Union['OperatorDense', complex, float, int,
-                                   np.generic]) -> 'OperatorDense':
+    def __mul__(self, other: Union['DenseOperator', complex, float, int,
+                                   np.generic]) -> 'DenseOperator':
         """
         Matrix or scalar multiplication.
 
@@ -566,15 +561,15 @@ class OperatorDense(OperatorMatrix):
         elif type(other) == np.ndarray:
             out = self.copy()
             np.matmul(self.data, other, out=out.data)
-        elif type(other) == OperatorDense:
+        elif type(other) == DenseOperator:
             out = self.copy()
             np.matmul(out.data, other.data, out=out.data)
         else:
             raise NotImplementedError(str(type(other)))
         return out
 
-    def __rmul__(self, other: Union['OperatorDense', complex, float, int,
-                                    np.generic]) -> 'OperatorDense':
+    def __rmul__(self, other: Union['DenseOperator', complex, float, int,
+                                    np.generic]) -> 'DenseOperator':
         """
         Reflective matrix or scalar multiplication.
 
@@ -607,7 +602,7 @@ class OperatorDense(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return out
 
-    def __iadd__(self, other: 'OperatorDense') -> 'OperatorDense':
+    def __iadd__(self, other: 'DenseOperator') -> 'DenseOperator':
         """
         In place addition.
 
@@ -630,7 +625,7 @@ class OperatorDense(OperatorMatrix):
             If the operation is not implemented for objects of others type.
 
         """
-        if type(other) is OperatorDense:
+        if type(other) is DenseOperator:
             self.data += other.data
         elif type(other) == np.ndarray:
             self.data += other
@@ -638,7 +633,7 @@ class OperatorDense(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return self
 
-    def __isub__(self, other: 'OperatorDense') -> 'OperatorDense':
+    def __isub__(self, other: 'DenseOperator') -> 'DenseOperator':
         """
         In place subtraction.
 
@@ -662,7 +657,7 @@ class OperatorDense(OperatorMatrix):
 
         """
 
-        if type(other) is OperatorDense:
+        if type(other) is DenseOperator:
             self.data -= other.data
         elif type(other) == np.ndarray:
             self.data -= other
@@ -674,7 +669,7 @@ class OperatorDense(OperatorMatrix):
         """See base class. """
         return self.data[item]
 
-    def dag(self, copy_: bool = True) -> Optional['OperatorDense']:
+    def dag(self, copy_: bool = True) -> Optional['DenseOperator']:
         """See base class. """
         if copy_:
             cp = self.copy()
@@ -686,7 +681,7 @@ class OperatorDense(OperatorMatrix):
             self.data = self.data.T
             return self
 
-    def conj(self, copy_: bool = True) -> Optional['OperatorDense']:
+    def conj(self, copy_: bool = True) -> Optional['DenseOperator']:
         """See base class. """
         if copy_:
             copy = self.copy()
@@ -696,7 +691,7 @@ class OperatorDense(OperatorMatrix):
             np.conj(self.data, out=self.data)
             return self
 
-    def transpose(self, copy_: bool = True) -> Optional['OperatorDense']:
+    def transpose(self, copy_: bool = True) -> Optional['DenseOperator']:
         """See base class. """
         if copy_:
             out = self.copy()
@@ -713,18 +708,18 @@ class OperatorDense(OperatorMatrix):
         """See base class. """
         return self.data.trace()
 
-    def kron(self, other: 'OperatorDense') -> 'OperatorDense':
+    def kron(self, other: 'DenseOperator') -> 'DenseOperator':
         """
         Computes the kronecker matrix product with another matrix.
 
         Parameters
         ----------
-        other: OperatorDense or np.ndarray
+        other: DenseOperator or np.ndarray
             Second factor of the kronecker product.
 
         Returns
         -------
-        out: OperatorDense
+        out: DenseOperator
             Dense control matrix containing the product.
 
         Raises
@@ -733,17 +728,17 @@ class OperatorDense(OperatorMatrix):
             If other is not of type ControlDense or np.ndarray.
 
         """
-        if type(other) == OperatorDense:
+        if type(other) == DenseOperator:
             out = np.kron(self.data, other.data)
         elif type(other) == np.ndarray:
             out = np.kron(self.data, other)
         else:
             raise ValueError('The kronecker product of dense control matrices'
                              'is not defined for: ' + str(type(other)))
-        return OperatorDense(out)
+        return DenseOperator(out)
 
     def _exp_diagonalize(self, tau: complex = 1,
-                         is_skew_hermitian: bool = False) -> 'OperatorDense':
+                         is_skew_hermitian: bool = False) -> 'DenseOperator':
         """ Calculates the matrix exponential by spectral decomposition.
 
         Refactored version of _spectral_decomp.
@@ -768,9 +763,9 @@ class OperatorDense(OperatorMatrix):
         exp = np.einsum('ij,j,kj->ik', eig_vec, np.exp(tau * eig_val),
                         eig_vec.conj())
 
-        return OperatorDense(exp)
+        return DenseOperator(exp)
 
-    def _dexp_diagonalization(self, direction: 'OperatorDense', tau: complex = 1,
+    def _dexp_diagonalization(self, direction: 'DenseOperator', tau: complex = 1,
                               is_skew_hermitian: bool = False,
                               compute_expm: bool = False):
         """ Calculates the matrix exponential by spectral decomposition.
@@ -779,7 +774,7 @@ class OperatorDense(OperatorMatrix):
 
         Parameters
         ----------
-        direction: OperatorDense
+        direction: DenseOperator
             Direction in which the frechet derivative is calculated. Must be of
             the same shape as self.
 
@@ -835,65 +830,9 @@ class OperatorDense(OperatorMatrix):
 
         return eig_val, eig_vec
 
-    @needs_refactoring
-    def _spectral_decomp(self, tau: complex = 1,
-                         is_skew_hermitian: bool = False) -> None:
-        """ Calculates the eigenvalues and right eigenvalues.
-
-        Calculates the diagonalization of the dynamics generator
-        generating lists of eigenvectors, propagators in the diagonalised
-        basis, and the 'factormatrix' used in calculating the propagator
-        gradient.
-
-        Parameters
-        ----------
-        tau : complex
-            The matrix is multiplied by tau.
-
-        is_skew_hermitian : bool
-            If True, the matrix is expected to be skew hermitian.
-
-        """
-        if is_skew_hermitian:
-            eig_val, eig_vec = la.eigh(-1j * self.data)
-            eig_val = 1j * eig_val
-        else:
-            eig_val, eig_vec = la.eig(self.data)
-
-        eig_val_tau = eig_val * tau
-        prop_eig = np.exp(eig_val_tau)
-
-        o = np.ones([self._size, self._size])
-        eig_val_cols = eig_val_tau * o
-        eig_val_diffs = eig_val_cols - eig_val_cols.T
-
-        prop_eig_cols = prop_eig * o
-        prop_eig_diffs = prop_eig_cols - prop_eig_cols.T
-
-        # degen_mask should essentially be the diagonal elements.
-
-        degen_mask = np.abs(eig_val_diffs) < matrix_opt["fact_mat_round_prec"]
-        eig_val_diffs[degen_mask] = 1
-        factors = prop_eig_diffs / eig_val_diffs
-        factors[degen_mask] = prop_eig_cols[degen_mask]
-
-        self._factormatrix = factors
-        self._prop_eigen = np.diagflat(prop_eig)
-        self._eig_vec = eig_vec
-        if matrix_opt["_mem_eigen_adj"] is not None:
-            self._eig_vec_dag = eig_vec.conj().T
-
-    @property
-    def _eig_vec_adj(self) -> np.ndarray:
-        """Adjoint eigenvectors. """
-        if matrix_opt["_mem_eigen_adj"]:
-            return self._eig_vec.conj().T
-        else:
-            return self._eig_vec_dag
-
     def exp(self, tau: complex = 1,
             method: Optional[str] = None,
-            is_skew_hermitian: bool = False) -> 'OperatorDense':
+            is_skew_hermitian: bool = False) -> 'DenseOperator':
         """
         Matrix exponential.
 
@@ -918,7 +857,7 @@ class OperatorDense(OperatorMatrix):
 
         Returns
         -------
-        prop: OperatorDense
+        prop: DenseOperator
             The matrix exponential.
 
         Raises
@@ -965,23 +904,23 @@ class OperatorDense(OperatorMatrix):
                              + str(method))
 
         if matrix_opt["_mem_prop"]:
-            self._prop = OperatorDense(prop)
-        return OperatorDense(prop)
+            self._prop = DenseOperator(prop)
+        return DenseOperator(prop)
 
-    def prop(self, tau: complex = 1) -> 'OperatorDense':
+    def prop(self, tau: complex = 1) -> 'DenseOperator':
         """See base class. """
-        return OperatorDense(self.exp(tau))
+        return DenseOperator(self.exp(tau))
 
-    def dexp(self, direction: 'OperatorDense', tau: complex = 1,
+    def dexp(self, direction: 'DenseOperator', tau: complex = 1,
              compute_expm: bool = False, method: Optional[str] = None,
              is_skew_hermitian: bool = False) \
-            -> Union['OperatorDense', Tuple['OperatorDense']]:
+            -> Union['DenseOperator', Tuple['DenseOperator']]:
         """
         Frechet derivative of the matrix exponential.
 
         Parameters
         ----------
-        direction: OperatorDense
+        direction: DenseOperator
             Direction in which the frechet derivative is calculated. Must be of
             the same shape as self.
 
@@ -1010,9 +949,9 @@ class OperatorDense(OperatorMatrix):
 
         Returns
         -------
-        prop: OperatorDense
+        prop: DenseOperator
             The matrix exponential. Only returned if compute_expm is True!
-        prop_grad: OperatorDense
+        prop_grad: DenseOperator
             The frechet derivative d exp(Ax + B)/dx at x=0 where A is the
             direction and B is the matrix stored in self.
 
@@ -1024,8 +963,8 @@ class OperatorDense(OperatorMatrix):
         """
         prop = None
 
-        if type(direction) != OperatorDense:
-            direction = OperatorDense(direction)
+        if type(direction) != DenseOperator:
+            direction = DenseOperator(direction)
 
         if method is None:
             method = matrix_opt['method']
@@ -1097,24 +1036,24 @@ class OperatorDense(OperatorMatrix):
             raise NotImplementedError(
                 'The specified method ' + method + "is not implemented!")
         if compute_expm:
-            if type(prop) != OperatorDense:
-                prop = OperatorDense(prop)
-        if type(prop_grad) != OperatorDense:
-            prop_grad = OperatorDense(prop_grad)
+            if type(prop) != DenseOperator:
+                prop = DenseOperator(prop)
+        if type(prop_grad) != DenseOperator:
+            prop_grad = DenseOperator(prop_grad)
         if compute_expm:
             return prop, prop_grad
         else:
             return prop_grad
 
-    def identity_like(self) -> 'OperatorDense':
+    def identity_like(self) -> 'DenseOperator':
         """See base class. """
         assert self.shape[0] == self.shape[1]
-        return OperatorDense(np.eye(self.shape[0], dtype=complex))
+        return DenseOperator(np.eye(self.shape[0], dtype=complex))
 
     def truncate_to_subspace(
             self, subspace_indices: Optional[Sequence[int]],
             map_to_closest_unitary: bool = False
-    ) -> 'OperatorDense':
+    ) -> 'DenseOperator':
         """See base class. """
         if subspace_indices is None:
             return self
@@ -1127,342 +1066,8 @@ class OperatorDense(OperatorMatrix):
                 return out
 
 
-class OperatorSparse(OperatorMatrix):
-    """
-    Sparse control matrix.
-
-    The implementation is based on the fast CSR matrix implementation in
-    qutip.fast_sparse which in turn uses the scipy csr_sparse matrix.
-
-    Parameters
-    ----------
-    obj: Qobj or numpy array or scipy csr_matrix
-        The matrix to be stored and handled as sparse matrix.
-
-    Attributes
-    ----------
-    data: numpy array
-        The data stored as scipy csr_matrix or qutip fast csr_matrix.
-
-    Methods
-    -------
-    _spectral_decomp:
-        Applies the spectral decomposition of the stored matrix.
-
-    _eig_vec_adj
-        Returns the adjoint eigenvectors.
-
-    Raises
-    ------
-    ValueError
-        If obj could not be broadcasted into a csr_matrix.
-
-    Todo:
-        * Investigate if data should always have the same type
-        * Properly document the sparse functions
-
-    """
-
-    def __init__(self, obj=None):
-        super().__init__()
-        self.full = False
-        if type(obj) is Qobj:
-            self._size = obj.shape[0]
-            self.data = obj.data
-        elif type(obj) is np.ndarray:
-            self._size = obj.shape[0]
-            self.data = sp.csr_matrix(obj)
-        elif type(obj) is sp.csr_matrix:
-            self._size = obj.shape[0]
-            self.data = obj
-        else:
-            raise ValueError('The object could not be broadcasted into a sparse'
-                             'matrix! type: ' + str(type(obj)))
-        self.method = "spectral"
-
-    def copy(self):
-        """See base class. """
-        copy_ = OperatorSparse(self.data.copy())
-        return copy_
-
-    def __rmul__(self, other):
-        if isinstance(other, (int, float, complex)):
-            out = self.copy()
-            out *= other
-        # elif isinstance(other, Qobj):
-        #    out = self.copy()
-        #    out.data = other.data * out.data
-        # elif isinstance(other, sp.csr_matrix):
-        #    out = self.copy()
-        #    out.data = other.data * out.data
-        elif type(other) == np.ndarray:
-            if len(other.shape) == 1:
-                out = spmv(self.data.T, other)
-            else:
-                out = (self.data.T * other.T).T
-        else:
-            raise ValueError("Control Dense matrix multiplication is not "
-                             "implemented for objects of type:"
-                             + str(type(other)))
-        return out
-
-    def __mul__(self, other):
-        if isinstance(other, OperatorSparse):
-            out = self.copy()
-            out.data = self.data * other.data
-        elif type(other) in [int, float, complex]:
-            out = self.copy()
-            out.data = self.data * other
-        elif type(other) == np.ndarray:
-            if len(other.shape) == 1:
-                out = spmv(self.data, other)
-            else:
-                out = self.data * other
-
-        else:
-            raise NotImplementedError(type(other))
-        return out
-
-    def __imul__(self, other):
-        if type(other) == OperatorSparse:
-            self.data = self.data * other.data
-        elif type(other) in [int, float, complex]:
-            self.data = self.data * other
-        # elif isinstance(other, np.ndarray):
-        #    self.data = sp.csr_matrix(spmv(self.data, other))
-        else:
-            raise NotImplementedError(type(other))
-        return self
-
-    def __iadd__(self, other):
-        if isinstance(other, OperatorSparse):
-            self.data += other.data
-        else:
-            raise NotImplementedError(type(other))
-        return self
-
-    def __isub__(self, other):
-        if isinstance(other, OperatorSparse):
-            self.data -= other.data
-        else:
-            raise NotImplementedError(type(other))
-        return self
-
-    def __getitem__(self, item):
-        return self.data[item]
-
-    def dag(self):
-        cp = self.copy()
-        cp.data = zcsr_adjoint(self.data)
-        return cp
-
-    def tr(self):
-        return zcsr_trace(self.data, 0)
-
-    def conj(self, copy_=True):
-        if copy_:
-            return OperatorSparse(self.data.conj(copy=True))
-        else:
-            self.data = self.data.conj(copy=False)
-            return self
-
-    def flatten(self, out=None):
-        return self.data.toarray().flatten()
-
-    def kron(self, other):
-        """
-        Computes the kronecker matrix product with another matrix.
-
-        Parameters
-        ----------
-        other: OperatorSparse or scipy.csr_sparse
-            Second factor of the kronecker product.
-
-        Returns
-        -------
-        out: OperatorSparse
-            Sparse control matrix containing the product.
-
-        Raises
-        ------
-        ValueError:
-            If other is not of type ControlSparse or scipy.sparse.csr_matrix.
-
-        """
-        if type(other) == OperatorSparse:
-            out = sp.kron(self.data, other.data)
-        elif type(other) == sp.csr_matrix:
-            out = sp.kron(self.data, other)
-        else:
-            raise ValueError('The kronecker product of sparse control matrices'
-                             'is not defined for: ' + type(other))
-        return OperatorSparse(out)
-
-    def _spectral_decomp(self, tau):
-        """
-        Calculates the diagonalization of the dynamics generator
-        generating lists of eigenvectors, propagators in the diagonalised
-        basis, and the 'factormatrix' used in calculating the propagator
-        gradient.
-        """
-        eig_val, eig_vec = sp_eigs(self.data, 0)
-        # eig_val, eig_vec = sp_eigs(H.data, H.isherm,
-        #                           sparse=self.sparse_eigen_decomp)
-        eig_vec = eig_vec.T
-
-        eig_val_tau = eig_val * tau
-        prop_eig = np.exp(eig_val_tau)
-
-        o = np.ones([self._size, self._size])
-        eig_val_cols = eig_val_tau * o
-        eig_val_diffs = eig_val_cols - eig_val_cols.T
-
-        prop_eig_cols = prop_eig * o
-        prop_eig_diffs = prop_eig_cols - prop_eig_cols.T
-
-        degen_mask = np.abs(eig_val_diffs) < matrix_opt["fact_mat_round_prec"]
-        eig_val_diffs[degen_mask] = 1
-        factors = prop_eig_diffs / eig_val_diffs
-        factors[degen_mask] = prop_eig_cols[degen_mask]
-
-        self._factormatrix = factors
-        self._prop_eigen = np.diagflat(prop_eig)
-        self._eig_vec = eig_vec
-        if not matrix_opt["_mem_eigen_adj"]:
-            self._eig_vec_dag = eig_vec.conj().T
-
-    @property
-    def _eig_vec_adj(self):
-        if matrix_opt["_mem_eigen_adj"]:
-            return self._eig_vec.conj().T
-        else:
-            return self._eig_vec_dag
-
-    def exp(self, tau=1, method=None):
-        if matrix_opt["_mem_prop"] and self._prop:
-            return self._prop
-
-        if matrix_opt["method"] == "spectral":
-            if self._eig_vec is None:
-                self._spectral_decomp(tau)
-            prop = self._eig_vec.dot(self._prop_eigen).dot(self._eig_vec_adj)
-        elif matrix_opt["method"] in ["approx", "Frechet"]:
-            if matrix_opt["sparse2dense"]:
-                prop = la.expm(self.data.toarray() * tau)
-            else:
-                prop = sp_expm(self.data * tau,
-                               sparse=matrix_opt["sparse_exp"])
-        elif matrix_opt["method"] == "first_order":
-            if matrix_opt["sparse2dense"]:
-                prop = np.eye(self.data.shape[0]) + self.data.toarray() * tau
-            else:
-                prop = identity(self.data.shape[0], format='csr') + \
-                       self.data * tau
-        elif matrix_opt["method"] == "second_order":
-            if matrix_opt["sparse2dense"]:
-                M = self.data.toarray() * tau
-                prop = np.eye(self.data.shape[0]) + M
-                prop += M @ M * 0.5
-            else:
-                M = self.data * tau
-                prop = identity(self.data.shape[0], format='csr') + M
-                prop += M * M * 0.5
-        elif matrix_opt["method"] == "third_order":
-            if matrix_opt["sparse2dense"]:
-                B = self.data.toarray() * tau
-                prop = np.eye(self.data.shape[0]) + B
-                BB = B @ B * 0.5
-                prop += BB
-                prop += BB @ B * 0.3333333333333333333
-            else:
-                B = self.data * tau
-                prop = identity(self.data.shape[0], format='csr') + B
-                BB = B * B * 0.5
-                prop += BB
-                prop += BB * B * 0.3333333333333333333
-
-        if matrix_opt["_mem_prop"]:
-            self._prop = prop
-        return prop
-
-    def prop(self, tau):
-        if matrix_opt["sparse2dense"]:
-            return OperatorDense(self.exp(tau))
-        return OperatorSparse(self.exp(tau))
-
-    def dexp(self, direction, tau=1, compute_expm=False, method=None):
-        if method is None or method == "Frechet":
-            A = (self.data * tau).toarray()
-            E = (direction.data * tau).toarray()
-            if compute_expm:
-                prop_dense, prop_grad_dense = la.expm_frechet(A, E)
-                prop = prop_dense
-                # prop = sp.csr_matrix(prop_dense)
-            else:
-                prop_grad_dense = la.expm_frechet(A, E,
-                                                  compute_expm=compute_expm)
-            prop_grad = prop_grad_dense
-            # prop_grad = sp.csr_matrix(prop_grad_dense)
-
-        elif method == "spectral":
-            if self._eig_vec is None:
-                self._spectral_decomp(tau)
-            if compute_expm:
-                prop = self.exp(tau)
-            # put control dyn_gen in combined dg diagonal basis
-            cdg = self._eig_vec_adj.dot(direction.data.toarray()).dot(
-                self._eig_vec)
-            # multiply (elementwise) by timeslice and factor matrix
-            cdg = np.multiply(cdg * tau, self._factormatrix)
-            # Return to canonical basis
-            prop_grad = self._eig_vec.dot(cdg).dot(self._eig_vec_adj)
-
-        elif method == "approx":
-            if matrix_opt["sparse2dense"]:
-                dM = (self.data.toarray() + matrix_opt[
-                    "epsilon"] * direction.data.toarray()) * tau
-                dprop = la.expm(dM)
-                prop = self.exp(tau)
-                prop_grad = (dprop - prop) * (1 / matrix_opt["epsilon"])
-            else:
-                dM = (self.data + matrix_opt["epsilon"] * direction.data) * tau
-                dprop = sp_expm(dM, sparse=matrix_opt["sparse_exp"])
-                prop = self.exp(tau)
-                prop_grad = (dprop - prop) * (1 / matrix_opt["epsilon"])
-
-        elif method == "first_order":
-            if compute_expm:
-                prop = self.exp(tau)
-            prop_grad = direction.data * tau
-
-        elif method == "second_order":
-            if compute_expm:
-                prop = self.exp(tau)
-            prop_grad = direction.data * tau
-            prop_grad += (
-                                 self.data * direction.data + direction.data * self.data) \
-                         * (tau * tau * 0.5)
-
-        elif method == "third_order":
-            if compute_expm:
-                prop = self.exp(tau)
-            prop_grad = direction.data * tau
-            A = self.data * direction.data
-            B = direction.data * self.data
-            prop_grad += (A + B) * (tau * tau * 0.5)
-            prop_grad += (self.data * A + A * self.data + B * self.data) * \
-                         (tau * tau * tau * 0.16666666666666666)
-
-        if compute_expm:
-            if matrix_opt["sparse2dense"]:
-                return OperatorDense(prop), OperatorDense(prop_grad)
-            else:
-                return OperatorSparse(prop), OperatorSparse(prop_grad)
-        else:
-            if matrix_opt["sparse2dense"]:
-                return OperatorDense(prop_grad)
-            else:
-                return OperatorSparse(prop_grad)
+class SparseOperator(OperatorMatrix):
+    pass
 
 
 def convert_unitary_to_super_operator(unitary):
@@ -1476,7 +1081,7 @@ def convert_unitary_to_super_operator(unitary):
     :return:
 
     """
-    if type(unitary) in (OperatorDense, OperatorSparse):
+    if type(unitary) in (DenseOperator, SparseOperator):
         return unitary.conj(copy_=True).kron(unitary)
     elif isinstance(unitary, np.ndarray):
         return np.kron(np.conj(unitary), unitary)

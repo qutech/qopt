@@ -5,7 +5,7 @@ for the simulation of rabi drive.
 """
 
 import numpy as np
-from qsim.matrix import OperatorDense
+from qsim.matrix import DenseOperator
 from qsim.transfer_function import ExponentialTF, IdentityTF, \
     LinearTF, ParallelTF, ConcatenateTF
 from qsim.amplitude_functions import UnaryAnalyticAmpFunc, \
@@ -19,7 +19,7 @@ from qsim.cost_functions import OperationInfidelity, \
 # ##################### 1. Implementation Choices ##############################
 
 # dense control matrices are faster in low dimensions than sparse matrices
-control_matrix = OperatorDense
+control_matrix = DenseOperator
 # We use the scipy linalg expm_frechet implementation to calculate matrix
 # exponentials
 exponential_method = 'Frechet'
@@ -73,7 +73,7 @@ exponential_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # 4.2: Identity
 # No transfer function. Here we assume ideal control electronics.
-identity_transfer_function = IdentityTF(oversampling=oversampling, num_ctrls=2)
+identity_transfer_function = IdentityTF(oversampling=oversampling)
 identity_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # ##################### 5. Amplitude Function ##################################
@@ -165,7 +165,7 @@ ntg_quasi_static = NTGQuasiStatic(
 time_slot_comp_unperturbed_xy = SchroedingerSolver(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
@@ -178,7 +178,7 @@ time_slot_comp_qs_noise_xy = SchroedingerSMonteCarlo(
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_quasi_static,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
@@ -191,7 +191,7 @@ time_slot_comp_qs_noise_xy_spectral = SchroedingerSMonteCarlo(
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_quasi_static,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method='spectral',
@@ -205,7 +205,7 @@ time_slot_comp_colored_noise_xy = SchroedingerSMonteCarlo(
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_one_over_f_noise,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
@@ -217,7 +217,7 @@ time_slot_comp_colored_noise_xy = SchroedingerSMonteCarlo(
 time_slot_comp_unperturbed_phase_control = SchroedingerSolver(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
@@ -230,7 +230,7 @@ time_slot_comp_qs_noise_phase_control = SchroedingerSMonteCarlo(
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_quasi_static,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
@@ -243,7 +243,7 @@ time_slot_comp_colored_noise_phase_control = SchroedingerSMonteCarlo(
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_one_over_f_noise,
-    initial_state=OperatorDense(np.eye(2)),
+    initial_state=DenseOperator(np.eye(2)),
     tau=[time_step / oversampling, ] * n_time_samples * oversampling,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
@@ -296,7 +296,7 @@ entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
 
 # 8.2 phase-control
 entanglement_infid_phase_control = OperationInfidelity(
-    t_slot_comp=time_slot_comp_unperturbed_phase_control,
+    t_slot_comp=time_slot_comp_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity Phase Control']
@@ -363,7 +363,7 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
     ts_comp_unperturbed_pc_discrete = SchroedingerSolver(
         h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
         h_ctrl=h_ctrl,
-        initial_state=OperatorDense(np.eye(2)),
+        initial_state=DenseOperator(np.eye(2)),
         tau=[time_step / oversampling, ] * n_time_samples * oversampling,
         is_skew_hermitian=True,
         exponential_method=exponential_method,
@@ -376,7 +376,7 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
         h_ctrl=h_ctrl,
         h_noise=[h_drift, ],
         noise_trace_generator=ntg_quasi_static,
-        initial_state=OperatorDense(np.eye(2)),
+        initial_state=DenseOperator(np.eye(2)),
         tau=[time_step / oversampling, ] * n_time_samples * oversampling,
         is_skew_hermitian=True,
         exponential_method=exponential_method,

@@ -1,53 +1,11 @@
 """
-Classes here are expected to implement a run_optimization function
-that will use some method for optimising the control pulse, as defined
-by the control amplitudes. The system that the pulse acts upon are defined
-by the Dynamics object that must be passed in the instantiation.
-
-The methods are typically N dimensional function optimisers that
-find the minima of a fidelity error function. Note the number of variables
-for the fidelity function is the number of control timeslots,
-i.e. n_ctrls x Ntimeslots
-The methods will call functions on the Dynamics.fid_computer object,
-one or many times per iteration,
-to get the fidelity error and gradient wrt the amplitudes.
-The optimisation will stop when one of the termination conditions are met,
-for example: the fidelity aim has been reached, a local minima has been found,
-the maximum time allowed has been exceeded
-
-These function optimisation methods are so far from SciPy.optimize
-The two methods implemented are:
-
-    BFGS - Broyden–Fletcher–Goldfarb–Shanno algorithm
-
-        This a quasi second order Newton method. It uses successive calls to
-        the gradient function to make an estimation of the curvature (Hessian)
-        and hence direct its search for the function minima
-        The SciPy implementation is pure Python and hence is execution speed is
-        not high
-        use subclass: OptimizerBFGS
-
-    L-BFGS-B - Bounded, limited memory BFGS
-
-        This a version of the BFGS method where the Hessian approximation is
-        only based on a set of the most recent gradient calls. It generally
-        performs better where the are a large number of variables
-        The SciPy implementation of L-BFGS-B is wrapper around a well
-        established and actively maintained implementation in Fortran
-        Its is therefore very fast.
-        # See SciPy documentation for credit and details on the
-        # scipy.optimize.fmin_l_bfgs_b function
-        use subclass: OptimizerLBFGSB
 
 This function optimization method can be used to minimize multiple fidelities at
 once as least squares problem.
 
     LS-TRF - Least squares, Trust Region Reflective
 
-The baseclass OptimizerOld implements the function wrappers to the
-fidelity error, gradient, and iteration callback functions.
-These are called from the within the SciPy optimisation functions.
-The subclasses implement the algorithm specific pulse optimisation function.
+
 """
 
 import numpy as np
@@ -157,7 +115,7 @@ class Optimizer(ABC):
 
     @abstractmethod
     def run_optimization(self, initial_control_amplitudes: np.ndarray) \
-            -> optimization_data.OptimResult:
+            -> optimization_data.OptimizationResult:
         """Runs the optimization of the control amplitudes.
 
         Parameters
@@ -191,7 +149,7 @@ class Optimizer(ABC):
         self.pulse_shape = initial_control_amplitudes.shape
         if self.save_intermediary_steps:
             self.optim_iter_summary = \
-                optimization_data.OptimIterSummary(
+                optimization_data.OptimizationSummary(
                     indices=self.dynamics.cost_indices
                 )
         self._opt_start_time = time.time()
@@ -239,7 +197,7 @@ class LeastSquaresOptimizer(Optimizer):
         self.use_jacobian_function = use_jacobian_function
 
     def run_optimization(self, initial_control_amplitudes: np.ndarray) \
-            -> optimization_data.OptimResult:
+            -> optimization_data.OptimizationResult:
         super().prepare_optimization(
             initial_control_amplitudes=initial_control_amplitudes)
 
@@ -271,7 +229,7 @@ class LeastSquaresOptimizer(Optimizer):
             if self.dynamics.stats is not None:
                 self.dynamics.stats.end_t_opt = time.time()
 
-            optim_result = optimization_data.OptimResult(
+            optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
                 indices=self.dynamics.cost_indices,
                 final_parameters=result.x.reshape(self.pulse_shape[::-1]).T,
@@ -287,7 +245,7 @@ class LeastSquaresOptimizer(Optimizer):
             if self.dynamics.stats is not None:
                 self.dynamics.stats.end_t_opt = time.time()
 
-            optim_result = optimization_data.OptimResult(
+            optim_result = optimization_data.OptimizationResult(
                 final_cost=self._last_costs,
                 indices=self.dynamics.cost_indices,
                 final_parameters=self._last_par.reshape(
@@ -448,7 +406,7 @@ class SimulatedAnnealing(Optimizer):
         if self.dynamics.stats is not None:
             self.dynamics.stats.end_t_opt = time.time()
 
-        optim_result = optimization_data.OptimResult(
+        optim_result = optimization_data.OptimizationResult(
             final_cost=costs,
             indices=self.dynamics.cost_indices,
             final_parameters=pulse,
@@ -528,7 +486,7 @@ class SimulatedAnnealingScipy(Optimizer):
             if self.dynamics.stats is not None:
                 self.dynamics.stats.end_t_opt = time.time()
 
-            optim_result = optimization_data.OptimResult(
+            optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
                 indices=self.dynamics.cost_indices,
                 final_parameters=result.x.reshape(self.pulse_shape[::-1]).T,
@@ -544,7 +502,7 @@ class SimulatedAnnealingScipy(Optimizer):
             if self.dynamics.stats is not None:
                 self.dynamics.stats.end_t_opt = time.time()
 
-            optim_result = optimization_data.OptimResult(
+            optim_result = optimization_data.OptimizationResult(
                 final_cost=self._last_costs,
                 indices=self.dynamics.cost_indices,
                 final_parameters=self._last_par.reshape(

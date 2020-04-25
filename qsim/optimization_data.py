@@ -1,19 +1,16 @@
 """
-Class containing the results of the pulse optimisation
 """
 
-import numpy as np
 from typing import Dict, List
 
 
-class OptimResult(object):
+class OptimizationResult(object):
     """
     Resulting data of the optimization.
 
     Attributes
     ----------
     termination_reason : string
-        Description of the reason for terminating the optimisation
 
     status : None or int
         The termination_reason as integer. Like in scipy.OptimizeResult
@@ -26,14 +23,10 @@ class OptimResult(object):
         4: Both 2 and 3 termination conditions are satisfied.
 
     final_cost : float
-        final (normalised) fidelity that was achieved
 
     final_grad_norm : float
-        Final value of the sum of the squares of the (normalised) fidelity
-        error gradients
 
     num_iter : integer
-        Number of iterations of the optimisation algorithm completed
 
     init_parameters : array[num_tslots, n_ctrls]
         The amplitudes at the start of the optimisation
@@ -92,7 +85,7 @@ class OptimResult(object):
         return cls(**data_dict)
 
 
-class OptimIterSummary(object):
+class OptimizationSummary(object):
     """A summary of the most recent iteration of the pulse optimisation
 
     Attributes

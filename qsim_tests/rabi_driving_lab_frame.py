@@ -1,11 +1,11 @@
-from qsim.matrix import OperatorDense
+from qsim.matrix import DenseOperator
 from qsim.noise import NTGQuasiStatic
 from qsim.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
     SchroedingerSolver
 from qsim.amplitude_functions import CustomAmpFunc
 from qsim.transfer_function import IdentityTF
 
-import tests.rabi_driving_setup as rabi
+import examples.rabi_driving.setup as rabi
 import numpy as np
 import scipy.optimize
 
@@ -15,9 +15,9 @@ from unittest import TestCase
 class Lab_frame_rabi_driving(TestCase):
     def quasi_static_noise(self):
 
-        sigma_z = OperatorDense(np.asarray([[1, 0], [0, -1]]))
-        sigma_x = OperatorDense(np.asarray([[0, 1], [1, 0]]))
-        h_drift = OperatorDense(np.zeros((2, 2)))
+        sigma_z = DenseOperator(np.asarray([[1, 0], [0, -1]]))
+        sigma_x = DenseOperator(np.asarray([[0, 1], [1, 0]]))
+        h_drift = DenseOperator(np.zeros((2, 2)))
 
         # reference_frequency = 20e9 * 2 * np.pi
         reference_frequency = 100e6 * 2 * np.pi
@@ -71,7 +71,7 @@ class Lab_frame_rabi_driving(TestCase):
         ts_comp_unperturbed = SchroedingerSolver(
             h_drift=[reference_frequency * .5 * sigma_z, ] * n_time_steps,
             h_ctrl=[.5 * sigma_x, ],
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[delta_t, ] * n_time_steps,
             exponential_method='Frechet',
 
@@ -80,7 +80,7 @@ class Lab_frame_rabi_driving(TestCase):
         ts_comp_lindblad = LindbladSolver(
             h_drift=[reference_frequency * .5 * sigma_z, ] * n_time_steps,
             h_ctrl=[.5 * sigma_x, ],
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[delta_t, ] * n_time_steps,
             exponential_method='Frechet'
         )
@@ -139,7 +139,7 @@ class Lab_frame_rabi_driving(TestCase):
             h_drift=[reference_frequency * .5 * sigma_z, ] * n_time_steps,
             h_ctrl=[.5 * sigma_x, ],
             h_noise=[.5 * sigma_x],
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[delta_t, ] * n_time_steps,
             noise_trace_generator=ntg,
             exponential_method='Frechet',

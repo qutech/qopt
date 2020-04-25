@@ -28,7 +28,7 @@ from qsim import cost_functions, stats, solver_algorithms
 from qsim.util import needs_refactoring
 
 
-class Dynamics(object):
+class Simulator(object):
     """
     The Dynamics class provides the interface for the Optimizer class. It
     wraps the infidelity and optionally the gradient of the infidelity.
@@ -106,7 +106,7 @@ class Dynamics(object):
         self.cost_fktns = cost_fktns
 
         if record_performance_statistics:
-            self.stats = stats.Stats()
+            self.stats = stats.OptimizationStatistics()
         else:
             self.stats = None
 
@@ -252,10 +252,10 @@ class Dynamics(object):
                 jac_u = np.expand_dims(jac_u, axis=1)
 
             # apply the chain rule to the derivatives
-            jac_x = cost_fktn.t_slot_comp.amplitude_function.gradient_u2x(
+            jac_x = cost_fktn.t_slot_comp.amplitude_function.gradient_chain_rule(
                 jac_u, cost_fktn.t_slot_comp.transfer_function(pulse))
             jac_x_transferred = \
-                cost_fktn.t_slot_comp.transfer_function.gradient_u2x(
+                cost_fktn.t_slot_comp.transfer_function.gradient_chain_rule(
                     jac_x
                 )
             jacobians.append(jac_x_transferred)

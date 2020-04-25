@@ -5,9 +5,9 @@ This test uses the rabi driving as test case. So far it covers:
 - Gradient of the entanglement fidelity in the presence of quasi static noise
 """
 
-import qsim_tests.rabi_driving_setup as rabi
+import examples.rabi_driving.setup as rabi
 from qsim.solver_algorithms import SchroedingerSMonteCarlo
-from qsim.matrix import OperatorDense
+from qsim.matrix import DenseOperator
 from qsim.cost_functions import OperationNoiseInfidelity, \
     OperationInfidelity
 from qsim.dynamics import Dynamics
@@ -36,7 +36,7 @@ class RabiTestCase(unittest.TestCase):
             h_ctrl=rabi.h_ctrl,
             h_noise=[rabi.h_drift, ],
             noise_trace_generator=ntg_quasi_static,
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[rabi.time_step / rabi.oversampling, ]
             * rabi.n_time_samples * rabi.oversampling,
             is_skew_hermitian=True,
@@ -58,7 +58,7 @@ class RabiTestCase(unittest.TestCase):
             h_ctrl=rabi.h_ctrl,
             h_noise=[rabi.h_drift, ],
             noise_trace_generator=ntg_quasi_static,
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[rabi.time_step / rabi.oversampling, ]
             * rabi.n_time_samples * rabi.oversampling,
             is_skew_hermitian=True,
@@ -113,7 +113,7 @@ class RabiTestCase(unittest.TestCase):
                 (np.expand_dims(amp, 1), np.expand_dims(phase, 1)), axis=1)
 
         dynamics_phase_control = Dynamics(
-            solvers=[rabi.time_slot_comp_unperturbed_phase_control],
+            solvers=[rabi.time_slot_comp_qs_noise_phase_control],
             cost_fktns=[rabi.entanglement_infid_phase_control]
         )
 
@@ -130,7 +130,7 @@ class RabiTestCase(unittest.TestCase):
             h_ctrl=rabi.h_ctrl,
             h_noise=[rabi.h_drift, ],
             noise_trace_generator=ntg_quasi_static,
-            initial_state=OperatorDense(np.eye(2)),
+            initial_state=DenseOperator(np.eye(2)),
             tau=[rabi.time_step / rabi.oversampling, ] * rabi.n_time_samples
             * rabi.oversampling,
             is_skew_hermitian=True,

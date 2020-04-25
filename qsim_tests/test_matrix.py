@@ -10,7 +10,7 @@ SIGMA_X = np.asarray([[0, 1], [1, 0]])
 
 class TestMatrix(unittest.TestCase):
     def test_dense_control_matrix_arithmetic(self):
-        mat = matrix.OperatorDense(SIGMA_X)
+        mat = matrix.DenseOperator(SIGMA_X)
 
         # test scalar multiplication:
         two_times_mat = 2 * mat
@@ -23,7 +23,7 @@ class TestMatrix(unittest.TestCase):
 
         # test addition
 
-        mat = matrix.OperatorDense(SIGMA_X)
+        mat = matrix.DenseOperator(SIGMA_X)
         two_times_mat3 = mat + np.asarray(SIGMA_X.data)
         two_times_mat5 = mat + mat
         mat += mat
@@ -36,7 +36,7 @@ class TestMatrix(unittest.TestCase):
 
         # test subtraction
 
-        mat = matrix.OperatorDense(SIGMA_X)
+        mat = matrix.DenseOperator(SIGMA_X)
         should_be_zeros = mat - np.asarray(SIGMA_X.data)
         two_times_mat -= mat
 
@@ -47,7 +47,7 @@ class TestMatrix(unittest.TestCase):
     def test_dense_control_matrix_functions(self):
 
         tau = .5j * math.pi
-        sigma_x = matrix.OperatorDense(SIGMA_X)
+        sigma_x = matrix.DenseOperator(SIGMA_X)
         exponential = sigma_x.exp(tau)
 
         np.testing.assert_array_almost_equal(
@@ -96,8 +96,8 @@ class TestMatrix(unittest.TestCase):
 
         # test kronecker product:
         np.random.seed(0)
-        a = matrix.OperatorDense(np.random.rand(5, 5))
-        b = matrix.OperatorDense(np.random.rand(5, 5))
+        a = matrix.DenseOperator(np.random.rand(5, 5))
+        b = matrix.DenseOperator(np.random.rand(5, 5))
         c = a.kron(b)
         c_2 = a.kron(b.data)
         c_np = np.kron(a.data, b.data)

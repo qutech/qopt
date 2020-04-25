@@ -4,10 +4,10 @@ from qsim import matrix, cost_functions as q_fc, solver_algorithms, \
     transfer_function
 import numpy as np
 
-sig_0 = matrix.OperatorDense(np.eye(2))
-sig_x = matrix.OperatorDense(np.asarray([[0, 1], [1, 0]]))
-sig_y = matrix.OperatorDense(np.asarray([[0, -1j], [1j, 0]]))
-sig_z = matrix.OperatorDense(np.asarray([[1, 0], [0, -1]]))
+sig_0 = matrix.DenseOperator(np.eye(2))
+sig_x = matrix.DenseOperator(np.asarray([[0, 1], [1, 0]]))
+sig_y = matrix.DenseOperator(np.asarray([[0, -1j], [1j, 0]]))
+sig_z = matrix.DenseOperator(np.asarray([[1, 0], [0, -1]]))
 
 
 class TestEntanglementFidelity(unittest.TestCase):
@@ -67,7 +67,7 @@ class TestEntanglementFidelity(unittest.TestCase):
         h_ctrl = [.5 * 2 * math.pi * sig_x,
                   .5 * 2 * math.pi * sig_y]
         h_drift = [
-            matrix.OperatorDense(np.zeros((2, 2), dtype=complex))
+            matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(num_u)]
 
         # trivial transfer function
@@ -96,7 +96,7 @@ class TestEntanglementFidelity(unittest.TestCase):
         initial_pulse = 4 * np.random.rand(num_x, num_ctrl) - 2
         initial_ctrl_amps = concatenated_tf(initial_pulse)
 
-        initial_state = matrix.OperatorDense(
+        initial_state = matrix.DenseOperator(
             np.eye(2, dtype=complex))
 
         tau_u = [100e-9 / over_sample_rate for _ in range(num_u)]
@@ -109,7 +109,7 @@ class TestEntanglementFidelity(unittest.TestCase):
             ctrl_amps=initial_ctrl_amps,
             calculate_propagator_derivatives=False)
 
-        target = matrix.OperatorDense(
+        target = matrix.DenseOperator(
             (1j * sig_x + np.eye(2, dtype=complex)) * (1 / np.sqrt(2)))
 
         fidelity_computer = q_fc.OperationInfidelity(
@@ -138,16 +138,16 @@ class TestEntanglementFidelity(unittest.TestCase):
         t_slot_comp.set_ctrl_amps(concatenated_tf(initial_pulse))
         grad = fidelity_computer.grad()
         np.expand_dims(grad, 1)
-        analytic_gradient = concatenated_tf.gradient_u2x(
+        analytic_gradient = concatenated_tf.gradient_chain_rule(
             np.expand_dims(grad, 1))
 
         self.assertLess(np.sum(
             np.abs(numeric_gradient[1].T - analytic_gradient.squeeze(1))), 1e-6)
 
         # super operators
-        dissipation_sup_op = [matrix.OperatorDense(
+        dissipation_sup_op = [matrix.DenseOperator(
             np.zeros((4, 4)))]
-        initial_state_sup_op = matrix.OperatorDense(np.eye(4))
+        initial_state_sup_op = matrix.DenseOperator(np.eye(4))
         lindblad_tslot_obj = solver_algorithms.LindbladSolver(
             h_ctrl=h_ctrl, h_drift=h_drift, tau=tau_u,
             initial_state=initial_state_sup_op, ctrl_amps=initial_ctrl_amps,

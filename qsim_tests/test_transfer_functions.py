@@ -193,7 +193,7 @@ class ExponentialTFOld(transfer_function.TransferFunction):
         # range(self.num_ctrls)])
         self._T = dudx
 
-    def gradient_u2x(self, gradient):
+    def gradient_chain_rule(self, gradient):
         if self._T is None:
             self.make_T()
         return np.einsum('ijk,lik->ljk', self._T, gradient)
@@ -265,7 +265,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         identity_tf.set_times(x_times)
         u = identity_tf(x)
-        df_dx = identity_tf.gradient_u2x(df_du)
+        df_dx = identity_tf.gradient_chain_rule(df_du)
 
         u_ideal = np.asarray([0.5, 0.6, 0.6, 0.7, 0.7, 0.8, 0.8, 0.5])
         u_ideal = np.expand_dims(u_ideal, axis=1)
@@ -287,7 +287,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         identity_tf.set_times(x_times)
         u = identity_tf(x)
-        df_dx = identity_tf.gradient_u2x(df_du)
+        df_dx = identity_tf.gradient_chain_rule(df_du)
 
         u_ideal = np.asarray([0.5, 0.5, 0.6, 0.6, 0.7, 0.7, 0.8, 0.8, 0.5, 0.5])
         u_ideal = np.expand_dims(u_ideal, axis=1)
@@ -335,7 +335,7 @@ class TestTransferFunctions(unittest.TestCase):
         test_dfdu = test_dfdu.reshape(
             oversampling * (num_x + 2 * bound_type[1]),
             oversampling * (num_x + 2 * bound_type[1]), 1)
-        grad = ex.gradient_u2x(test_dfdu)
+        grad = ex.gradient_chain_rule(test_dfdu)
         np.testing.assert_array_almost_equal(grad.squeeze(),
                                              ex.T.transpose((1, 0, 2)))
 
@@ -410,7 +410,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         test_dfdu = np.ones((oversampling * oversampling * num_x, 1, 1))
 
-        grad = concatenated_tf.gradient_u2x(test_dfdu)
+        grad = concatenated_tf.gradient_chain_rule(test_dfdu)
         self.assertEqual(grad.shape, (num_x,
                                       1,
                                       1))

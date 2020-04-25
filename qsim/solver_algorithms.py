@@ -459,11 +459,11 @@ class Solver(ABC):
         if self._prop is None:
             self._compute_propagation()
 
-        if type(self.initial_state) == matrix.OperatorDense:
-            self._reversed_prop = [matrix.OperatorDense(
+        if type(self.initial_state) == matrix.DenseOperator:
+            self._reversed_prop = [matrix.DenseOperator(
                 np.eye(self._prop[0].shape[0])) * (1 + 0j), ]
-        elif type(self.initial_state) == matrix.OperatorSparse:
-            self._reversed_prop = [matrix.OperatorSparse(
+        elif type(self.initial_state) == matrix.SparseOperator:
+            self._reversed_prop = [matrix.SparseOperator(
                 np.eye(self._prop[0].shape[0])) * (1 + 0j), ]
         else:
             raise TypeError("The initial state should be either a dense or "
@@ -513,7 +513,7 @@ class Solver(ABC):
                     np.zeros((len(self.tau), ))]]
         h_c = []
         for drift_operator in [self.h_drift[0], ]:
-            if type(drift_operator) == matrix.OperatorDense:
+            if type(drift_operator) == matrix.DenseOperator:
                 drift_operator = drift_operator.data
             h_c += [[drift_operator, len(self.tau) * [1]], ]
         for i, control_operator in enumerate(self.h_ctrl):
@@ -1653,11 +1653,7 @@ class LindbladSControlNoise(LindbladSolver):
 
     def _compute_propagation(self):
         """
-        Recalculates the evolution operators.
-        Dynamics generators (e.g. Hamiltonian) and
-        prop (propagators) are calculated as necessary
 
-        Changed to a function: take propagators and return evolution
         """
         # Compute and cache all dyn_gen (basically the total hamiltonian)
         self._dyn_gen = copy.deepcopy(self.h_drift)
@@ -1666,7 +1662,7 @@ class LindbladSControlNoise(LindbladSolver):
         # initialize the attributes
         self._prop = [None] * self.num_t
         self._dU = np.ndarray(shape=(self.num_t, self.num_ctrl),
-                              dtype=matrix.OperatorDense)
+                              dtype=matrix.DenseOperator)
         self._fwd = [self.initial_state]
 
         # super operator calculation
@@ -1684,7 +1680,7 @@ class LindbladSControlNoise(LindbladSolver):
             gen = -1j * np.kron(
                 np.eye(dim), gen.data) - np.kron(gen.data, np.eye(dim))
             gen += self.incoherent_dyn_gen[i, :, :]
-            gen = matrix.OperatorDense(gen)
+            gen = matrix.DenseOperator(gen)
 
         # calculation of the propagators
         for t in range(len(self.num_t)):

@@ -1,10 +1,10 @@
 import numpy as np
 
-from qsim.matrix import OperatorDense
+from qsim.matrix import DenseOperator
 from qsim.energy_spectrum import plot_energy_spectrum
 
-pauli_z = OperatorDense(np.asarray([[1, 0], [0, -1]]))
-pauli_x = OperatorDense(np.asarray([[0, 1], [1, 0]]))
+pauli_z = DenseOperator(np.asarray([[1, 0], [0, -1]]))
+pauli_x = DenseOperator(np.asarray([[0, 1], [1, 0]]))
 
 tau_z = pauli_z.kron(pauli_z.identity_like())
 tau_x = pauli_x.kron(pauli_x.identity_like())
