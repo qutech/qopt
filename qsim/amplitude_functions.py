@@ -1,5 +1,6 @@
 """This class is designed to express a functional relationship between the
-optimization parameters and the control amplitudes.
+optimization parameters, which can be directly controlled and the control
+amplitudes, which appear as factors in the Hamiltonian.
 
 Classes
 -------
