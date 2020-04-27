@@ -1,3 +1,12 @@
+"""This file contains some functions for the analysis of the optimization.
+
+Classes
+-------
+:class:`Analyser`
+    Holds convenience functions to visualize the optimization.
+
+"""
+
 import pandas as pd
 import numpy as np
 
@@ -5,9 +14,12 @@ from qsim import data_container
 
 
 class Analyser:
+    """
+
+    """
     def __init__(self,
-                 data_container: data_container.DataContainer):
-        self.data = data_container
+                 data: data_container.DataContainer):
+        self.data = data
         self.infidelities = None
 
     @property

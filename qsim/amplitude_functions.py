@@ -2,16 +2,31 @@
 optimization parameters, which can be directly controlled and the control
 amplitudes, which appear as factors in the Hamiltonian.
 
+If the Hamiltonian is given as sum of a drift Hamiltonian and a control
+Hamiltonian described by operators multiplied with time dependent control
+amplitudes
+
+.. math::
+
+    H = H_{drift} + \sum_k u_k(t) H_k,
+
+then this class describes the control amplitudes as function of optimization
+parameters:
+
+.. math::
+
+    u_k(t) = u_k(x(t))
+
 Classes
 -------
-AmplitudeFunction
+:class:`AmplitudeFunction`
     Abstract base class of the amplitude function.
 
-IdentityAmpFunc
-    The trivial amplitude function acting as identity operation.
-
-UnaryAnalyticAmpFunc
+:class:`UnaryAnalyticAmpFunc`
     An amplitude function which can be given by a unary function.
+
+:class:`CustomAmpFunc`
+    Applies functions handles specified by the user at the initialization.
 
 """
 
@@ -25,47 +40,47 @@ class AmplitudeFunction(ABC):
     """Abstract Base class of the amplitude function. """
     @abstractmethod
     def __call__(self, x):
-        """ Calculates the control amplitudes u from the optimization parameters
-        x.
+        """ Calculates the control amplitudes u from the optimization
+        parameters x.
 
         Parameters
         ----------
-        x : array
-            Optimization parameters of shape (num_x, num_amp), where num_x is
-            the number of time slices and num_amp the number of control
-            amplitudes.
+        x : np.array
+            Optimization parameters of shape (num_t, num_par), where num_t is
+            the number of time slices and num_par the number of different
+            optimization parameters.
 
         Returns
         -------
         u : np.array
-            Control amplitudes of shape (num_x, num_ctrl), where num_x is
+            Control amplitudes of shape (num_t, num_ctrl), where num_x is
             the number of time slices and num_ctrl the number of control
-            operators.
+            operators in the Hamiltonian.
 
         """
         return None
 
     @abstractmethod
-    def gradient_u2x(self, deriv_by_ctrl_amps, x):
+    def derivative_by_chain_rule(self, deriv_by_ctrl_amps, x):
         """ Calculates the derivatives of some function f by the optimization
-        parameters x i.e. df/dx by the chain rule.
-
-        The calculation is df/dx = df/du * du/dx.
+        parameters x, when given the optimization parameters x and the
+        derivative by the control amplitudes. The calculation is performed
+        using the chain rule: df/dx = df/du * du/dx.
 
         Parameters
         ----------
-        deriv_by_ctrl_amps : np.array, shape (num_u, num_f, num_ctrl)
+        deriv_by_ctrl_amps : np.array, shape (num_t, num_f, num_ctrl)
             The gradients of num_f functions by num_ctrl different pulses at
-            num_u different time steps, i.e. the derivatives df/du
+            num_t different time steps, i.e. the derivatives df/du.
 
         x : np.array
-            Optimization parameters of shape (num_x, num_amp), where num_x is
-            the number of time slices and num_ctrl the number of control
-            parameters.
+            Optimization parameters of shape (num_t, num_par), where num_t is
+            the number of time slices and num_par the number of different
+            optimization parameters.
 
         Returns
         -------
-        deriv_by_opt_par : np.array, shape: (num_x, num_f, num_amp)
+        deriv_by_opt_par : np.array, shape: (num_t, num_f, num_par)
             The derivatives by the optimization parameters.
 
         """
@@ -83,8 +98,8 @@ class IdentityAmpFunc(AmplitudeFunction):
         """See base class. """
         return x
 
-    def gradient_u2x(self, deriv_by_ctrl_amps: np.ndarray,
-                     x: np.ndarray) -> np.ndarray:
+    def derivative_by_chain_rule(self, deriv_by_ctrl_amps: np.ndarray,
+                                 x: np.ndarray) -> np.ndarray:
         """See base class. """
         return deriv_by_ctrl_amps
 
@@ -103,8 +118,8 @@ class UnaryAnalyticAmpFunc(AmplitudeFunction):
         internally.
 
     derivative_function : Callable float to float
-        This scalar function describes the derivative of the control amplitudes.
-        The function is vectorized internally.
+        This scalar function describes the derivative of the control
+        amplitudes. The function is vectorized internally.
 
     """
     def __init__(self,
@@ -117,7 +132,7 @@ class UnaryAnalyticAmpFunc(AmplitudeFunction):
         """See base class. """
         return self.value_function(x)
 
-    def gradient_u2x(self, deriv_by_ctrl_amps: np.ndarray, x):
+    def derivative_by_chain_rule(self, deriv_by_ctrl_amps: np.ndarray, x):
         """See base class. """
         du_by_dx = self.derivative_function(x)
         # du_by_dx shape: (n_time, n_ctrl)
@@ -134,19 +149,21 @@ class CustomAmpFunc(AmplitudeFunction):
     Parameters
     ----------
     value_function : Callable array to array
-        This scalar function expresses the functional dependency of the control
-        amplitudes on the optimization parameters. The function receives an
-        array of the shape (num_x, num_amp) and must return an array of the
-        shape (num_x, num_ctrl). Where num_x is the number of time slices,
-        num_amp the number of amplitudes and num_ctrl the number of control
-        terms in the Hamiltonian.
+        This function expresses the functional dependency of the control
+        amplitudes on the optimization parameters. The function receives the
+        optimization parameters x as array of the shape (num_t, num_par) and
+        must return the control amplitudes u as array of the shape
+        (num_t, num_ctrl). Where num_t is the number of time slices,
+        num_par the number of optimization parameters and num_ctrl the number
+        of control operators in the Hamiltonian.
 
     derivative_function : Callable array to array
-        This scalar function describes the derivative of the control amplitudes.
-        The function receives the transferred optimisation parameters as array
-        of shape (num_x, num_ctrl) and returns the derivatives of the control
-        amplitudes by the transferred optimization parameters as array of shape
-        (num_x, num_amp, num_ctrl).
+        This function describes the derivative of the control amplitudes by the
+        optimization parameters.
+        The function receives the optimisation parameters x as array
+        of shape (num_t, num_par) and must return the derivatives of the
+        control amplitudes by the optimization parameters as array of shape
+        (num_t, num_par, num_ctrl).
 
     """
     def __init__(self,
@@ -159,12 +176,12 @@ class CustomAmpFunc(AmplitudeFunction):
         """See base class. """
         return self.value_function(x)
 
-    def gradient_u2x(self, deriv_by_ctrl_amps: np.ndarray,
-                     x: np.ndarray) -> np.ndarray:
+    def derivative_by_chain_rule(self, deriv_by_ctrl_amps: np.ndarray,
+                                 x: np.ndarray) -> np.ndarray:
         """See base class. """
         du_by_dx = self.derivative_function(x)
-        # du_by_dx: shape (time, amp, ctrl)
+        # du_by_dx: shape (time, par, ctrl)
         # deriv_by_ctrl_amps: shape (time, func, ctrl)
-        # return: shape (time, func, amp)
+        # return: shape (time, func, par)
 
         return np.einsum('imj,ikj->ikm', du_by_dx, deriv_by_ctrl_amps)

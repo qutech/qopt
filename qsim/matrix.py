@@ -800,7 +800,7 @@ class DenseOperator(OperatorMatrix):
         eig_val_diffs = eig_val_cols - eig_val_cols.T
 
         # avoid devision by zero
-        eig_val_diffs += np.eye(self._size)
+        eig_val_diffs += np.eye(self.data.shape[0])
 
         omega = (np.exp(eig_val_diffs * tau) - 1.) / eig_val_diffs
 

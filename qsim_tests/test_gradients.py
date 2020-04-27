@@ -10,7 +10,7 @@ from qsim.solver_algorithms import SchroedingerSMonteCarlo
 from qsim.matrix import DenseOperator
 from qsim.cost_functions import OperationNoiseInfidelity, \
     OperationInfidelity
-from qsim.dynamics import Dynamics
+from qsim.simulator import Simulator
 from qsim.noise import NTGQuasiStatic
 import numpy as np
 import unittest
@@ -75,12 +75,12 @@ class RabiTestCase(unittest.TestCase):
             neglect_systematic_errors=True
         )
 
-        dynamics = Dynamics(
+        dynamics = Simulator(
             solvers=[tslot, ],
             cost_fktns=[entanglement_infid, ]
         )
 
-        dynamics_noise = Dynamics(
+        dynamics_noise = Simulator(
             solvers=[tslot_noise, ],
             cost_fktns=[entanglement_infid_qs_noise_xy]
         )
@@ -112,7 +112,7 @@ class RabiTestCase(unittest.TestCase):
             return np.concatenate(
                 (np.expand_dims(amp, 1), np.expand_dims(phase, 1)), axis=1)
 
-        dynamics_phase_control = Dynamics(
+        dynamics_phase_control = Simulator(
             solvers=[rabi.time_slot_comp_qs_noise_phase_control],
             cost_fktns=[rabi.entanglement_infid_phase_control]
         )
@@ -147,7 +147,7 @@ class RabiTestCase(unittest.TestCase):
             neglect_systematic_errors=True
         )
 
-        dynamics_phase_control_qs_noise = Dynamics(
+        dynamics_phase_control_qs_noise = Simulator(
             solvers=[time_slot_comp_qs_noise_phase_control, ],
             cost_fktns=[entanglement_infid_qs_noise_phase_control, ]
         )

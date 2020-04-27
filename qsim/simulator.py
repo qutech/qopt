@@ -23,7 +23,7 @@ from typing import Optional, Sequence
 import numpy as np
 import time
 
-from qsim import cost_functions, stats, solver_algorithms
+from qsim import cost_functions, optimization_statistics, solver_algorithms
 
 from qsim.util import needs_refactoring
 
@@ -106,7 +106,7 @@ class Simulator(object):
         self.cost_fktns = cost_fktns
 
         if record_performance_statistics:
-            self.stats = stats.OptimizationStatistics()
+            self.stats = optimization_statistics.OptimizationStatistics()
         else:
             self.stats = None
 
@@ -252,7 +252,7 @@ class Simulator(object):
                 jac_u = np.expand_dims(jac_u, axis=1)
 
             # apply the chain rule to the derivatives
-            jac_x = cost_fktn.t_slot_comp.amplitude_function.gradient_chain_rule(
+            jac_x = cost_fktn.t_slot_comp.amplitude_function.derivative_by_chain_rule(
                 jac_u, cost_fktn.t_slot_comp.transfer_function(pulse))
             jac_x_transferred = \
                 cost_fktn.t_slot_comp.transfer_function.gradient_chain_rule(

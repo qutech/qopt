@@ -73,7 +73,8 @@ exponential_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # 4.2: Identity
 # No transfer function. Here we assume ideal control electronics.
-identity_transfer_function = IdentityTF(oversampling=oversampling)
+identity_transfer_function = IdentityTF(oversampling=oversampling,
+                                        num_ctrls=2)
 identity_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # ##################### 5. Amplitude Function ##################################
