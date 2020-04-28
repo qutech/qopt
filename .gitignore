@@ -1,3 +1,4 @@
 .idea/
 .spyproject/
 qsim/__pycache__/
+build/
