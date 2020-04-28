@@ -1,0 +1,6 @@
+qutip
+filter_functions
+simanneal
+pandas
+numpy
+matplotlib
