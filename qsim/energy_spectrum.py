@@ -1,6 +1,12 @@
-"""
-This file serves to plot energy spectra of Hamiltonians.
+"""This file serves to plot energy spectra of Hamiltonians.
 
+Functions
+---------
+:func:`vector_color_map`
+    Maps eigenvectors to a coloring.
+
+:func:`plot_energy_spectrum`
+    plot the energy spectrum of an Hamiltonian.
 
 """
 
@@ -12,9 +18,22 @@ from typing import List
 from qsim.matrix import OperatorMatrix
 
 
-def vector_color_map(vectors):
+def vector_color_map(vectors: np.array):
     """
-    Maps an eigenvector to a color, encoding the contributions.
+    Maps eigenvectors to a coloring, encoding the contributions.
+
+    Parameters
+    ----------
+    vectors: array
+        Array of eigenvectors. The eigenvectors are given as columns. There
+        may be no more than 7.
+
+    Returns
+    -------
+    color_values: array
+        The coloring is given as array. Each column signifies one tuple of
+        RGB color values.
+
     """
     assert len(vectors.shape) == 2
     n = vectors.shape[0]
@@ -30,9 +49,13 @@ def vector_color_map(vectors):
     return values
 
 
-def plot_energy_spectrum(hamiltonian: List[OperatorMatrix], x_val, x_label):
+def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
+                         x_val: np.array,
+                         x_label: str):
     """
     Calculates and plots the energy spectra of hamilton operators.
+
+    The colors demonstrate the contribution of individual base vectors.
 
     Parameters
     ----------
@@ -46,9 +69,6 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix], x_val, x_label):
     x_label: str
         Label of the x-axis.
 
-    Returns
-    -------
-
     """
     d = hamiltonian[0].shape[0]
     eigenvalues = np.empty((len(hamiltonian), d))
@@ -57,11 +77,9 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix], x_val, x_label):
         eig_val, eig_vec = h.spectral_decomposition(hermitian=True)
         eigenvalues[i, :] = eig_val
         eigenvectors[i, :, :] = eig_vec
-    # plt.plot(eigenvalues)
 
-    colors = [[tuple(vec) for vec in eigenvectors[:, :, j]] for j in range(d)]
     plt.figure()
     for i in range(d):
         plt.scatter(x=x_val, y=eigenvalues[:, i],
                     c=vector_color_map(eigenvectors[:, :, i]))
-    return eigenvalues, eigenvectors
+    plt.xlabel(xlabel=x_label)

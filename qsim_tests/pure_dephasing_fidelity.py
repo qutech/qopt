@@ -35,7 +35,7 @@ class PureDephasing(unittest.TestCase):
             t_slot_comp.set_ctrl_amps(ctrl_amps)
 
             quasi_static_infid = OperationNoiseInfidelity(
-                t_slot_comp=t_slot_comp,
+                solver=t_slot_comp,
                 target=DenseOperator(np.eye(2)),
                 neglect_systematic_errors=True,
                 fidelity_measure='entanglement'
@@ -80,7 +80,7 @@ class PureDephasing(unittest.TestCase):
             t_slot_comp.set_ctrl_amps(ctrl_amps)
 
             quasi_static_infid = OperationNoiseInfidelity(
-                t_slot_comp=t_slot_comp,
+                solver=t_slot_comp,
                 target=DenseOperator(np.eye(2)),
                 neglect_systematic_errors=False,
                 fidelity_measure='entanglement'

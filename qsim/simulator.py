@@ -252,10 +252,10 @@ class Simulator(object):
                 jac_u = np.expand_dims(jac_u, axis=1)
 
             # apply the chain rule to the derivatives
-            jac_x = cost_fktn.t_slot_comp.amplitude_function.derivative_by_chain_rule(
-                jac_u, cost_fktn.t_slot_comp.transfer_function(pulse))
+            jac_x = cost_fktn.solver.amplitude_function.derivative_by_chain_rule(
+                jac_u, cost_fktn.solver.transfer_function(pulse))
             jac_x_transferred = \
-                cost_fktn.t_slot_comp.transfer_function.gradient_chain_rule(
+                cost_fktn.solver.transfer_function.gradient_chain_rule(
                     jac_x
                 )
             jacobians.append(jac_x_transferred)

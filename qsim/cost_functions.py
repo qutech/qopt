@@ -1,61 +1,60 @@
 """
-Cost Function
+Cost functions which can be minimised in the control optimization.
 
-These classes calculate the cost function to be minimised
-and its gradient (Jacobian), which is used to direct the optimisation
-
-The most frequent use will be the calculation of fidelities.
+These classes evaluate the cost function which describe the quantum system
+under simulation. This can be for example the infidelity of a quantum channel.
+To support gradient based optimization algorithms such as quasi-Newton type
+algorithms the classes also calculate the gradients of the cost functions.
+(Jacobians in case of vector valued cost functions.)
 
 Classes
 -------
-CostFunction:
+:class:`CostFunction`
     Abstract base class of the fidelity computer.
 
-OperatorMatrixNorm:
+:class:`OperatorMatrixNorm`
     Calculates the cost as matrix norm of the difference between the actual
     evolution and the target.
 
-OperationInfidelity:
-    Calculates the cost as operator infidelity of propagators.
+:class:`OperationInfidelity`
+    Calculates the cost as operation infidelity of a propagator.
 
-OperationNoiseInfidelity:
+:class:`OperationNoiseInfidelity`
     Like Operationfidelity but averaged over noise traces.
 
 Functions
 ---------
-angle_axis_representation:
-    Calculates the representation of a unitary matrix as rotation axis and
+:func:`angle_axis_representation`
+    Calculates the representation of a 2x2 unitary matrix as rotation axis and
     angle.
 
-entanglement_fidelity:
+:func:`entanglement_fidelity`
     Calculates the entanglement fidelity between a unitary target evolution and
     a simulated unitary evolution.
 
-deriv_entanglement_fid_sup_op_with_du:
+:func:`deriv_entanglement_fid_sup_op_with_du`
     Calculates the derivatives of the entanglement fidelity with respect to
     the control amplitudes.
 
-entanglement_fidelity_super_operator:
+:func:`entanglement_fidelity_super_operator`
     Calculates the entanglement fidelity between two propagators in the super
     operator formalism.
 
-derivative_entanglement_fidelity_with_du:
+:func:`derivative_entanglement_fidelity_with_du`
     Calculates the derivatives of the entanglement fidelity in the super
     operator formalism with respect to the control amplitudes.
 
 """
 
 import numpy as np
-import itertools
-from scipy.linalg import sqrtm, inv
-from typing import Sequence, Union, List, Optional, Callable, Dict
-# QuTiP
-from qutip import vec2mat
-from qsim import matrix, solver_algorithms
-from qsim.util import needs_refactoring, deprecated
-import filter_functions.numeric
 
 from abc import ABC, abstractmethod
+from typing import Sequence, Union, List, Optional, Callable, Dict
+
+import filter_functions.numeric
+
+from qsim import matrix, solver_algorithms
+from qsim.util import needs_refactoring, deprecated
 
 
 class CostFunction(ABC):
@@ -64,30 +63,32 @@ class CostFunction(ABC):
 
     Attributes
     ----------
-    t_slot_comp : TimeSlotComputer
+    solver : `Solver`
         Object that compute the forward/backward evolution and propagator.
 
-    target: np.array
-        State or operator which is which the evolution is compared to.
-
-    index: List[str]
+    index: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     Methods
     -------
-    costs():
+    costs()
+        Evaluates the cost function.
 
-    grad():
+    grad()
+        Calculates the gradient or Jacobian of the cost function.
 
     """
-    def __init__(self):
-        self.t_slot_comp = None
-        self.target = None
-        self.index = "Unspecified Cost Function"
+    def __init__(self, solver: solver_algorithms.Solver,
+                 index: Optional[List[str]] = None):
+        self.solver = solver
+        if index is None:
+            self.index = ["Unspecified Cost Function"]
+        else:
+            self.index = index
 
     @abstractmethod
     def costs(self) -> Union[float, np.ndarray]:
-        """The costs or infidelity of the quantum channel.
+        """Evaluates the cost function.
 
         Returns
         -------
@@ -98,28 +99,29 @@ class CostFunction(ABC):
 
     @abstractmethod
     def grad(self) -> np.ndarray:
-        """The gradient of the costs or infidelity of the quantum channel.
+        """Calculates the gradient or Jacobian of the cost function.
 
         Returns
         -------
         gradient : np.array
             shape: (num_t, num_ctrl, num_f) where num_t is the number of time
             slices, num_ctrl the number of control parameters and num_f the
-            length of the costs returned by the cost function. Derivatives of
+            number of values returned by the cost function. Derivatives of
             the cost function by the control amplitudes. """
         pass
 
 
+@needs_refactoring
 def angle_axis_representation(u: Union[np.ndarray, matrix.DenseOperator]) \
         -> (float, np.ndarray):
     """
-    Calculates the representation of a unitary matrix by a rotational axis and
-    a rotation angle.
+    Calculates the representation of a 2x2 unitary matrix by a rotational axis
+    and a rotation angle.
 
     Parameters
     ----------
     u: np.ndarray
-        A unitary matrix.
+        A unitary 2x2 matrix.
 
     Returns
     -------
@@ -154,14 +156,15 @@ def angle_axis_representation(u: Union[np.ndarray, matrix.DenseOperator]) \
 
 class OperatorMatrixNorm(CostFunction):
     """
-    Computes the fidelity as differences in the unitary evolution without
-    global phase.
+    Computes the fidelity as difference between the propagator and a target.
 
-    The result can be returned as absolute value or vector.
+    A global phase difference is ignored. The result can be returned as
+    absolute value or vector. If the result shall be returned as absolute value
+    it is calculated in a matrix norm.
 
     Parameters
     ----------
-    t_slot_comp: TimeSlotComputer
+    solver: TimeSlotComputer
         Computes the evolution of the system.
 
     target: ControlMatrix
@@ -189,11 +192,11 @@ class OperatorMatrixNorm(CostFunction):
     """
 
     @needs_refactoring
-    def __init__(self, t_slot_comp: solver_algorithms.Solver,
+    def __init__(self, solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix, mode: str = 'scalar',
                  index: Optional[List[str]] = None):
         super().__init__()
-        self.t_slot_comp = t_slot_comp
+        self.solver = solver
         self.target = target
         self.mode = mode
         if index is not None:
@@ -229,7 +232,7 @@ class OperatorMatrixNorm(CostFunction):
             The costs of infidelity.
 
         """
-        final = self.t_slot_comp.forward_propagators[-1]
+        final = self.solver.forward_propagators[-1]
 
         # to eliminate a global phase we require final[0, 0] to be real.
         if self.mode == 'rotation_axis':
@@ -275,8 +278,8 @@ class OperatorMatrixNorm(CostFunction):
                                       'only implemented for the mode "vector".')
 
         # grape
-        propagators = self.t_slot_comp.propagators
-        forward_prop_cumulative = self.t_slot_comp.forward_propagators
+        propagators = self.solver.propagators
+        forward_prop_cumulative = self.solver.forward_propagators
         # reversed_prop_cumulative = self.t_slot_comp.reversed_prop_cumulative
         unity = matrix.DenseOperator(
             np.eye(propagators[0].data.shape[0]))
@@ -285,19 +288,19 @@ class OperatorMatrixNorm(CostFunction):
             propagators_future.append(propagators_future[-1] * prop)
         propagators_future = propagators_future[::-1]
 
-        if isinstance(self.t_slot_comp.tau, list):
-            tau = self.t_slot_comp.tau[0]
-        elif isinstance(self.t_slot_comp.tau, float):
-            tau = self.t_slot_comp.tau
+        if isinstance(self.solver.tau, list):
+            tau = self.solver.tau[0]
+        elif isinstance(self.solver.tau, float):
+            tau = self.solver.tau
         else:
             raise NotImplementedError
 
-        num_t = len(self.t_slot_comp.tau)
-        num_ctrl = len(self.t_slot_comp.h_ctrl)
+        num_t = len(self.solver.tau)
+        num_ctrl = len(self.solver.h_ctrl)
         jacobian_complex_full = np.zeros(
             shape=[self.target.data.size, num_t,
                    num_ctrl]).astype(complex)
-        final = self.t_slot_comp.forward_propagators[-1]
+        final = self.solver.forward_propagators[-1]
         exp_iphi = final[0, 0] / np.abs(final[0, 0])
         # * 2 for the seperation of imaginary and real part
 
@@ -307,7 +310,7 @@ class OperatorMatrixNorm(CostFunction):
                         propagators_future)):
                 # here i applied the grape approximations
                 complex_jac = (
-                    -1j * tau * future_prop * self.t_slot_comp.h_ctrl[j]
+                    -1j * tau * future_prop * self.solver.h_ctrl[j]
                     * fwd_prop).flatten()
                 jacobian_complex_full[:, i, j] = complex_jac.data
 
@@ -333,20 +336,21 @@ class OperatorMatrixNorm(CostFunction):
 
 
 def entanglement_fidelity(
-        target_unitary: Union[np.ndarray, matrix.OperatorMatrix],
-        unitary: Union[np.ndarray, matrix.OperatorMatrix],
+        target: Union[np.ndarray, matrix.OperatorMatrix],
+        propagator: Union[np.ndarray, matrix.OperatorMatrix],
         computational_states: Optional[List[int]] = None,
         map_to_closest_unitary: bool = False
 ) -> np.float64:
     """
-    The entanglement fidelity between a unitary simulated and target unitary.
+    The entanglement fidelity between a simulated Propagator and target
+    propagator.
 
     Parameters
     ----------
-    unitary: Union[np.ndarray, ControlMatrix]
-        The simulated unitary evolution.
+    propagator: Union[np.ndarray, ControlMatrix]
+        The simulated propagator.
 
-    target_unitary: Union[np.ndarray, ControlMatrix]
+    target: Union[np.ndarray, ControlMatrix]
         The target unitary evolution.
 
     computational_states: Optional[List[int]]
@@ -363,24 +367,24 @@ def entanglement_fidelity(
         The entanglement fidelity of target_unitary.dag * unitary.
 
     """
-    if type(unitary) == np.ndarray:
-        unitary = matrix.DenseOperator(unitary)
-    if type(target_unitary) == np.ndarray:
-        target_unitary = matrix.DenseOperator(target_unitary)
-    d = target_unitary.shape[0]
+    if type(propagator) == np.ndarray:
+        propagator = matrix.DenseOperator(propagator)
+    if type(target) == np.ndarray:
+        target = matrix.DenseOperator(target)
+    d = target.shape[0]
     if computational_states is None:
-        trace = (target_unitary.dag() * unitary).tr()
+        trace = (target.dag() * propagator).tr()
     else:
-        trace = (target_unitary.dag() * unitary.truncate_to_subspace(
+        trace = (target.dag() * propagator.truncate_to_subspace(
             computational_states,
             map_to_closest_unitary=map_to_closest_unitary)).tr()
     return (np.abs(trace) ** 2) / d / d
 
 
 def derivative_entanglement_fidelity_with_du(
-        target_unitary: matrix.OperatorMatrix,
+        target: matrix.OperatorMatrix,
         forward_propagators: List[matrix.OperatorMatrix],
-        unitary_derivatives: List[List[matrix.OperatorMatrix]],
+        propagator_derivatives: List[List[matrix.OperatorMatrix]],
         reversed_propagators: List[matrix.OperatorMatrix],
         computational_states: Optional[List[int]] = None,
         map_to_closest_unitary: bool = False
@@ -393,16 +397,20 @@ def derivative_entanglement_fidelity_with_du(
     ----------
     forward_propagators: List[ControlMatrix], len: num_t +1
         The forward propagators calculated in the systems simulation.
+        forward_propagators[i] is the ordered sum of the propagators i..0 in
+        descending order.
 
-    unitary_derivatives: List[List[ControlMatrix]],
+    propagator_derivatives: List[List[ControlMatrix]],
                          shape: [[] * num_t] * num_ctrl
         Frechet derivatives of the propagators by the control amplitudes.
 
-    target_unitary: ControlMatrix
-        The target unitary evolution.
+    target: ControlMatrix
+        The target propagator.
 
     reversed_propagators: List[ControlMatrix]
         The reversed propagators calculated in the systems simulation.
+        reversed_propagators[i] is the ordered sum of the propagators n-i..n in
+        ascending order where n is the total number of time steps.
 
     computational_states: Optional[List[int]]
         If set, the entanglement fidelity is only calculated for the specified
@@ -418,16 +426,19 @@ def derivative_entanglement_fidelity_with_du(
         The derivatives of the entanglement fidelity.
 
     """
-    target_unitary_dag = target_unitary.dag(copy_=True)
+    target_unitary_dag = target.dag(copy_=True)
     if computational_states:
-        trace = np.conj(((forward_propagators[-1].truncate_to_subspace(
-            computational_states, map_to_closest_unitary=map_to_closest_unitary)
-                          * target_unitary_dag).tr()))
+        trace = np.conj(
+            ((forward_propagators[-1].truncate_to_subspace(
+                computational_states,
+                map_to_closest_unitary=map_to_closest_unitary)
+              * target_unitary_dag).tr())
+        )
     else:
         trace = np.conj(((forward_propagators[-1] * target_unitary_dag).tr()))
-    num_ctrls = len(unitary_derivatives)
-    num_time_steps = len(unitary_derivatives[0])
-    d = target_unitary.shape[0]
+    num_ctrls = len(propagator_derivatives)
+    num_time_steps = len(propagator_derivatives[0])
+    d = target.shape[0]
 
     derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
                                    dtype=float)
@@ -438,8 +449,8 @@ def derivative_entanglement_fidelity_with_du(
             if computational_states:
                 derivative_fidelity[t, ctrl] = 2 / d / d * np.real(
                     trace * ((reversed_propagators[::-1][t + 1]
-                             * unitary_derivatives[ctrl][t]
-                             * forward_propagators[t]).truncate_to_subspace(
+                              * propagator_derivatives[ctrl][t]
+                              * forward_propagators[t]).truncate_to_subspace(
                         subspace_indices=computational_states,
                         map_to_closest_unitary=map_to_closest_unitary
                     )
@@ -447,7 +458,7 @@ def derivative_entanglement_fidelity_with_du(
             else:
                 derivative_fidelity[t, ctrl] = 2 / d / d * np.real(
                     trace * (reversed_propagators[::-1][t + 1]
-                             * unitary_derivatives[ctrl][t]
+                             * propagator_derivatives[ctrl][t]
                              * forward_propagators[t]
                              * target_unitary_dag).tr())
 
@@ -455,13 +466,14 @@ def derivative_entanglement_fidelity_with_du(
 
 
 def entanglement_fidelity_super_operator(
-        target_unitary: Union[np.ndarray, matrix.OperatorMatrix],
+        target: Union[np.ndarray, matrix.OperatorMatrix],
         propagator: Union[np.ndarray, matrix.OperatorMatrix],
         computational_states: Optional[List[int]] = None,
         map_to_closest_unitary: bool = False
 ) -> np.float64:
     """
-    The entanglement fidelity of a propagator in the super operator formalism.
+    The entanglement fidelity between a simulated Propagator and target
+    propagator in the super operator formalism.
 
     The entanglement fidelity between a propagator in the super operator
     formalism of dimension d^2 x d^2 and a target unitary operator of dimension
@@ -472,12 +484,11 @@ def entanglement_fidelity_super_operator(
     propagator: Union[np.ndarray, ControlMatrix]
         The simulated evolution propagator in the super operator formalism.
 
-    target_unitary: Union[np.ndarray, ControlMatrix]
-        The target unitary evolution. (NOT in super operator formalism.)
+    target: Union[np.ndarray, ControlMatrix]
+        The target unitary evolution. (NOT as super operator.)
 
     computational_states: Optional[List[int]]
         If set, the entanglement fidelity is only calculated for the specified
-        subspace.s only calculated for the specified
         subspace.
 
     map_to_closest_unitary: bool
@@ -492,12 +503,12 @@ def entanglement_fidelity_super_operator(
     """
     if type(propagator) == np.ndarray:
         propagator = matrix.DenseOperator(propagator)
-    if type(target_unitary) == np.ndarray:
-        target_unitary = matrix.DenseOperator(target_unitary)
-    d = target_unitary.shape[0]
+    if type(target) == np.ndarray:
+        target = matrix.DenseOperator(target)
+    d = target.shape[0]
     target_super_operator = \
         matrix.convert_unitary_to_super_operator(
-            target_unitary.dag())
+            target.dag())
     if computational_states is None:
         trace = (target_super_operator * propagator).tr().real
     else:
@@ -508,7 +519,7 @@ def entanglement_fidelity_super_operator(
 
 
 def deriv_entanglement_fid_sup_op_with_du(
-        target_unitary: matrix.OperatorMatrix,
+        target: matrix.OperatorMatrix,
         forward_propagators: List[matrix.OperatorMatrix],
         unitary_derivatives: List[List[matrix.OperatorMatrix]],
         reversed_propagators: List[matrix.OperatorMatrix],
@@ -525,18 +536,21 @@ def deriv_entanglement_fid_sup_op_with_du(
     Parameters
     ----------
     forward_propagators: List[ControlMatrix], len: num_t +1
-        The super operator forward propagators calculated in the systems
-        simulation.
+        The forward propagators calculated in the systems simulation.
+        forward_propagators[i] is the ordered sum of the propagators i..0 in
+        descending order.
 
     unitary_derivatives: List[List[ControlMatrix]],
                          shape: [[] * num_t] * num_ctrl
         Frechet derivatives of the propagators by the control amplitudes.
 
-    target_unitary: ControlMatrix
+    target: ControlMatrix
         The target unitary evolution.
 
     reversed_propagators: List[ControlMatrix]
         The reversed propagators calculated in the systems simulation.
+        reversed_propagators[i] is the ordered sum of the propagators n-i..n in
+        ascending order where n is the total number of time steps.
 
     computational_states: Optional[List[int]]
         If set, the entanglement fidelity is only calculated for the specified
@@ -564,7 +578,7 @@ def deriv_entanglement_fid_sup_op_with_du(
             # here we need to take the real part.
             derivative_fidelity[t, ctrl] = \
                 entanglement_fidelity_super_operator(
-                    target_unitary=target_unitary,
+                    target=target,
                     propagator=reversed_propagators[::-1][t + 1] *
                     unitary_derivatives[ctrl][t] *
                     forward_propagators[t],
@@ -574,45 +588,43 @@ def deriv_entanglement_fid_sup_op_with_du(
 
 
 class OperationInfidelity(CostFunction):
-    """
-    Operator fidelity computer.
+    """Calculates the infidelity of a quantum channel.
 
-    Possible fidelity measures are currently only the entanglement fidelity for
-    unitary evolutions and for propagators in the super operator formalism.
+    The infidelity of a quantum channel described by a unitary evolution or
+    propagator in the master equation formalism.
 
-    Paramters
-    ---------
-    t_slot_comp: TimeSlotComputer
+    Parameters
+    ----------
+    solver: `Solver`
         The time slot computer simulating the systems dynamics.
 
-    target: ControlMatrix
+    target: `ControlMatrix`
         Unitary target evolution.
 
-    use_unitary_derivatives: bool
-        If True then the derivatives of the propagators calculated by the time
-        slot computer are used. Otherwise the grape approximation is applied.
+    index: list of str
+        Indices of the returned infidelities for distinction in the analysis.
 
-    fidelity_measure: string
+    fidelity_measure: string, optional
         If 'entanglement': the entanglement fidelity is calculated.
         Otherwise an error is raised.
 
-    super_operator_formalism: bool
+    super_operator_formalism: bool, optional
         If true, the time slot computer is expected to return a propagator in
         the super operator formalism, while the target unitary is not given as
         super operator.
         If false, no super operators are assumed.
 
-    computational_states: Optional[List[int]]
+    computational_states: list of int, optional
         If set, the chosen fidelity is only calculated for the specified
         subspace.
 
-    map_to_closest_unitary: bool
+    map_to_closest_unitary: bool, optional
         If True, then the final propagator is mapped to the closest unitary
         before the infidelity is evaluated.
 
     Attributes
     ----------
-    t_slot_comp: TimeSlotComputer
+    solver: TimeSlotComputer
         The time slot computer simulating the systems dynamics.
 
     target: ControlMatrix
@@ -638,7 +650,7 @@ class OperationInfidelity(CostFunction):
 
     """
     def __init__(self,
-                 t_slot_comp: solver_algorithms.Solver,
+                 solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
                  fidelity_measure: str = 'entanglement',
                  super_operator_formalism: bool = False,
@@ -646,8 +658,13 @@ class OperationInfidelity(CostFunction):
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False
                  ):
-        super().__init__()
-        self.t_slot_comp = t_slot_comp
+        if index is None:
+            if fidelity_measure == 'entanglement':
+                index = ['Entanglement Infidelity', ]
+            else:
+                index = ['Operator Infidelity', ]
+
+        super().__init__(solver=solver, index=index)
         self.target = target
         self.computational_states = computational_states
         self.map_to_closest_unitary = map_to_closest_unitary
@@ -656,29 +673,24 @@ class OperationInfidelity(CostFunction):
         else:
             raise NotImplementedError('Only the entanglement fidelity is '
                                       'currently supported.')
-        if index is not None:
-            self.index = index
-        elif fidelity_measure == 'entanglement':
-            self.index = ['Entanglement Infidelity', ]
-        else:
-            self.index = ['Operator Infidelity', ]
+
         self.super_operator = super_operator_formalism
 
-    def costs(self):
+    def costs(self) -> float:
         """Calculates the costs by the selected fidelity measure. """
-        final = self.t_slot_comp.forward_propagators[-1]
+        final = self.solver.forward_propagators[-1]
 
         if self.fidelity_measure == 'entanglement' and self.super_operator:
             infid = 1 - entanglement_fidelity_super_operator(
                 propagator=final,
-                target_unitary=self.target,
+                target=self.target,
                 computational_states=self.computational_states,
                 map_to_closest_unitary=self.map_to_closest_unitary
             )
         elif self.fidelity_measure == 'entanglement':
             infid = 1 - entanglement_fidelity(
-                unitary=final,
-                target_unitary=self.target,
+                propagator=final,
+                target=self.target,
                 computational_states=self.computational_states,
                 map_to_closest_unitary=self.map_to_closest_unitary
             )
@@ -687,22 +699,22 @@ class OperationInfidelity(CostFunction):
                                       'implemented in this version.')
         return np.real(infid)
 
-    def grad(self):
+    def grad(self) -> np.ndarray:
         """Calculates the derivatives of the selected fidelity measure with
         respect to the control amplitudes. """
         if self.fidelity_measure == 'entanglement' and self.super_operator:
             derivative_fid = deriv_entanglement_fid_sup_op_with_du(
-                forward_propagators=self.t_slot_comp.forward_propagators,
-                target_unitary=self.target,
-                reversed_propagators=self.t_slot_comp.reversed_propagators,
-                unitary_derivatives=self.t_slot_comp.frechet_deriv_propagators
+                forward_propagators=self.solver.forward_propagators,
+                target=self.target,
+                reversed_propagators=self.solver.reversed_propagators,
+                unitary_derivatives=self.solver.frechet_deriv_propagators
             )
         elif self.fidelity_measure == 'entanglement':
             derivative_fid = derivative_entanglement_fidelity_with_du(
-                forward_propagators=self.t_slot_comp.forward_propagators,
-                target_unitary=self.target,
-                reversed_propagators=self.t_slot_comp.reversed_propagators,
-                unitary_derivatives=self.t_slot_comp.frechet_deriv_propagators
+                forward_propagators=self.solver.forward_propagators,
+                target=self.target,
+                reversed_propagators=self.solver.reversed_propagators,
+                propagator_derivatives=self.solver.frechet_deriv_propagators
             )
         else:
             raise NotImplementedError('Only the average and entanglement'
@@ -717,23 +729,32 @@ class OperationNoiseInfidelity(CostFunction):
 
     Parameters
     ----------
-    t_slot_comp: TSCompSaveAllNoise
-        Time slot computer sub class handling noise sources by explicitly
-        sampling the noise sources.
+    solver: `Solver`
+        The time slot computer simulating the systems dynamics.
+
+    target: `ControlMatrix`
+        Unitary target evolution.
+
+    index: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    fidelity_measure: string, optional
+        If 'entanglement': the entanglement fidelity is calculated.
+        Otherwise an error is raised.
+
+    computational_states: list of int, optional
+        If set, the chosen fidelity is only calculated for the specified
+        subspace.
+
+    map_to_closest_unitary: bool, optional
+        If True, then the final propagator is mapped to the closest unitary
+        before the infidelity is evaluated.
 
     neglect_systematic_errors: bool
         If true, the mean operator fidelity is calculated with respect to the
         simulated propagator without statistical noise.
         Otherwise the mean operator fidelity is calculated with respect to the
         target propagator.
-
-    computational_states: Optional[List[int]]
-        If set, the chosen fidelity is only calculated for the specified
-        subspace.
-
-    map_to_closest_unitary: bool
-        If True, then the final propagator is mapped to the closest unitary
-        before the infidelity is evaluated.
 
     Attributes
     ----------
@@ -742,29 +763,23 @@ class OperationNoiseInfidelity(CostFunction):
         Otherwise the mean operator fidelity is calculated with respect to the
         target propagator.
 
-
-    Todo
-        * raise warning when no target and not neglect_systematic_errors
-
     """
     def __init__(self,
-                 t_slot_comp: solver_algorithms.SchroedingerSMonteCarlo,
+                 solver: solver_algorithms.SchroedingerSMonteCarlo,
                  target: Optional[matrix.OperatorMatrix],
                  index: Optional[List[str]] = None,
-                 neglect_systematic_errors=True,
-                 fidelity_measure='entanglement',
+                 fidelity_measure: str = 'entanglement',
                  computational_states: Optional[List[int]] = None,
-                 map_to_closes_unitary: bool = False):
-        super().__init__()
-        self.t_slot_comp = t_slot_comp
+                 map_to_closest_unitary: bool = False,
+                 neglect_systematic_errors: str = True):
+        if index is None:
+            index = ['Operator Noise Infidelity']
+        super().__init__(solver=solver, index=index)
+        self.solver = solver
         self.target = target
+
         self.computational_states = computational_states
-
-        if index is not None:
-            self.index = index
-        else:
-            self.index = ['Operator Noise Infidelity']
-
+        self.map_to_closest_unitary = map_to_closest_unitary
         self.fidelity_measure = fidelity_measure
 
         self.neglect_systematic_errors = neglect_systematic_errors
@@ -773,18 +788,16 @@ class OperationNoiseInfidelity(CostFunction):
                   'set!')
             self.neglect_systematic_errors = True
 
-        self.map_to_closest_unitary = map_to_closes_unitary
-
     def costs(self):
         """See base class. """
-        n_traces = self.t_slot_comp.noise_trace_generator.n_traces
+        n_traces = self.solver.noise_trace_generator.n_traces
         infidelities = np.zeros((n_traces,))
 
         if self.neglect_systematic_errors:
             if self.computational_states is None:
-                target = self.t_slot_comp.forward_propagators[-1]
+                target = self.solver.forward_propagators[-1]
             else:
-                target = self.t_slot_comp.forward_propagators[
+                target = self.solver.forward_propagators[
                     -1].truncate_to_subspace(
                     self.computational_states,
                     map_to_closest_unitary=self.map_to_closest_unitary
@@ -794,10 +807,10 @@ class OperationNoiseInfidelity(CostFunction):
 
         if self.fidelity_measure == 'entanglement':
             for i in range(n_traces):
-                final = self.t_slot_comp.forward_propagators_noise[i][-1]
+                final = self.solver.forward_propagators_noise[i][-1]
 
                 infidelities[i] = 1 - entanglement_fidelity(
-                    unitary=final, target_unitary=target,
+                    propagator=final, target=target,
                     computational_states=self.computational_states,
                     map_to_closest_unitary=self.map_to_closest_unitary
                 )
@@ -810,40 +823,32 @@ class OperationNoiseInfidelity(CostFunction):
     def grad(self):
         """See base class. """
         if self.neglect_systematic_errors:
-            target = self.t_slot_comp.forward_propagators[-1]
+            target = self.solver.forward_propagators[-1]
         else:
             target = self.target
 
-        n_traces = self.t_slot_comp.noise_trace_generator.n_traces
-        num_t = len(self.t_slot_comp.tau)
-        num_ctrl = len(self.t_slot_comp.h_ctrl)
+        n_traces = self.solver.noise_trace_generator.n_traces
+        num_t = len(self.solver.tau)
+        num_ctrl = len(self.solver.h_ctrl)
         derivative = np.zeros((num_t, num_ctrl, n_traces, ))
         for i in range(n_traces):
             temp = derivative_entanglement_fidelity_with_du(
-                target_unitary=target,
-                forward_propagators=
-                self.t_slot_comp.forward_propagators_noise[i],
-                unitary_derivatives=
-                self.t_slot_comp.frechet_deriv_propagators_noise[i],
-                reversed_propagators=
-                self.t_slot_comp.reversed_propagators_noise[i],
+                target=target,
+                forward_propagators=self.solver.forward_propagators_noise[i],
+                propagator_derivatives=
+                self.solver.frechet_deriv_propagators_noise[i],
+                reversed_propagators=self.solver.reversed_propagators_noise[i],
                 computational_states=self.computational_states
                 )
             if self.neglect_systematic_errors:
                 temp += derivative_entanglement_fidelity_with_du(
-                    target_unitary=self.t_slot_comp.forward_propagators_noise[
-                        i][-1],
-                    forward_propagators=
-                    self.t_slot_comp.forward_propagators,
-                    unitary_derivatives=
-                    self.t_slot_comp.frechet_deriv_propagators,
-                    reversed_propagators=
-                    self.t_slot_comp.reversed_propagators,
+                    target=self.solver.forward_propagators_noise[i][-1],
+                    forward_propagators=self.solver.forward_propagators,
+                    propagator_derivatives=
+                    self.solver.frechet_deriv_propagators,
+                    reversed_propagators=self.solver.reversed_propagators,
                     computational_states=self.computational_states
                 )
-                # TODO: This could be calculated more efficiently, when the
-                #  calculation of the derivative of the unitary is separated
-                #  from the calculation of the derivative of the fidelity.
             derivative[:, :, i] = np.real(temp)
         return np.mean(-derivative, axis=2)
 
@@ -854,6 +859,12 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
     Parameters
     ----------
+    solver: `Solver`
+        The time slot computer simulating the systems dynamics.
+
+    index: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
     noise_power_spec_density: Union[Sequence[float], Callable]
         The two-sided noise power spectral density in units of inverse
         frequencies as an array of shape (n_omega,), (n_nops, n_omega), or
@@ -876,18 +887,15 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
     """
     def __init__(self,
-                 t_slot_comp: solver_algorithms.Solver,
+                 solver: solver_algorithms.Solver,
                  noise_power_spec_density: Union[Sequence[float], Callable],
                  omega: Union[Sequence[float], Dict[str, Union[int, str]]],
-                 index=('Infidelity Filter Function', )):
-        super().__init__()
-        self.t_slot_comp = t_slot_comp
+                 index: Optional[List[str]] = None):
+        if index is None:
+            index = ['Infidelity Filter Function', ]
+        super().__init__(solver=solver, index=index)
         self.noise_power_spec_density = noise_power_spec_density
         self.omega = omega
-        if index is None:
-            self.index = ['Infidelity Filter Function', ]
-        else:
-            self.index = index
 
     def costs(self) -> Union[float, np.ndarray]:
         """
@@ -900,10 +908,10 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             The infidelity.
 
         """
-        if self.t_slot_comp.pulse_sequence is None:
-            self.t_slot_comp.create_pulse_sequence()
+        if self.solver.pulse_sequence is None:
+            self.solver.create_pulse_sequence()
         infidelity = filter_functions.numeric.infidelity(
-            pulse=self.t_slot_comp.pulse_sequence,
+            pulse=self.solver.pulse_sequence,
             S=self.noise_power_spec_density,
             omega=self.omega)
         return infidelity
@@ -918,8 +926,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             This method has not been implemented yet.
 
         """
-        raise NotImplementedError('The gradient calculation is not implemented '
-                                  'for the filter functions.')
+        raise NotImplementedError('The gradient calculation is not implemented'
+                                  ' for the filter functions.')
 
 
 class LeakageError(CostFunction):
@@ -932,28 +940,28 @@ class LeakageError(CostFunction):
 
     Parameters
     ----------
-    t_slot_comp : TimeSlotComputer
+    solver : TimeSlotComputer
         The time slot computer computing the propagation of the system.
 
     computational_states : list of int
         List of indices marking the computational states of the propagator.
         These are all but the leakage states.
 
+    index: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
     """
-    def __init__(self, t_slot_comp: solver_algorithms.Solver,
+    def __init__(self, solver: solver_algorithms.Solver,
                  computational_states: List[int],
                  index: Optional[List[str]] = None):
-        super().__init__()
-        self.t_slot_comp = t_slot_comp
-        self.computational_states = computational_states
         if index is None:
-            self.index = ["Leakage Error", ]
-        else:
-            self.index = index
+            index = ["Leakage Error", ]
+        super().__init__(solver=solver, index=index)
+        self.computational_states = computational_states
 
     def costs(self):
         """See base class. """
-        final_prop = self.t_slot_comp.forward_propagators[-1]
+        final_prop = self.solver.forward_propagators[-1]
         clipped_prop = final_prop.truncate_to_subspace(
             self.computational_states)
         temp = clipped_prop.dag(copy_=True)
@@ -963,22 +971,22 @@ class LeakageError(CostFunction):
 
     def grad(self):
         """See base class. """
-        num_ctrls = len(self.t_slot_comp.frechet_deriv_propagators)
-        num_time_steps = len(self.t_slot_comp.frechet_deriv_propagators[0])
-        d = self.t_slot_comp.propagators[-1].shape[0]
+        num_ctrls = len(self.solver.frechet_deriv_propagators)
+        num_time_steps = len(self.solver.frechet_deriv_propagators[0])
+        d = self.solver.propagators[-1].shape[0]
 
         derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
                                        dtype=np.float64)
 
-        final = self.t_slot_comp.forward_propagators[-1]
+        final = self.solver.forward_propagators[-1]
         final_leak_dag = final.dag(copy_=True).truncate_to_subspace(
             self.computational_states)
 
         for ctrl in range(num_ctrls):
             for t in range(num_time_steps):
-                temp = self.t_slot_comp.reversed_propagators[::-1][t + 1] \
-                     * self.t_slot_comp.frechet_deriv_propagators[ctrl][t]
-                temp *= self.t_slot_comp.forward_propagators[t]
+                temp = self.solver.reversed_propagators[::-1][t + 1] \
+                     * self.solver.frechet_deriv_propagators[ctrl][t]
+                temp *= self.solver.forward_propagators[t]
                 temp = temp.truncate_to_subspace(self.computational_states)
                 temp *= final_leak_dag
                 derivative_fidelity[t, ctrl] = -2. / d * temp.tr().real

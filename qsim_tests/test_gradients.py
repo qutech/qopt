@@ -46,7 +46,7 @@ class RabiTestCase(unittest.TestCase):
         )
 
         entanglement_infid = OperationInfidelity(
-            t_slot_comp=tslot,
+            solver=tslot,
             target=rabi.x_half,
             fidelity_measure='entanglement',
             index=['Entanglement Fidelity QS-Noise XY-Control']
@@ -68,7 +68,7 @@ class RabiTestCase(unittest.TestCase):
         )
 
         entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
-            t_slot_comp=tslot_noise,
+            solver=tslot_noise,
             target=rabi.x_half,
             fidelity_measure='entanglement',
             index=['Entanglement Fidelity QS-Noise XY-Control'],
@@ -140,7 +140,7 @@ class RabiTestCase(unittest.TestCase):
         )
 
         entanglement_infid_qs_noise_phase_control = OperationNoiseInfidelity(
-            t_slot_comp=time_slot_comp_qs_noise_phase_control,
+            solver=time_slot_comp_qs_noise_phase_control,
             target=rabi.x_half,
             fidelity_measure='entanglement',
             index=['Entanglement Fidelity QS-Noise Phase Control'],

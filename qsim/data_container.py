@@ -5,7 +5,7 @@ import copy
 
 from typing import Optional, List
 
-from qsim import optimization_data, stats
+from qsim import optimization_data, optimization_statistics
 
 
 # TODO: rewrite as serializable
@@ -182,7 +182,8 @@ class DataContainer:
     def append(self, final_costs: List, indices: List[str],
                init_parameters: List, final_parameters: List,
                costs: List, parameters: List, status: int,
-               optimization_stats: Optional[stats.OptimizationStatistics]):
+               optimization_stats: Optional[
+                   optimization_statistics.OptimizationStatistics]):
         if len(self) == 0:
             self.indices = indices
         else:

@@ -113,7 +113,7 @@ class TestEntanglementFidelity(unittest.TestCase):
             (1j * sig_x + np.eye(2, dtype=complex)) * (1 / np.sqrt(2)))
 
         fidelity_computer = q_fc.OperationInfidelity(
-            t_slot_comp=t_slot_comp,
+            solver=t_slot_comp,
             target=target,
             fidelity_measure='entanglement')
 
@@ -156,7 +156,7 @@ class TestEntanglementFidelity(unittest.TestCase):
         )
 
         fid_comp_sup_op = q_fc.OperationInfidelity(
-            t_slot_comp=lindblad_tslot_obj,
+            solver=lindblad_tslot_obj,
             target=target,
             fidelity_measure='entanglement',
             super_operator_formalism=True

@@ -16,7 +16,7 @@ from qsim.cost_functions import OperationInfidelity, \
     OperationNoiseInfidelity
 
 
-# ##################### 1. Implementation Choices ##############################
+# ##################### 1. Implementation Choices #############################
 
 # dense control matrices are faster in low dimensions than sparse matrices
 control_matrix = DenseOperator
@@ -24,7 +24,7 @@ control_matrix = DenseOperator
 # exponentials
 exponential_method = 'Frechet'
 
-# ##################### 2. Constants ###########################################
+# ##################### 2. Constants ##########################################
 
 # 2.1: specificaly required for this simulation:
 phase_max = 100  # degree
@@ -45,7 +45,7 @@ awg_rise_time = time_step * .2
 sigma_eps = 1
 sigma_rabi = sigma_eps * lin_freq_rel
 
-# ##################### 3. Operators ###########################################
+# ##################### 3. Operators ##########################################
 
 sigma_0 = control_matrix(np.asarray([[1, 0], [0, 1]]))
 sigma_x = control_matrix(np.asarray([[0, 1], [1, 0]]))
@@ -60,7 +60,7 @@ h_drift = .5 * sigma_z
 x_half = sigma_x.exp(tau=np.pi * .25j)
 y_half = sigma_y.exp(tau=np.pi * .25j)
 
-# ##################### 4. Transfer Function ###################################
+# ##################### 4. Transfer Function ##################################
 
 # 4.1: Exponential Transfer Function
 # This transfer function assumes an exponential saturation of voltages.
@@ -77,7 +77,7 @@ identity_transfer_function = IdentityTF(oversampling=oversampling,
                                         num_ctrls=2)
 identity_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
-# ##################### 5. Amplitude Function ##################################
+# ##################### 5. Amplitude Function #################################
 
 # 5.1: x,y control
 lin_amp_func = UnaryAnalyticAmpFunc(
@@ -110,7 +110,7 @@ phase_ctrl_amp_func = CustomAmpFunc(
     derivative_function=amp_func_deriv_phase_control
 )
 
-# ##################### 6. Noise Trace Generator ###############################
+# ##################### 6. Noise Trace Generator ##############################
 
 # 6.1 1/f noise spectrum
 # until Tom provides the exact numbers I will go with
@@ -157,7 +157,7 @@ ntg_quasi_static = NTGQuasiStatic(
     always_redraw_samples=False,
     sampling_mode='uncorrelated_deterministic')
 
-# ##################### 7. Time Slot Computer ##################################
+# ##################### 7. Time Slot Computer #################################
 # The time slot computer calculates the evolution of the qubit taking into
 # account the amplitude and transfer function and also the noise traces if
 # required.
@@ -252,20 +252,20 @@ time_slot_comp_colored_noise_phase_control = SchroedingerSMonteCarlo(
     amplitude_function=phase_ctrl_amp_func
 )
 
-# ##################### 8. Cost Function #######################################
+# ##################### 8. Cost Function ######################################
 # The cost functions calculate the infidelities and are minimized by the
 # optimiser.
 
 # 8.1 xy-control
 entanglement_infid_xy = OperationInfidelity(
-    t_slot_comp=time_slot_comp_qs_noise_xy,
+    solver=time_slot_comp_qs_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
-    t_slot_comp=time_slot_comp_qs_noise_xy,
+    solver=time_slot_comp_qs_noise_xy,
     target=y_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity QS-Noise XY-Control'],
@@ -273,14 +273,14 @@ entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
 )
 
 entanglement_infid_xy_spectral = OperationInfidelity(
-    t_slot_comp=time_slot_comp_qs_noise_xy_spectral,
+    solver=time_slot_comp_qs_noise_xy_spectral,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy_spectral = OperationNoiseInfidelity(
-    t_slot_comp=time_slot_comp_qs_noise_xy_spectral,
+    solver=time_slot_comp_qs_noise_xy_spectral,
     target=y_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity QS-Noise XY-Control'],
@@ -288,7 +288,7 @@ entanglement_infid_qs_noise_xy_spectral = OperationNoiseInfidelity(
 )
 
 entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
-    t_slot_comp=time_slot_comp_colored_noise_xy,
+    solver=time_slot_comp_colored_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity 1-over-f-Noise XY-Control'],
@@ -297,7 +297,7 @@ entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
 
 # 8.2 phase-control
 entanglement_infid_phase_control = OperationInfidelity(
-    t_slot_comp=time_slot_comp_qs_noise_phase_control,
+    solver=time_slot_comp_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity Phase Control']
@@ -306,7 +306,7 @@ entanglement_infid_phase_control = OperationInfidelity(
 
 # This time slot computer calculates the evolution under quasi static noise.
 entanglement_infid_qs_noise_phase_control = OperationNoiseInfidelity(
-    t_slot_comp=time_slot_comp_qs_noise_phase_control,
+    solver=time_slot_comp_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity QS-Noise Phase Control'],
@@ -316,14 +316,14 @@ entanglement_infid_qs_noise_phase_control = OperationNoiseInfidelity(
 
 # This time slot computer calculates the evolution under fast noise.
 entanglement_infid_colored_noise_phase_control = OperationNoiseInfidelity(
-    t_slot_comp=time_slot_comp_colored_noise_phase_control,
+    solver=time_slot_comp_colored_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity 1-over-f-Noise Phase Control'],
     neglect_systematic_errors=True
 )
 
-# ##################### 8. Convenience Functions ###############################
+# ##################### 8. Convenience Functions ##############################
 
 
 def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
@@ -386,7 +386,7 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
     )
 
     qs_noise_pc_discrete = OperationNoiseInfidelity(
-        t_slot_comp=time_slot_comp_qs_noise_pc_discrete,
+        solver=time_slot_comp_qs_noise_pc_discrete,
         target=x_half,
         fidelity_measure='entanglement',
         index=['Entanglement Fidelity QS-Noise Phase Control'],
@@ -394,7 +394,7 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
     )
 
     entanglement_infid_pc_discrete = OperationInfidelity(
-        t_slot_comp=ts_comp_unperturbed_pc_discrete,
+        solver=ts_comp_unperturbed_pc_discrete,
         target=x_half,
         fidelity_measure='entanglement',
         index=['Entanglement Fidelity Phase Control']
