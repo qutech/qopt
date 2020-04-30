@@ -181,14 +181,14 @@ class Simulator(object):
         costs = []
 
         if self.stats:
-            self.stats.cost_func_eval_times.append([])
+            self.stats.cost_func_eval_times._append([])
             for i, cost_fktn in enumerate(self.cost_fktns):
                 t_start = time.time()
                 cost = cost_fktn.costs()
                 if self.cost_fktn_weights is not None:
                     cost *= self.cost_fktn_weights[i]
                 t_end = time.time()
-                self.stats.cost_func_eval_times[-1].append(t_end - t_start)
+                self.stats.cost_func_eval_times[-1]._append(t_end - t_start)
 
                 if hasattr(cost, "__len__"):
                     costs.append(cost)
@@ -238,7 +238,7 @@ class Simulator(object):
         record_evaluation_times = bool(self.stats)
 
         if record_evaluation_times:
-            self.stats.grad_func_eval_times.append([])
+            self.stats.grad_func_eval_times._append([])
 
         for i, cost_fktn in enumerate(self.cost_fktns):
             if record_evaluation_times:
@@ -261,7 +261,7 @@ class Simulator(object):
             jacobians.append(jac_x_transferred)
             if record_evaluation_times:
                 t_end = time.time()
-                self.stats.grad_func_eval_times[-1].append(t_end - t_start)
+                self.stats.grad_func_eval_times[-1]._append(t_end - t_start)
 
         # two dimensional form as required by scipy solvers
         total_jac = np.concatenate(jacobians, axis=1)

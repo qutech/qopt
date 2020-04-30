@@ -4,41 +4,40 @@ traces.
 
 Classes
 -------
-NoiseTraceGenerator
+:class:`NoiseTraceGenerator`
     Abstract base class defining the interface of the noise trace generators.
 
-NTGQuasiStatic
+:class:`NTGQuasiStatic`
     Generates noise traces for quasi static noise.
 
-NTGColoredNoise
+:class:`NTGColoredNoise`
     Generates noise traces of arbitrary colored spectra.
 
 Functions
 ---------
-bell_curve_1dim:
+:func:`bell_curve_1dim`
     One dimensional bell curve.
 
-sample_1dim_gaussian_distribution:
+:func:`sample_1dim_gaussian_distribution`
     Draw samples from the one dimensional bell curve.
 
-bell_curve_2dim:
+:func:`bell_curve_2dim`
     Two dimensional bell curve.
 
-sample_2dim_gaussian_distribution:
+:func:`sample_2dim_gaussian_distribution`
     Draw samples from the two dimensional bell curve.
 
-fast_colored_noise:
+:func:`fast_colored_noise`
     Samples an arbitrary colored noise spectrum.
 
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
+
 from typing import Callable, Tuple, Optional, List, Union
 from abc import ABC, abstractmethod
 from scipy import signal
-
-from qsim.util import deprecated
 
 
 def bell_curve_1dim(x: Union[np.ndarray, float],
@@ -132,7 +131,8 @@ def bell_curve_2dim(x: Union[np.ndarray, float], stdx: float,
     return normalization_factor * exponential
 
 
-def sample_2dim_gaussian_distribution(std1: float, std2: float, n_samples: int) \
+def sample_2dim_gaussian_distribution(
+        std1: float, std2: float, n_samples: int) \
         -> (List, List):
     """
     Returns 'n_samples' samples from the two dimensional bell curve.
@@ -178,41 +178,6 @@ def sample_2dim_gaussian_distribution(std1: float, std2: float, n_samples: int) 
     return selected_x, selected_y
 
 
-@deprecated
-def fast_white_noise(spectral_density: Callable, f_max: float, f_min: float,
-                     shape: Tuple[int], n_samples=None, r_power_of_two=False):
-    """
-    Generate fast noise with frequencies between f_min and f_max with the noise
-    spectrum like spectral_density.
-
-    Validate like so:
-    >>> from scipy import signal
-    >>> import matplotlib.pyplot as plt
-    >>> traces = fast_white_noise(spectral_density, f_max, f_min)
-    >>> f, S = signal.welch(traces, f_max, axis=-1)
-    >>> plt.loglog(f, spectral_density(f))
-    >>> plt.loglog(f, S.mean(axis=0))
-    """
-    dt = 1 / f_max
-    f_nyquist = f_max / 2
-    s0 = 1 / f_nyquist
-    if r_power_of_two or n_samples is None:
-        actual_n_samples = int(2 ** np.ceil(-np.log2(f_min * dt)))
-    else:
-        actual_n_samples = n_samples
-
-    delta_white = np.random.randn(*shape, actual_n_samples)
-    delta_white_ft = np.fft.rfft(delta_white, axis=-1)
-    # Only positive frequencies since FFT is real and therefore symmetric
-    f = np.linspace(f_min, f_max / 2, actual_n_samples // 2 + 1)
-    f = np.asarray(list(map(spectral_density, f)))
-    delta_colored = np.fft.irfft(
-        delta_white_ft * np.sqrt(f / s0),
-        axis=-1)
-
-    return delta_colored
-
-
 def fast_colored_noise(spectral_density: Callable, dt: float, n_samples: int,
                        output_shape: Tuple, r_power_of_two=False) -> np.ndarray:
     """
@@ -239,7 +204,7 @@ def fast_colored_noise(spectral_density: Callable, dt: float, n_samples: int,
     n_samples: int
         Number of samples.
 
-    output_shape: Tuple[int]
+    output_shape: tuple of int
         Shape of the noise traces to be returned.
 
     r_power_of_two: bool
@@ -273,28 +238,6 @@ def fast_colored_noise(spectral_density: Callable, dt: float, n_samples: int,
     return delta_colored
 
 
-@deprecated
-def generate_noise_trace(n_lines, spectral_density, f_min, f_max,
-                         r_power_of_two=True, n_samples=None):
-    delta_t = 1 / f_max
-    i = 1 / (f_min * delta_t)
-    if r_power_of_two or n_samples is None:
-        r = 2
-        while r < i:
-            r *= 2
-    else:
-        r = n_samples
-
-    eps = np.random.normal(0, 1, (n_lines, r))
-    eps_omega = np.fft.rfft(eps, axis=-1)
-
-    g_f = np.array([np.sqrt(spectral_density(f_min * (j + 1)) / 2 * f_max)
-                    for j in range(r // 2 + 1)])
-
-    delta_eps = np.fft.irfft(g_f * eps_omega, axis=-1)
-    return np.squeeze(delta_eps)
-
-
 class NoiseTraceGenerator(ABC):
     """
     Abstract base class defining the interface of the noise trace generators.
@@ -304,15 +247,15 @@ class NoiseTraceGenerator(ABC):
     n_samples_per_trace: int
         Number of noise samples per trace.
 
-    n_traces: int
+    n_traces: int, optional
         Number of noise traces. Default is 1.
 
-    n_noise_operators: int
+    n_noise_operators: int, optional
         Number of noise operators. Default is 1.
 
-    noise_samples: np.ndarray,
+    noise_samples: None or np.ndarray, optional
                    shape: (n_noise_operators, n_traces, n_samples_per_trace)
-        Precalculated noise samples.
+        Precalculated noise samples. Defaults to None.
 
     always_redraw_samples: bool
         If true. The samples are always redrawn upon request. The stored samples
@@ -344,7 +287,7 @@ class NoiseTraceGenerator(ABC):
 
     """
 
-    def __init__(self, n_samples_per_trace: int, always_redraw_samples: int,
+    def __init__(self, n_samples_per_trace: int, always_redraw_samples: bool,
                  n_traces: int = 1,
                  n_noise_operators: int = 1,
                  noise_samples: Optional[np.ndarray] = None):
@@ -404,32 +347,38 @@ class NTGQuasiStatic(NoiseTraceGenerator):
     standard_deviation: List[float], len: (n_noise_operators)
         Standard deviations of the noise assumed on the noise operators.
 
-    sampling_mode: string
+    n_samples_per_trace: int
+        Number of noise samples per trace.
+
+    n_traces: int, optional
+        Number of noise traces. Default is 1.
+
+    noise_samples: None or np.ndarray, optional
+                   shape: (n_noise_operators, n_traces, n_samples_per_trace)
+        Precalculated noise samples. Defaults to None.
+
+    sampling_mode: {'uncorrelated_deterministic', 'monte_carlo'}, optional
         The method by which the quasi static noise samples are drawn. The
         following are implemented:
         'uncorrelated_deterministic': No correlations are assumed. Each noise
         operator is sampled n_traces times deterministically.
         'monte_carlo': The noise is assumed to be correlated. Samples are drawn
-        by pseudo-randomly.
+        by pseudo-randomly. Defaults to 'uncorrelated_deterministic'.
 
     Attributes
     ----------
     standard_deviation: List[float], len: (n_noise_operators)
         Standard deviations of the noise assumed on the noise operators.
 
-    Methods
-    -------
-    _sample_noise: None
-        Samples quasi static noise from a normal distribution.
-
-    TODO:
-        * Draw samples for more than one noise operator
-        * Draw noise samples for more than one dimension (at least two)
+    See Also
+    --------
+    noise.NoiseTraceGenerator: Abstract Base Class
 
     """
 
     def __init__(self, standard_deviation: List[float],
-                 n_samples_per_trace: int, n_traces: int,
+                 n_samples_per_trace: int,
+                 n_traces: int = 1,
                  noise_samples: Optional[np.ndarray] = None,
                  always_redraw_samples: bool = True,
                  sampling_mode: str = 'uncorrelated_deterministic'):
@@ -448,7 +397,9 @@ class NTGQuasiStatic(NoiseTraceGenerator):
 
         The number of requested traces must be multiplied with the number of
         standard deviations because if standard deviation is sampled
-        separately. """
+        separately.
+
+        """
         if self._n_traces:
             if self.sampling_mode == 'uncorrelated_deterministic':
                 return self._n_traces * len(self.standard_deviation)
@@ -466,9 +417,6 @@ class NTGQuasiStatic(NoiseTraceGenerator):
         Each noise contribution (corresponding to one noise operator) is
         sampled separately. For each standard deviation n_traces traces are
         calculated.
-
-        If an amplitude function is available, it is applied to the noise
-        samples.
 
         """
         if self.sampling_mode == 'uncorrelated_deterministic':
@@ -502,6 +450,19 @@ class NTGColoredNoise(NoiseTraceGenerator):
 
     Parameters
     ----------
+    n_samples_per_trace: int
+        Number of noise samples per trace.
+
+    n_traces: int, optional
+        Number of noise traces. Default is 1.
+
+    n_noise_operators: int, optional
+        Number of noise operators. Default is 1.
+
+    always_redraw_samples: bool
+        If true. The samples are always redrawn upon request. The stored samples
+        are not returned.
+
     noise_spectral_density: function
         The noise spectral density as function of frequency.
 
@@ -521,11 +482,19 @@ class NTGColoredNoise(NoiseTraceGenerator):
     _sample_noise: None
         Samples noise from an arbitrary colored spectrum.
 
+    See Also
+    --------
+    noise.NoiseTraceGenerator: Abstract Base Class
+
     """
 
-    def __init__(self, noise_spectral_density: Callable, dt: float,
-                 n_samples_per_trace: int, n_traces: int,
-                 n_noise_operators: int, always_redraw_samples: bool = True):
+    def __init__(self,
+                 n_samples_per_trace: int,
+                 noise_spectral_density: Callable,
+                 dt: float,
+                 n_traces: int = 1,
+                 n_noise_operators: int = 1,
+                 always_redraw_samples: bool = True):
         super().__init__(n_traces=n_traces,
                          n_samples_per_trace=n_samples_per_trace,
                          noise_samples=None,
@@ -555,6 +524,35 @@ class NTGColoredNoise(NoiseTraceGenerator):
 
     def plot_periodogram(self, n_average: int, scaling: str = 'density',
                          log_plot: Optional[str] = None, draw_plot=True):
+        """Creates noise samples and plots the corresponding periodogram.
+
+        Parameters
+        ----------
+        n_average: int
+            Number of Periodograms which are averaged.
+
+        scaling: {'density', 'spectrum'}, optional
+            If 'density' then the power spectral density in units of V**2/Hz is
+            plotted.
+            If 'spectral' then the power spectrum in units of V**2 is plotted.
+            Defaults to 'density'.
+
+        log_plot: {None, 'semilogy', 'semilogx', 'loglog'}, optional
+            If None, then the plot is not plotted logarithmically. If
+            'semilogy' only the y-axis is plotted logarithmically, if
+            'semilogx' only the x-axis is plotted logarithmically, if 'loglog'
+            both axis are plotted logarithmically. Defaults to None.
+
+        draw_plot: bool, optional
+            If true, then the periodogram is plotted. Defaults to True.
+
+        Returns
+        -------
+        deviation_norm: float
+            The vector norm of the deviation between the actual power spectral
+            density and the power spectral densitry found in the periodogram.
+
+        """
 
         noise_samples = fast_colored_noise(
             spectral_density=self.noise_spectral_density,

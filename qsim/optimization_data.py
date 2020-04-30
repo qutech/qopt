@@ -1,4 +1,13 @@
-"""
+"""This module stores information about the optimization and its result.
+
+Classes
+-------
+:class:`OptimizationResult`
+    Describes the information gained by an optimization run.
+
+:class:`OptimizationSummary`
+    Describes the whole information gained during an optimization run.
+
 """
 
 from typing import Dict, List
@@ -8,9 +17,18 @@ class OptimizationResult(object):
     """
     Resulting data of the optimization.
 
+    An instance of this class is returned by the `Optimizer` after the
+    optimization has terminated. It holds the results of the optimization and
+    can also contain an instance of `OptimizationSummary` to describe the
+    optimization run itself, for example its convergence.
+    The parameters of the initialization method are all optional. This class is
+    intended to be initialized empty or loaded from a dictionary by the class
+    method :meth:`from_dict`.
+
     Attributes
     ----------
     termination_reason : string
+        Reason for the termination as string.
 
     status : None or int
         The termination_reason as integer. Like in scipy.OptimizeResult
@@ -23,37 +41,44 @@ class OptimizationResult(object):
         4: Both 2 and 3 termination conditions are satisfied.
 
     final_cost : float
+        Value of the cost functions after the optimization.
 
     final_grad_norm : float
+        Norm of the gradient after the optimization.
 
     num_iter : integer
+        Number of iterations in the optimization algorithm.
 
-    init_parameters : array[num_tslots, n_ctrls]
-        The amplitudes at the start of the optimisation
+    init_parameters : array, shape: (n_t, n_par)
+        The amplitudes at the start of the optimisation, where n_t is
+        the number of time steps simulated and n_par the number of
+        optimization parameters.
 
-    final_parameteres : array[num_tslots, n_ctrls]
-        The optimization parameters at the end of the optimisation
+    final_parameters : array, shape: (n_t, n_par)
+        The optimization parameters at the end of the optimisation, where n_t
+        is the number of time steps simulated and n_par the number of
+        optimization parameters.
 
-    optimizer : OptimizerOld
-        Instance of the OptimizerOld used to generate the result
+    optimizer : `Optimizer`
+        Instance of the `Optimizer` used to generate the result
 
-    optim_iter_summary : OptimIterSummary, optional
+    optim_summary : `OptimizationSummary`
         None if no intermediary results are saved. Otherwise the infidelity
         during the optimization.
 
     """
 
     def __init__(self, final_cost=None, indices=None, final_parameters=None,
-                 final_grad_norm=None, init_parameteres=None, num_iter=None,
+                 final_grad_norm=None, init_parameters=None, num_iter=None,
                  termination_reason="not started yet", status=None,
                  optimization_stats=None,
-                 optimizer=None, optim_iter_summary=None):
+                 optimizer=None, optim_summary=None):
         self.final_cost = final_cost
         self.indices = indices
-        self.final_parameteres = final_parameters
+        self.final_parameters = final_parameters
         self.final_grad_norm = final_grad_norm
 
-        self.init_parameters = init_parameteres
+        self.init_parameters = init_parameters
 
         self.num_iter = num_iter
         self.termination_reason = termination_reason
@@ -61,32 +86,53 @@ class OptimizationResult(object):
 
         self.optimizer = optimizer
         self.optimization_stats = optimization_stats
-        self.optim_iter_summary = optim_iter_summary
-
-    @classmethod
-    def reset(cls):
-        return cls()
+        self.optim_summary = optim_summary
 
     def to_dict(self):
+        """Writes the information held by this instance to a dictionary.
+
+        Returns
+        -------
+        dictionary: dict
+            The information stored in a class instance as dictionary.
+
+        """
         return {'final_cost': self.final_cost,
                 'indices': self.indices,
-                'final_amps': self.final_parameteres,
+                'final_amps': self.final_parameters,
                 'final_grad_norm': self.final_grad_norm,
                 'init_parameters': self.init_parameters,
                 'num_iter': self.num_iter,
                 'termination_reason': self.termination_reason,
                 'optimizer': self.optimizer,
                 'optimization_stats': self.optimization_stats,
-                'optim_iter_summary': self.optim_iter_summary
+                'optim_iter_summary': self.optim_summary
                 }
 
     @classmethod
     def from_dict(cls, data_dict: Dict):
+        """Initialize the class with the information held in a dictionary.
+
+        Parameters
+        ----------
+        data_dict: dict
+            Class information.
+
+        Returns
+        -------
+        optim_result: OptimizationResult
+            Class instance.
+
+        """
         return cls(**data_dict)
 
 
 class OptimizationSummary(object):
-    """A summary of the most recent iteration of the pulse optimisation
+    """A summary of an optimization run.
+
+    This class saves the state of the optimization for each iteration. All
+    parameters for the initialization are optimal. The class is intended to be
+    either initialized empty.
 
     Attributes
     ----------

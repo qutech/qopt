@@ -933,8 +933,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 class LeakageError(CostFunction):
     """This class measures leakage as quantum operation error.
 
-    The resulting infidelity is measured by truncating the leakage states of the
-    propagator U yielding the Propagator V on the computational basis. The
+    The resulting infidelity is measured by truncating the leakage states of
+    the propagator U yielding the Propagator V on the computational basis. The
     infidelity is then given as the distance from unitarity:
         infid = 1 - trace(V^\dag V) / 4
 

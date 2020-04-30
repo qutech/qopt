@@ -1,6 +1,6 @@
 """
-This file contains a matrix class which implements the computationally expensive
-numerics.
+This file contains a matrix class which implements the computationally
+expensive numeric calculations.
 
 The matrices can be stored and handled either as dense or sparse
 matrices. The most frequently used and computationally expensive function is the
@@ -26,18 +26,13 @@ OperatorSparse
 
 import numpy as np
 import scipy
-# TODO: These imports dont look so nice
 import scipy.sparse as sp
-from scipy.sparse import identity
 import scipy.linalg as la
-# from qutip.cy.spmatfuncs import spmv
-from qutip import Qobj
-from qutip.sparse import sp_eigs, sp_expm
-# from qutip.cy.spmath import (zcsr_adjoint, zcsr_trace)
-from qsim.util import needs_refactoring
+
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional, Union, Sequence
 
+from qutip import Qobj
 
 # TODO: You must be kidding me! How is this globally defined?
 matrix_opt = {

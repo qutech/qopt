@@ -4,3 +4,4 @@ simanneal
 pandas
 numpy
 matplotlib
+scipy

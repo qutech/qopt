@@ -14,7 +14,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable
 
-from qsim import optimization_data, dynamics
+from qsim import optimization_data, solver_algorithms
 import simanneal
 
 default_termination_conditions = {
@@ -49,7 +49,7 @@ class Optimizer(ABC):
 
     def __init__(
             self,
-            dynamics: Optional[dynamics.Dynamics] = None,
+            dynamics: Optional[solver_algorithms.Solver] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False):
         self.dynamics = dynamics
@@ -84,8 +84,8 @@ class Optimizer(ABC):
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.iter_num += 1
-            self.optim_iter_summary.costs.append(costs)
-            self.optim_iter_summary.parameters.append(
+            self.optim_iter_summary.costs._append(costs)
+            self.optim_iter_summary.parameters._append(
                 control_amplitudes.reshape(self.pulse_shape[::-1]).T
             )
 
@@ -102,7 +102,7 @@ class Optimizer(ABC):
             control_amplitudes.reshape(self.pulse_shape[::-1]).T)
 
         if self.save_intermediary_steps:
-            self.optim_iter_summary.gradients.append(jacobian)
+            self.optim_iter_summary.gradients._append(jacobian)
 
         # jacobian shape (num_t, num_f, num_ctrl) -> (num_f, num_t * num_ctrl)
         jacobian = jacobian.transpose([1, 2, 0])
@@ -238,7 +238,7 @@ class LeastSquaresOptimizer(Optimizer):
                 termination_reason=result.message,
                 status=result.status,
                 optimizer=self,
-                optim_iter_summary=self.optim_iter_summary,
+                optim_summary=self.optim_iter_summary,
                 optimization_stats=self.dynamics.stats
             )
         except WallTimeExceeded:
@@ -255,7 +255,7 @@ class LeastSquaresOptimizer(Optimizer):
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
                 optimizer=self,
-                optim_iter_summary=self.optim_iter_summary,
+                optim_summary=self.optim_iter_summary,
                 optimization_stats=self.dynamics.stats
             )
 
@@ -411,7 +411,7 @@ class SimulatedAnnealing(Optimizer):
             indices=self.dynamics.cost_indices,
             final_parameters=pulse,
             optimizer=self,
-            optim_iter_summary=self.optim_iter_summary,
+            optim_summary=self.optim_iter_summary,
             optimization_stats=self.dynamics.stats
         )
 
@@ -494,7 +494,7 @@ class SimulatedAnnealingScipy(Optimizer):
                 termination_reason=result.message,
                 status=result.status,
                 optimizer=self,
-                optim_iter_summary=self.optim_iter_summary,
+                optim_summary=self.optim_iter_summary,
                 optimization_stats=self.dynamics.stats
             )
 
@@ -511,7 +511,7 @@ class SimulatedAnnealingScipy(Optimizer):
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
                 optimizer=self,
-                optim_iter_summary=self.optim_iter_summary,
+                optim_summary=self.optim_iter_summary,
                 optimization_stats=self.dynamics.stats
             )
 

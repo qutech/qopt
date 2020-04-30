@@ -1,4 +1,12 @@
-import logging
+"""Implements data storage.
+
+Classes
+-------
+:class:`DataContainer`
+    Data storage class.
+
+"""
+
 import pickle
 import os
 import copy
@@ -8,15 +16,12 @@ from typing import Optional, List
 from qsim import optimization_data, optimization_statistics
 
 
-# TODO: rewrite as serializable
-# TODO: add time tag
-# class DataContainer(metaclass=qutil.storage.HDF5Serializable):
 class DataContainer:
 
-    """ This class gathers the information stored in multiple objects of the
-    class OptimResult.
+    """Stores data of the optimization.
 
-    Its primary functionality is the storage of data.
+    This class gathers the information stored in multiple objects of the
+    class `OptimResult`.
 
     Parameters
     ----------
@@ -28,6 +33,9 @@ class DataContainer:
         The file name will be appended to the path for storage and loading. The
         default value is an empty string assuming that the storage path already
         contains the file name.
+
+    indices : list of str
+        The indices of the costs.
 
     final_costs : list
         The final values of the cost function.
@@ -55,19 +63,34 @@ class DataContainer:
         3: minimal step size termination condition is satisfied.
         4: Both 2 and 3 termination conditions are satisfied.
 
+    optimization_stats : list
+        Optimization statistics, which have been appended to the data.
+
     append_time_to_path : bool
         If True, the current time is appended to the file name.
 
+    Methods
+    -------
+    append_optim_result(optim_result: `OptimizationResult`)
+        Append the data from a single optimization run to the `DataContainer`.
+
+    to_pickle(filename: str)
+        Dump the class instance into the file.
+
+    from_pickle(filename: str)
+        Classmethod: Load a pickled `DataContainer`.
+
+
     """
     def __init__(self, storage_path: str, file_name: str = '',
-                 final_costs: Optional[List] = None,
                  indices: Optional[List[str]] = None,
+                 final_costs: Optional[List] = None,
                  init_parameters: Optional[List] = None,
                  final_parameters: Optional[List] = None,
                  costs: Optional[List[List]] = None,
                  parameters: Optional[List[List]] = None,
                  status: Optional[List] = None,
-                 optimization_statistics: Optional[List] = None,
+                 optimization_stats: Optional[List] = None,
                  append_time_to_path=True):
         if final_costs is None:
             self.final_costs = []
@@ -104,10 +127,10 @@ class DataContainer:
         else:
             self.status = status
 
-        if optimization_statistics is None:
+        if optimization_stats is None:
             self.optimization_statistics = []
         else:
-            self.optimization_statistics = optimization_statistics
+            self.optimization_statistics = optimization_stats
 
         self.check_length()
 
@@ -118,71 +141,56 @@ class DataContainer:
         self.file_name = file_name
 
     def __len__(self):
+        """Number of optimization runs in the data.
+
+        Returns
+        -------
+        len: int
+            Number of optimization runs in the data.
+
+        """
         if self.costs is None:
             return 0
         else:
             return len(self.costs)
 
-    """
-    @property
-    def asyncrone_writer(self):
-        if self._asyncrone_writer is None:
-            self._asyncrone_writer = qutil.storage.AsynchronousHDF5Writer(
-                reserved=dict(),
-                multiprocess=False)
-        return self._asyncrone_writer
-    """
-
-    @property
-    def logger(self):
-        return logging.getLogger('DataContainer')
-
     @property
     def index(self):
+        """Indices of the cost functions. """
         return self.final_parameters.index
 
-    """
-    def write_to_hdf5(self):
-        if self.storage_path:
-            if not os.path.isdir(self.storage_path):
-                os.makedirs(self.storage_path)
-            if self.append_time_to_path:
-                full_path = os.path.join(self.storage_path,
-                                         self.file_name +
-                                         qutil.storage.time_string() + ".hdf5")
-            else:
-                full_path = os.path.join(self.storage_path, self.file_name +
-                                         ".hdf5")
-            self.asyncrone_writer.write(
-                self,
-                file_name=full_path,
-                name='DataContainer')
-
-        else:
-            logging.warning('The Data could not be saved because no storage'
-                            'path was determined.')
-    """
     def check_length(self):
         pass
 
     def append_optim_result(
             self,
             optim_result: optimization_data.OptimizationResult):
+        """Appends an instance of `OptimizationResult` to the stored data.
 
-        self.append(final_costs=optim_result.final_cost,
-                    indices=optim_result.indices,
-                    init_parameters=optim_result.init_parameters,
-                    final_parameters=optim_result.final_parameteres,
-                    costs=optim_result.optim_iter_summary.costs,
-                    parameters=optim_result.optim_iter_summary.parameters,
-                    status=optim_result.status,
-                    optimization_stats=optim_result.optimization_stats
-                    )
+        The Information gained in an optimization run is extracted and
+        appended to the various lists of the `DataContainer`.
 
-    def append(self, final_costs: List, indices: List[str],
-               init_parameters: List, final_parameters: List,
-               costs: List, parameters: List, status: int,
-               optimization_stats: Optional[
+        Parameters
+        ----------
+        optim_result: `OptimizationResult`
+            Result of an optimization run.
+
+        """
+
+        self._append(final_costs=optim_result.final_cost,
+                     indices=optim_result.indices,
+                     init_parameters=optim_result.init_parameters,
+                     final_parameters=optim_result.final_parameters,
+                     costs=optim_result.optim_summary.costs,
+                     parameters=optim_result.optim_summary.parameters,
+                     status=optim_result.status,
+                     optimization_stats=optim_result.optimization_stats
+                     )
+
+    def _append(self, final_costs: List, indices: List[str],
+                init_parameters: List, final_parameters: List,
+                costs: List, parameters: List, status: int,
+                optimization_stats: Optional[
                    optimization_statistics.OptimizationStatistics]):
         if len(self) == 0:
             self.indices = indices
@@ -209,31 +217,45 @@ class DataContainer:
             status=copy.deepcopy(self.status),
             storage_path=copy.deepcopy(self.storage_path),
             file_name=copy.deepcopy(self.file_name),
-            optimization_statistics=copy.deepcopy(self.optimization_statistics),
+            optimization_statistics=copy.deepcopy(
+                self.optimization_statistics),
             append_time_to_path=copy.deepcopy(self.append_time_to_path))
         return cpyobj
 
-    def to_hdf5(self):
-        return self.to_dict()
-
     def to_pickle(self, filename=None):
+        """Dumps the class to pickle.
+
+        Parameters
+        ----------
+        filename : str
+            Name of the file to which the class is pickled.
+
+        """
         if filename is None:
             if self.file_name is not None:
                 filename = os.path.join(self.storage_path, self.file_name)
             else:
                 filename = self.storage_path
         infile = open(filename, 'wb')
-        pickle.dump(self.to_dict(), infile)
+        pickle.dump(self._to_dict(), infile)
         infile.close()
 
     @classmethod
     def from_pickle(cls, filename):
+        """Read class from pickled file.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file which is loaded.
+
+        """
         outfile = open(filename, 'rb')
         data_dict = pickle.load(outfile)
         outfile.close()
-        return cls.from_dict(data_dict=data_dict)
+        return cls._from_dict(data_dict=data_dict)
 
-    def to_dict(self):
+    def _to_dict(self):
         return dict(final_costs=self.final_costs,
                     indices=self.indices,
                     init_parameters=self.init_parameters,
@@ -247,5 +269,5 @@ class DataContainer:
                     optimization_statistics=self.optimization_statistics)
 
     @classmethod
-    def from_dict(cls, data_dict):
+    def _from_dict(cls, data_dict):
         return cls(**data_dict)
