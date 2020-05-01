@@ -36,7 +36,7 @@ class Lab_frame_rabi_driving(TestCase):
         up = np.asarray([[1], [0]])
         x_half = rabi.x_half.data
 
-        projector_left = up.T
+        projector_left = up.transfer_matrix
         projector_right = up
 
         def up_amplitude(unitary):

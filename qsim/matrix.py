@@ -669,11 +669,11 @@ class DenseOperator(OperatorMatrix):
         if copy_:
             cp = self.copy()
             np.conj(cp.data, out=cp.data)
-            cp.data = np.copy(cp.data.T)
+            cp.data = np.copy(cp.data.transfer_matrix)
             return cp
         else:
             np.conj(self.data, out=self.data)
-            self.data = self.data.T
+            self.data = self.data.transfer_matrix
             return self
 
     def conj(self, copy_: bool = True) -> Optional['DenseOperator']:
@@ -789,7 +789,7 @@ class DenseOperator(OperatorMatrix):
         else:
             eig_val, eig_vec = la.eig(self.data)
 
-        eig_vec_dag = eig_vec.conj().T
+        eig_vec_dag = eig_vec.conj().transfer_matrix
 
         eig_val_cols = eig_val * np.ones(self.shape)
         eig_val_diffs = eig_val_cols - eig_val_cols.T

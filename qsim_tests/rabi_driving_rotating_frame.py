@@ -156,13 +156,13 @@ class RabiDrivingRotatingFrame(TestCase):
         forward_propagators_lindbladt = tslot_comp_lindblad.forward_propagators
 
         def vec_to_density_matrix(vec: np.ndarray):
-            return vec @ vec.conj().T
+            return vec @ vec.conj().transfer_matrix
 
         def linearize_matrix(matrix: np.ndarray):
             return matrix.T.flatten()
 
         def vector_to_matrix(vec: np.ndarray):
-            return vec.reshape((2, 2)).T
+            return vec.reshape((2, 2)).transfer_matrix
 
         initial = linearize_matrix(vec_to_density_matrix(x_half @ up))
         probabilities_lindbladt = np.zeros(len(forward_propagators_lindbladt))

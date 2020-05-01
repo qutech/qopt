@@ -23,7 +23,7 @@ USE_WHITE_NOISE = False
 def MC_ent_fidelity(gates, target):
     """Calculate the entanglement fidelity"""
     d = gates.shape[-1]
-    return qutil.linalg.abs2(np.einsum('...ll', gates @ target.conj().T)/d)
+    return qutil.linalg.abs2(np.einsum('...ll', gates @ target.conj().transfer_matrix) / d)
 
 
 def rand_herm(d: int, n: int = 1) -> np.ndarray:

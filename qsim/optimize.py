@@ -80,17 +80,17 @@ class Optimizer(ABC):
             raise WallTimeExceeded
 
         costs = self.dynamics.wrapped_cost_functions(
-            control_amplitudes.reshape(self.pulse_shape[::-1]).T)
+            control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix)
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.iter_num += 1
             self.optim_iter_summary.costs._append(costs)
             self.optim_iter_summary.parameters._append(
-                control_amplitudes.reshape(self.pulse_shape[::-1]).T
+                control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix
             )
 
         self._last_costs = costs
-        self._last_par = control_amplitudes.reshape(self.pulse_shape[::-1]).T
+        self._last_par = control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix
         self._n_cost_fkt_eval += 1
         return costs
 
@@ -99,7 +99,7 @@ class Optimizer(ABC):
 
         The relevant information for the analysis is saved."""
         jacobian = self.dynamics.wrapped_jac_function(
-            control_amplitudes.reshape(self.pulse_shape[::-1]).T)
+            control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix)
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.gradients._append(jacobian)
@@ -232,7 +232,7 @@ class LeastSquaresOptimizer(Optimizer):
             optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
                 indices=self.dynamics.cost_indices,
-                final_parameters=result.x.reshape(self.pulse_shape[::-1]).T,
+                final_parameters=result.x.reshape(self.pulse_shape[::-1]).transfer_matrix,
                 final_grad_norm=np.linalg.norm(result.grad),
                 num_iter=result.nfev,
                 termination_reason=result.message,
@@ -249,7 +249,7 @@ class LeastSquaresOptimizer(Optimizer):
                 final_cost=self._last_costs,
                 indices=self.dynamics.cost_indices,
                 final_parameters=self._last_par.reshape(
-                    self.pulse_shape[::-1]).T,
+                    self.pulse_shape[::-1]).transfer_matrix,
                 final_grad_norm=np.linalg.norm(self._last_jac),
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
@@ -341,7 +341,7 @@ class PulseAnnealer(simanneal.Annealer):
 
     def energy(self):
         """The energy or cost function of the annealer. """
-        return np.linalg.norm(self.energy_function(self.state.T.flatten()))
+        return np.linalg.norm(self.energy_function(self.state.transfer_matrix.flatten()))
 
 
 class SimulatedAnnealing(Optimizer):
@@ -489,7 +489,7 @@ class SimulatedAnnealingScipy(Optimizer):
             optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
                 indices=self.dynamics.cost_indices,
-                final_parameters=result.x.reshape(self.pulse_shape[::-1]).T,
+                final_parameters=result.x.reshape(self.pulse_shape[::-1]).transfer_matrix,
                 num_iter=result.nfev,
                 termination_reason=result.message,
                 status=result.status,
@@ -506,7 +506,7 @@ class SimulatedAnnealingScipy(Optimizer):
                 final_cost=self._last_costs,
                 indices=self.dynamics.cost_indices,
                 final_parameters=self._last_par.reshape(
-                    self.pulse_shape[::-1]).T,
+                    self.pulse_shape[::-1]).transfer_matrix,
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
@@ -532,7 +532,7 @@ class SimulatedAnnealingScipy(Optimizer):
             The pulse initial pulse plus a random variation.
 
         """
-        pulse = current_pulse.reshape(self.pulse_shape[::-1]).T
+        pulse = current_pulse.reshape(self.pulse_shape[::-1]).transfer_matrix
 
         if type(self.step_size) != int:
             raise ValueError("The step size must be integer! But it is: "
@@ -556,4 +556,4 @@ class SimulatedAnnealingScipy(Optimizer):
         new_pulse[lower_limit_exceeded] = self.bounds[0][lower_limit_exceeded]
         new_pulse[upper_limit_exceeded] = self.bounds[1][upper_limit_exceeded]
 
-        return new_pulse.T.flatten()
+        return new_pulse.transfer_matrix.flatten()

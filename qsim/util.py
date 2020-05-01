@@ -3,11 +3,17 @@ Utility functions for the optimal control package.
 
 Functions
 ---------
-deprecated: decorator
+:func:`deprecated` decorator
     Marks functions and methods which are deprecated.
 
-needs_refactoring: decorator
+:func:`needs_refactoring` decorator
     Marks objects which need refactoring.
+
+:func:`timeit` decorator
+    Measures the run time of a function evaluation.
+
+:func:`closest_unitary`
+    Calculates the closest unitary matrix to a square matrix.
 
 """
 
@@ -49,20 +55,42 @@ def needs_refactoring(func):
     return new_func
 
 
-def timeit(method):
+def timeit(function):
+    """Convenience function to measure the run time of a function.
+
+    This function can be applied as decorator to get a function that evaluates
+    the input function an measures the run time.
+
+    Parameters
+    ----------
+    function: Callable
+        The function of which the run time is measured.
+
+    Returns
+    -------
+    timed: Callable
+        Timed function.
+
+    """
     def timed(*args, **kw):
         ts = time.time()
-        result = method(*args, **kw)
+        result = function(*args, **kw)
         te = time.time()
         return result, (te - ts)
     return timed
 
 
 def closest_unitary(A):
-    """ Calculate the unitary matrix U that is closest with respect to the
-        operator norm distance to the general matrix A.
+    """ Closest unitary to given square matrix.
 
-        Return U as a numpy matrix.
+    Calculate the unitary matrix U that is closest with respect to the
+    operator norm distance to the general matrix A.
+
+    Returns
+    -------
+    U: np.array
+        Closest unitary.
+
     """
     V, __, Wh = scipy.linalg.svd(A)
     U = np.matrix(V.dot(Wh))

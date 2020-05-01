@@ -74,7 +74,7 @@ vy = [1.99999999, 1.99999989, -0.36258558, -1.96495835, -1.99545292,
       -1.99999794, -1.99999998, -1.99999994, -1.99999998, 0.15630521,
       2., 2.]
 
-good_pulse = np.asarray([vx, vy]).T
+good_pulse = np.asarray([vx, vy]).transfer_matrix
 
 # initial_pulse = good_pulse
 

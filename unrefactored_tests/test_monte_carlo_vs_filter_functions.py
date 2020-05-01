@@ -24,7 +24,7 @@ ctrl_amps = np.asarray(
     [[.5] * (n_t // 4) + [0] * (n_t // 4) + [.25] * (n_t // 4) + [.25] * (
                 n_t // 4),
      [0] * (n_t // 4) + [.5] * (n_t // 4) + [0] * (n_t // 4) + [0] * (
-                 n_t // 4)]).T
+                 n_t // 4)]).transfer_matrix
 ctrl_amps /= (n_t / 4)
 tau = [1] * n_t
 initial_state = qutip.control_2.matrix.ControlDense(np.eye(2))
@@ -71,14 +71,14 @@ for name, noise_density_in_use in zip(noise_density_names, noise_densities):
     tslot_obj = qutip.control_2.tslotcomp.TSCompSaveAllNoise(
         h_ctrl=h_control, h_drift=h_drift, num_ctrl=num_ctrl, tau=tau,
         initial_state=initial_state, ctrl_amps=ctrl_amps, num_t=n_t,
-        h_noise=np.asarray([h_noise, ] * n_t).T,
+        h_noise=np.asarray([h_noise, ] * n_t).transfer_matrix,
         noise_trace_generator=fast_noise_parameters,
         filter_function_h_n=filter_function_h_n)
 
     tslot_obj_spectral = qutip.control_2.tslotcomp.TSCompSaveAllNoise(
         h_ctrl=h_control, h_drift=h_drift, num_ctrl=num_ctrl, tau=tau,
         initial_state=initial_state, ctrl_amps=ctrl_amps, num_t=n_t,
-        h_noise=np.asarray([h_noise, ] * n_t).T,
+        h_noise=np.asarray([h_noise, ] * n_t).transfer_matrix,
         noise_trace_generator=fast_noise_parameters,
         filter_function_h_n=filter_function_h_n, exponential_method='spectral')
 

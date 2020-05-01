@@ -1670,7 +1670,7 @@ class LindbladSControlNoise(LindbladSolver):
         # the required filter function contains
         if not self.constant_lindblad_operators or \
                 self.incoherent_dyn_gen is None:
-            transfer_matrix = self.transfer_function.T
+            transfer_matrix = self.transfer_function.transfer_matrix
             self.incoherent_dyn_gen = np.einsum('ijk,klm,k->ilm',
                                                 transfer_matrix,
                                                 self.lindblad_super_operator,

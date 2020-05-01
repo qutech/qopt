@@ -16,7 +16,7 @@ class TestTslots(unittest.TestCase):
                      .5 * matrix.DenseOperator(
                           qutip.sigmaz())]
 
-        ctrl_amps = np.asarray([[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * np.pi
+        ctrl_amps = np.asarray([[.5, 0, .25, .25], [0, .5, 0, 0]]).transfer_matrix * 2 * np.pi
         n_t = 4
         tau = [1 for _ in range(4)]
         initial_state = matrix.DenseOperator(np.eye(2)) \
@@ -78,7 +78,7 @@ class TestTslots(unittest.TestCase):
             qutip.sigmax()), ]
         h_noise = [.5 * matrix.DenseOperator(
             qutip.sigmaz()), ]
-        ctrl_amps = np.asarray([[.5, 0, .25, .25], ]).T * 2 * math.pi
+        ctrl_amps = np.asarray([[.5, 0, .25, .25], ]).transfer_matrix * 2 * math.pi
         tau = [1, 1, 1, 1]
         n_t = len(tau)
         initial_state = matrix.DenseOperator(np.eye(2)) \
@@ -155,7 +155,7 @@ class TestTslots(unittest.TestCase):
         h_control = [.5 * matrix.DenseOperator(qutip.sigmax()),
                      .5 * matrix.DenseOperator(qutip.sigmaz())]
         ctrl_amps = np.asarray(
-            [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
+            [[.5, 0, .25, .25], [0, .5, 0, 0]]).transfer_matrix * 2 * math.pi
         tau = [1, 1, 1, 1]
 
         dissipation_sup_op = [matrix.DenseOperator(
@@ -206,7 +206,7 @@ class TestTslots(unittest.TestCase):
         h_control = [.5 * matrix.DenseOperator(qutip.sigmax()),
                      .5 * matrix.DenseOperator(qutip.sigmaz())]
         ctrl_amps = np.asarray(
-            [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
+            [[.5, 0, .25, .25], [0, .5, 0, 0]]).transfer_matrix * 2 * math.pi
         tau = [1, 1, 1, 1]
 
         def prefactor_function(_):

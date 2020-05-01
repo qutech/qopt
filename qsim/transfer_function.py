@@ -1,14 +1,16 @@
-"""
-Contains a transfer_functions class that allows the optimization variables
-of the grape algorithm to not be directly the amplitudes of the control
-fields.
+"""Models the response function of control electronics and pulse smoothing.
 
-In an experimental context, the transfer function is of an ambigous nature.
-It can be used to implement the physical relation between the optimization
-variables (e.g. voltages applied) to the amplitudes in the modeled control
-Hamiltonian (e.g. an exchange interaction energy) but also to smooth pulses
-and implement realistic constrains on the control electronics (e.g. finite
-rise times of arbitrary waveform generators).
+Due to the imperfection of the control electronics, the generated control pulse
+which is received by the physical qubit is not exactly the pulse which has been
+implemented at the control level.
+
+If for example a voltage is changed from one
+value to another at a single point in time at the control level, then the
+control electronics might need some time to physically reach the new voltage.
+
+Another example would be an amplifier, which has a non-linearity in the
+amplification of a control pulse.
+
 
 Optimal control methods for rapidly time-varying Hamiltonians, 2011
 Motzoi, F. and Gambetta, J. M. and Merkel, S. T. and Wilhelm, F. K.
@@ -16,61 +18,40 @@ PhysRevA.84.022307, https://link.aps.org/doi/10.1103/PhysRevA.84.022307
 
 Classes
 -------
-TransferFunction:
-    Abstract base class which defines the interface and implements standard
-    functions.
+:class:`TransferFunction`
+    Abstract base class.
 
-IdentityTF:
-    Optimization variables are the amplitudes of the control fields
+:class:`IdentityTF`
+    Optimization variables are the amplitudes of the control fields.
 
-ConcatenateTF:
-    Concatenation of two arbitrary transfer functions.
+:class:`ConcatenateTF`
+    Concatenation of two transfer functions.
 
-CustomTF:
-    Linear transfer function which receives an explicitly constructed
-    constant transfer matrix.
+:class:`ParallelTF`
+    Using to transfer functions for two sets of parameters in paralell.
 
-ExponentialTF:
+:class:`CustomTF`
+    Transfer function which receives an explicitly constructed constant
+    transfer matrix.
+
+:class:`ExponentialTF`
     The amplitudes are smoothed by exponential saturation functions.
-
-FourierTF:
-    The amplitudes of the control fields is obtained by the fourier
-    series of the optimization variables.
-    u[t] = x[i] * sin(t*(i+1)*pi/times[-1])
-    The number of frequency used is set during initiation.
-
-SplineTF:
-    The amplitudes of the control fields is the spline interpolation
-    of the optimization variables.
-    The number of sampling per time slices and the start and end
-    value are set at initiation.
-
-Gaussian:
-    Represent a Gaussian filtering in the frequency domain.
-    At initiation, the reference frequency, sampling rate, start
-    and end values can be set.
-
-PulseGenCrab:
-    Currently not supported
-
-PulseGenCrabFourier:
-    Currently not supported
 
 Functions
 ---------
-exp_saturation:
+:func:`exp_saturation`
     Exponential saturation function.
+
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.optimize as opt
-from scipy import interpolate
-from scipy.special import erf
-from typing import Tuple, Callable, Optional
-from abc import ABC, abstractmethod
-from qsim.util import deprecated, needs_refactoring
+import scipy.special
 import copy
+from typing import Tuple, Optional
+from abc import ABC, abstractmethod
+
+from qsim.util import deprecated, needs_refactoring
 
 
 class TransferFunction(ABC):
@@ -84,7 +65,10 @@ class TransferFunction(ABC):
     optimization variables. Then the transfer function is called to calculate
     control amplitudes and gradients.
 
-    Minimal code example with abstract base class:
+    Examples
+    --------
+    Example work flow with the abstract base class:
+
     >>> x_times = np.ones(5)
     >>> optimization_variables = np.random.rand(5)
     >>> gradient_fidelity_by_control_amplitudes = np.random.rand(shape=(30,5))
@@ -96,38 +80,14 @@ class TransferFunction(ABC):
     >>>     transfer_function.gradient_chain_rule(
     >>>         gradient_fidelity_by_control_amplitudes)
 
-    Attributes
+    Parameters
     ----------
-    _num_x: int
-        Number of time slices of the optimization variables.
-
-    _num_u: int
-        Number of time slices of the control amplitudes.
-
     num_ctrls: int
         Number of controlled amplitudes.
 
-    _u_times: ndarray, shape (num_u)
-        Time values for the actual pulses (controlled amplitudes). These
-        describe the lenght of the time slices.
-
-    _x_times: ndarray, shape (num_x)
-        Time values for the control variables. These  describe the lenght of the
-        time slices.
-
-    _absolute_x_times : array_like, shape (num_x + 1)
-        Absolute times of the optimization variables. The values describe the
-        point in time where a time slice ends or begins.
-
-    _x_max: float
-        Maximal value of the optimization variables.
-
-    _x_min: float
-        Minimal value of the optimization variables.
-
     oversampling: int
         Each time step of the optimization variables is sliced into a number
-        of time steps of the control amplitudes. This number is oversampling.
+        of time steps of the control amplitudes.
 
     bound_type: (code, number)
         Control the number of time slice of padding before and after the
@@ -139,30 +99,72 @@ class TransferFunction(ABC):
             "x": n extra slice of dt (default with n=1)
             "right_n": n extra slice of dt/overSampleRage on the right side
 
+    offset: float
+        Constant offset which is added to the optimization parameters.
+
+
+    Attributes
+    ----------
+    num_ctrls: int
+        Number of controlled amplitudes.
+
+    oversampling: int
+        Each time step of the optimization variables is sliced into a number
+        of time steps of the control amplitudes.
+
+    bound_type: (code, number)
+        Control the number of time slice of padding before and after the
+        original time range. Let dt denote the first or respectively last time
+        duration of the optimization variables.
+
+        code:
+            "n": n extra slice of dt/overSampleRate
+            "x": n extra slice of dt (default with n=1)
+            "right_n": n extra slice of dt/overSampleRage on the right side
+
+    offset: float
+        Constant offset which is added to the optimization parameters.
+
+    _num_y: int
+        Number of time slices of the raw optimization variables.
+
+    _num_x: int
+        Number of time slices of the transferred optimization variables.
+
+    _x_times: array, shape (num_u)
+        Time values for the transferred optimization parameters. These
+        describe the length of the time slices.
+
+    _y_times: array, shape (num_x)
+        Time values for the raw control variables. These  describe the length
+        of the time slices.
+
+    _absolute_y_times : array_like, shape (num_x + 1)
+        Absolute times of the raw optimization variables. The values describe
+        the point in time where a time slice ends and the next one begins.
+
     Methods
     -------
-    __call__(x):
+    __call__(y):
+        Application of the transfer function.
 
+    transfer_matrix: property, returns array, shape (num_x, num_y, num_par)
+        Returns the transfer matrix.
+
+    num_padding_elements: property, returns list
+        Two elements list with the number of elements padded to the beginning
+        and end, as specified by the bound type.
 
     set_times(times):
         Set the times of the optimization variables and calculates the times
         of the optimization variables.
 
-    set_absolute_times(absolute_x_times):
-        Set the absolute times (time points of beginning and ending a time step)
-        of the optimization variables.
+    set_absolute_times(absolute_y_times):
+        Set the absolute times (time points of beginning and ending a time
+        step) of the optimization variables.
 
-    plot_pulse(x):
-        For the optimisation variables (x), plot the resulting pulse.
-
-    T: ndarray, shape (num_u, num_x, num_ctrl)
-        Returns the transfer matrix, which is the linearization of the
-        functional dependency between the field amplitudes (u) and the
-        control variables.
-
-    num_padding_elements: list
-        Two elements list with the number of elements padded to the beginning
-        and end, as specified by the bound type.
+    plot_pulse(y):
+        For the raw optimisation variables (y), plot the resulting pulse.
 
     TODO:
         * parse bound_type to raise exception only in one function.
@@ -188,49 +190,50 @@ class TransferFunction(ABC):
         self.oversampling = oversampling
         self.offset = offset
 
-        self._T = None
+        self._transfer_matrix = None
 
         # num_x is set, by setting the time
+        self._num_y = 0
+        self._y_times = None
+        self._absolute_y_times = None
+        # num_u is calculated when setting the time
         self._num_x = 0
         self._x_times = None
-        self._absolute_x_times = None
-        # num_u is calculated when setting the time from the
-        self._num_u = 0
-        self._u_times = None
 
-        # deprecated
-        self._x_max = None
-        self._x_min = None
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        """Return the amplitudes (u) from the optimisation variables (x).
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
 
         Parameters
         ----------
-        x: np.ndarray, shape (num_x, num_ctrl)
-            Optimization variables; num_x is the number of time slices for the
-            optimization and num_ctrl is the number of quantities under control.
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
 
         Returns
         -------
-        u: np.ndarray, shape (num_u, num_ctrl)
+        u: np.array, shape (num_x, num_par)
             Control parameters; num_u is the number of times slices for the
-            control amplitudes.
+            transferred optimization parameters.
+
         """
-        shape = x.shape
+        shape = y.shape
         assert len(shape) == 2
-        assert shape[0] == self._num_x
+        assert shape[0] == self._num_y
         assert shape[1] == self.num_ctrls
 
-        if self._T is None:
-            self._make_T()
-        u = np.einsum('ijk,jk->ik', self._T, x)
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        x = np.einsum('ijk,jk->ik', self._transfer_matrix, y)
         if self.offset is not None:
-            u += self.offset
-        return u
+            x += self.offset
+        return x
 
     @property
-    def T(self) -> np.ndarray:
+    def transfer_matrix(self) -> np.array:
         """
         If necessary, calculates the transfer matrix. Then returns it.
 
@@ -240,9 +243,9 @@ class TransferFunction(ABC):
             Transfer matrix (the linearization of the control amplitudes).
 
         """
-        if self._T is None:
-            self._make_T()
-        return copy.deepcopy(self._T)
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        return copy.deepcopy(self._transfer_matrix)
 
     @property
     def num_padding_elements(self) -> (int, int):
@@ -268,104 +271,113 @@ class TransferFunction(ABC):
         else:
             raise ValueError('Unknown bound type ' + str(self.bound_type[0]))
 
-    def gradient_chain_rule(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
         """
-        Obtain the derivatives of a quantity a i.e. da/dx by the optimization
+        Obtain the derivatives of a quantity a i.e. da/dy by the optimization
         variables from the derivatives by the amplitude of the control fields.
 
-        The chain rule applies: df/dx = df/du * du/dx.
+        The chain rule applies: df/dy = df/dx * dx/dy.
 
         Parameters
         ----------
-        deriv_by_ctrl_amps: np.array, shape (num_u, num_f, num_ctrl)
-            The gradients of num_f fidelities by num_ctrl different pulses at
-            num_u different time steps.
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
 
         Returns
         -------
-        deriv_by_opt_par: np.array, shape: (num_x, num_f, num_ctrl)
-            The derivatives by the optimization parameters.
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
 
         """
 
-        shape = deriv_by_ctrl_amps.shape
+        shape = deriv_by_transferred_par.shape
         assert len(shape) == 3
-        assert shape[0] == self._num_u
+        assert shape[0] == self._num_y
         assert shape[2] == self.num_ctrls
 
-        if self._T is None:
-            self._make_T()
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
 
-        # T: shape (num_u, num_x, num_ctrl)
-        # deriv_by_ctrl_amps: shape (num_u, num_f, num_ctrl)
-        return np.einsum('ijk,ifk->jfk', self._T, deriv_by_ctrl_amps)
+        # T: shape (num_x, num_y, num_par)
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        return np.einsum('ijk,ifk->jfk',
+                         self._transfer_matrix,
+                         deriv_by_transferred_par)
 
-    def set_times(self, x_times: np.ndarray) -> None:
+    def set_times(self, y_times: np.array) -> None:
         """
-        Generate the time_slot duration array 'tau' (here: u_times)
+        Generate the time_slot duration array 'tau' (here: u_times).
 
-        This time slices depend on the oversampling of the control variables
+        The time slices depend on the oversampling of the control variables
         and the boundary conditions. The times are for the intended use cases
         only set once.
 
         Parameters
         ----------
-        x_times: Union[np.ndarray, list]
+        y_times: Union[np.ndarray, list], shape (num_y)
             The time steps / durations of constant optimization variables.
+            num_y is the number of time steps for the raw optimization
+            variables.
 
         """
-        if isinstance(x_times, list):
-            x_times = np.array(x_times)
-        if not isinstance(x_times, np.ndarray):
+        if isinstance(y_times, list):
+            y_times = np.array(y_times)
+        if not isinstance(y_times, np.ndarray):
             raise Exception("times must be a list or np.array")
 
-        x_times = np.squeeze(x_times)
+        y_times = np.squeeze(y_times)
 
-        if len(x_times.shape) > 1:
+        if len(y_times.shape) > 1:
             raise ValueError('The x_times should not have more than one '
                              'dimension!')
 
-        self._num_x = x_times.size
-        self._x_times = x_times
+        self._num_y = y_times.size
+        self._y_times = y_times
 
         if self.bound_type is None:
-            self._num_u = self.oversampling * self._num_x
-            self._u_times = np.repeat(self._x_times, self.oversampling) \
+            self._num_y = self.oversampling * self._num_y
+            self._y_times = np.repeat(self._y_times, self.oversampling) \
                             / self.oversampling
 
         elif self.bound_type[0] == 'n':
-            self._num_u = self.oversampling * self._num_x + 2 * self.bound_type[1]
-            self._u_times = np.concatenate((
-                self._x_times[0] / self.oversampling
+            self._num_y = self.oversampling * self._num_y + 2 \
+                          * self.bound_type[1]
+            self._y_times = np.concatenate((
+                self._y_times[0] / self.oversampling
                 * np.ones(self.bound_type[1]),
-                np.repeat(self._x_times / self.oversampling, self.oversampling),
-                self._x_times[-1] / self.oversampling
+                np.repeat(
+                    self._y_times / self.oversampling, self.oversampling),
+                self._y_times[-1] / self.oversampling
                 * np.ones(self.bound_type[1])))
 
         elif self.bound_type[0] == 'x':
-            self._num_u = self.oversampling * (self._num_x
+            self._num_y = self.oversampling * (self._num_y
                                                + 2 * self.bound_type[1])
-            self._u_times = np.concatenate((
-                self._x_times[0] / self.oversampling
+            self._y_times = np.concatenate((
+                self._y_times[0] / self.oversampling
                 * np.ones(self.bound_type[1] * self.oversampling),
-                np.repeat(self._x_times / self.oversampling, self.oversampling),
-                self._x_times[-1] / self.oversampling
+                np.repeat(self._y_times / self.oversampling,
+                          self.oversampling),
+                self._y_times[-1] / self.oversampling
                 * np.ones(self.bound_type[1] * self.oversampling)))
 
         elif self.bound_type[0] == 'right_n':
-            self._num_u = self.oversampling * self._num_x + self.bound_type[1]
-            self._u_times = np.concatenate((
-                np.repeat(self._x_times / self.oversampling, self.oversampling),
-                self._x_times[-1] / self.oversampling
+            self._num_y = self.oversampling * self._num_y + self.bound_type[1]
+            self._y_times = np.concatenate((
+                np.repeat(self._y_times / self.oversampling,
+                          self.oversampling),
+                self._y_times[-1] / self.oversampling
                 * np.ones(self.bound_type[1])))
 
         else:
             raise ValueError('The boundary type ' + str(self.bound_type[0])
                              + ' is not implemented!')
 
-    def set_absolute_times(self, absolute_x_times: np.ndarray) -> None:
+    def set_absolute_times(self, absolute_y_times: np.ndarray) -> None:
         """
-        Generate the time_slot duration array 'tau' (here: u_times)
+        Generate the time_slot duration array 'tau' (here: x_times)
 
         This time slices depend on the oversampling of the control variables
         and the boundary conditions. The differences of the absolute times
@@ -373,58 +385,60 @@ class TransferFunction(ABC):
 
         Parameters
         ----------
-        absolute_x_times: Union[np.ndarray, list]
-            Absolute times of the start / end of each time segment.
+        absolute_y_times: Union[np.ndarray, list]
+            Absolute times of the start / end of each time segment for the raw
+            optimization parameters.
 
         """
-        if isinstance(absolute_x_times, list):
-            absolute_x_times = np.array(absolute_x_times)
-        if not isinstance(absolute_x_times, np.ndarray):
+        if isinstance(absolute_y_times, list):
+            absolute_y_times = np.array(absolute_y_times)
+        if not isinstance(absolute_y_times, np.ndarray):
             raise Exception("times must be a list or np.array")
-        if not np.all(np.diff(absolute_x_times) >= 0):
+        if not np.all(np.diff(absolute_y_times) >= 0):
             raise Exception("times must be sorted")
 
-        self._absolute_x_times = absolute_x_times
-        self.set_times(np.diff(absolute_x_times))
+        self._absolute_y_times = absolute_y_times
+        self.set_times(np.diff(absolute_y_times))
 
-    def plot_pulse(self, x: np.ndarray) -> None:
+    def plot_pulse(self, y: np.array) -> None:
         """
         Plot the control amplitudes corresponding to the given optimisation
         variables.
+
+        Parameters
+        ----------
+        y: array, shape (num_y, num_par)
+            Raw optimization parameters.
+
         """
 
-        u = self(x)
+        u = self(y)
         n_padding_start, n_padding_end = self.num_padding_elements
-        for x_per_control, u_per_control in zip(x.T, u.T):
+        for x_per_control, u_per_control in zip(y.T, u.transfer_matrix):
             plt.figure()
-            plt.bar(np.cumsum(self._u_times) - .5 * self._u_times[0],
-                    u_per_control, self._u_times[0])
-            plt.bar(np.cumsum(self._x_times) - .5 * self._x_times[0]
-                    + np.cumsum(self._u_times)[n_padding_start]
-                    - self._u_times[n_padding_start],
-                    x_per_control, self._x_times[0],
+            plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0],
+                    u_per_control, self._y_times[0])
+            plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
+                    + np.cumsum(self._y_times)[n_padding_start]
+                    - self._y_times[n_padding_start],
+                    x_per_control, self._y_times[0],
                     fill=False)
         plt.show()
-        """
-        u = self(x)
-        t = np.asarray(self.u_times[:-1] + self.u_times[1:]) * 0.5
-        dt = np.diff(self.u_times)
-        xt = np.asarray(self.x_times[:-1] + self.x_times[1:]) * 0.5
-        dxt = np.diff(self.x_times)
-        for i in range(self.num_ctrls):
-            plt.bar(t, u[:, i], dt)
-            plt.bar(xt, x[:, i], dxt, fill=False)
-            plt.show()
-        """
 
     @abstractmethod
-    def _make_T(self):
+    def _calculate_transfer_matrix(self):
         """Create the transfer matrix. """
         pass
 
 
 class IdentityTF(TransferFunction):
-    """Identity as transfer function."""
+    """Identity as transfer function.
+
+    See Also
+    --------
+    `TransferFunction`: Abstract base class.
+
+    """
     def __init__(
             self,
             oversampling: int = 1,
@@ -434,24 +448,23 @@ class IdentityTF(TransferFunction):
         super().__init__(
             bound_type=bound_type,
             oversampling=oversampling,
-            num_ctrls=num_ctrls
+            num_ctrls=num_ctrls,
+            offset=offset
         )
         self.name = "Identiy"
-        self.bound_type = bound_type
-        self.oversampling = oversampling
-        self.offset = offset
 
-    def _make_T(self) -> None:
+    def _calculate_transfer_matrix(self) -> None:
+        """See base class. """
         # identity for each oversampling segment
-        transfer_matrix = np.eye(self._num_x)
+        transfer_matrix = np.eye(self._num_y)
         transfer_matrix = np.repeat(transfer_matrix, self.oversampling, axis=0)
 
         # add the padding elements
         padding_start, padding_end = self.num_padding_elements
         transfer_matrix = np.concatenate(
-            (np.zeros((padding_start, self._num_x)),
+            (np.zeros((padding_start, self._num_y)),
              transfer_matrix,
-             np.zeros((padding_end, self._num_x))), axis=0)
+             np.zeros((padding_end, self._num_y))), axis=0)
 
         # add control axis
         transfer_matrix = np.expand_dims(transfer_matrix, axis=2)
@@ -470,6 +483,10 @@ class LinearTF(IdentityTF):
         The factor by which the optimization parameters are multiplied to
         calculate the control amplitudes.
 
+    See Also
+    --------
+    `TransferFunction`: Abstract base class.
+
     """
     def __init__(
             self,
@@ -487,16 +504,20 @@ class LinearTF(IdentityTF):
         )
         self.linear_factor = linear_factor
 
-    def _make_T(self):
+    def _calculate_transfer_matrix(self):
         """See base class. """
         # The parent class creates the identity.
-        super()._make_T()
+        super()._calculate_transfer_matrix()
         self._T *= self.linear_factor
 
 
 class ConcatenateTF(TransferFunction):
     """
     Concatenates two transfer functions.
+
+    This class can be used if there are two transfer functions which are to be
+    applied one after another. For example if first the pulse generation and
+    subsequently a pulse amplification shall be modeled.
 
     Parameters
     ----------
@@ -507,69 +528,67 @@ class ConcatenateTF(TransferFunction):
     tf2: TransferFunction
         Second transfer function. This function operates on the
         output of the first transfer function.
+
+    See Also
+    --------
+    `TransferFunction`: Abstract base class.
+
     """
     def __init__(self, tf1: TransferFunction, tf2: TransferFunction):
-        super().__init__()
+        super().__init__(
+            num_ctrls=tf1.num_ctrls,
+            offset=tf1.offset + tf2.offset,
+            oversampling=tf1.oversampling * tf2.oversampling
+        )
         self.tf1 = tf1
         self.tf2 = tf2
-        self.num_x = tf1._num_x
-        self.num_ctrls = tf1.num_ctrls
-        self.u_times = tf2._u_times
-        self.xtimes = tf1._x_times
-        self.x_max = self.tf1._x_max
-        self.x_min = self.tf2._x_min
+        self.num_x = tf1._num_y
+        self.xtimes = tf1._y_times
+        self.u_times = tf2._y_times
 
-    def __call__(self, x: np.ndarray, *args, **kwargs):
+    def __call__(self, y: np.ndarray, *args, **kwargs):
         """Calls the concatenated transfer functions in sequence."""
-        return self.tf2(self.tf1(x))
+        return self.tf2(self.tf1(y))
 
     @property
-    def T(self):
+    def transfer_matrix(self):
         """The total transfer matrix is the product of the individual ones."""
-        return np.einsum('ijk,jlk->ilk', self.tf2.T, self.tf1.T)
+        return np.einsum('ijk,jlk->ilk',
+                         self.tf2.transfer_matrix,
+                         self.tf1.transfer_matrix)
 
-    def reverse_state(self, amplitudes: np.ndarray = None,
-                      times: np.ndarray = None,
-                      targetfunc: Callable = None) -> np.ndarray:
-        """Calls the reverse_state functions of its members."""
-        intermediate_state = self.tf2.reverse_state(amplitudes=amplitudes,
-                                                    times=times,
-                                                    targetfunc=targetfunc)
-        return self.tf1.reverse_state(amplitudes=intermediate_state,
-                                      times=times, targetfunc=targetfunc)
-
-    def gradient_chain_rule(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.ndarray) -> np.ndarray:
         """Applies the concatenation formula for both transfer functions."""
         intermediate_gradient = self.tf2.gradient_chain_rule(
-            deriv_by_ctrl_amps=deriv_by_ctrl_amps)
-        return self.tf1.gradient_chain_rule(deriv_by_ctrl_amps=intermediate_gradient)
+            deriv_by_transferred_par=deriv_by_transferred_par)
+        return self.tf1.gradient_chain_rule(
+            deriv_by_transferred_par=intermediate_gradient)
 
-    def set_times(self, x_times: np.ndarray) -> None:
+    def set_times(self, y_times: np.ndarray) -> None:
         """
         Sets x_times on the first transfer function and sets the resulting
         u_times on the second transfer function.
 
         Parameters
         ----------
-            x_times: Optional[np.array, list]
-                Time durations of the constant control steps of the optimization
-                variables.
+            y_times: Optional[np.array, list]
+                Time durations of the constant control steps of the raw
+                optimization parameters.
+
         """
-        self.tf1.set_times(x_times)
-        return self.tf2.set_times(x_times=self.tf1._u_times)
+        self.tf1.set_times(y_times)
+        self.tf2.set_times(y_times=self.tf1._y_times)
+        return
 
-    def plot_pulse(self, x: np.ndarray) -> None:
+    def plot_pulse(self, y: np.ndarray) -> None:
         """Calls the plot_pulse routine of the second transfer function."""
-        self.tf2.plot_pulse(self.tf1(x))
+        self.tf2.plot_pulse(self.tf1(y))
 
-    def _make_T(self):
+    def _calculate_transfer_matrix(self):
         """See base class. """
-        self.tf1._make_T()
-        self.tf2._make_T()
-
-    @deprecated
-    def get_xlimit(self):
-        return self.tf1.get_xlimit()
+        self.tf1._calculate_transfer_matrix()
+        self.tf2._calculate_transfer_matrix()
 
 
 class ParallelTF(TransferFunction):
@@ -588,24 +607,29 @@ class ParallelTF(TransferFunction):
         Second transfer function. This function operates on the
         next tf2._num_ctrls number of control pulses.
 
+    See Also
+    --------
+    `TransferFunction`: Abstract base class.
+
     """
 
     def __init__(self, tf1: TransferFunction, tf2: TransferFunction):
         super().__init__(
             num_ctrls=tf1.num_ctrls + tf2.num_ctrls,
-            bound_type=tf1.bound_type,
             oversampling=tf1.oversampling,
             offset=None
         )
+        self.bound_type = tf1.bound_type
+
         self.tf1 = tf1
         self.tf2 = tf2
 
-        assert tf1._num_x == tf2._num_x
-        self._num_x = tf1._num_x
+        assert tf1._num_y == tf2._num_y
+        self._num_y = tf1._num_y
 
         # tf1 and tf2 should have identical times
-        self.u_times = tf1._u_times
-        self.xtimes = tf1._x_times
+        self._y_times = tf1._y_times
+        self._x_times = tf1._x_times
 
         if not tf1.bound_type == tf2.bound_type:
             raise ValueError("The parallized transfer functions must have the "
@@ -615,17 +639,19 @@ class ParallelTF(TransferFunction):
             raise ValueError("The parallized transfer functions must have the "
                              "same oversampling.")
 
-    def _make_T(self):
-        self._T = np.concatenate((self.tf1.T, self.tf2.T), axis=2)
-
-    def set_times(self, x_times: np.ndarray):
+    def _calculate_transfer_matrix(self):
         """See base class. """
-        self.tf1.set_times(x_times)
-        self.tf2.set_times(x_times)
+        self._T = np.concatenate(
+            (self.tf1.transfer_matrix, self.tf2.transfer_matrix), axis=2)
+
+    def set_times(self, y_times: np.ndarray):
+        """See base class. """
+        self.tf1.set_times(y_times)
+        self.tf2.set_times(y_times)
+        self._num_y = self.tf1._num_y
+        self._y_times = self.tf1._y_times
         self._num_x = self.tf1._num_x
         self._x_times = self.tf1._x_times
-        self._num_u = self.tf1._num_u
-        self._u_times = self.tf1._u_times
 
 
 class CustomTF(TransferFunction):
@@ -633,17 +659,17 @@ class CustomTF(TransferFunction):
     This class implements a linear transfer function.
 
     The action is fully described by the transfer function and a constant
-    offset.
+    offset, given at the initialization of the instance.
 
     Parameters
     ----------
-        T: np.ndarray, shape (num_u, num_x, num_ctrl)
+        transfer_function: np.array, shape (num_x, num_y, num_par)
             Constant transfer function.
 
         offset: float
             Constant offset.
 
-        u_times: np.ndarray, shape (num_u)
+        u_times: np.array, shape (num_x)
             Time slices of the control amplitudes. If they are not explicitly
             given, they are constructed from oversampling and bound_type.
 
@@ -655,6 +681,10 @@ class CustomTF(TransferFunction):
             If the oversampling is not explicitly given, it is constructed from
             the bound_type and the transfer matrix.
 
+    See Also
+    --------
+    `TransferFunction`: Abstract base class.
+
 
     TODO:
         * does it make sense so set the utimes explicitly? breakes the usual
@@ -662,8 +692,8 @@ class CustomTF(TransferFunction):
 
     """
     def __init__(self,
-                 T: np.ndarray,
-                 u_times: Optional[np.ndarray] = None,
+                 transfer_function: np.array,
+                 u_times: Optional[np.array] = None,
                  bound_type: Optional[Tuple] = None,
                  oversampling: Optional[int] = None,
                  offset: Optional[float] = None,
@@ -674,19 +704,19 @@ class CustomTF(TransferFunction):
             offset=offset,
             num_ctrls=num_ctrls
         )
-        self._T = T
-        self._num_x = T.shape[1]
-        self._num_u = T.shape[0]
+        self._T = transfer_function
+        self._num_x = transfer_function.shape[1]
+        self._num_u = transfer_function.shape[0]
         self.u_times = u_times
         self.bound_type = bound_type
         self.oversampling = oversampling
 
     @property
-    def T(self) -> np.ndarray:
+    def transfer_matrix(self) -> np.ndarray:
         """See base class."""
         return self._T
 
-    def set_times(self, x_times: np.ndarray) -> None:
+    def set_times(self, y_times: np.ndarray) -> None:
         """See base class."""
         if self.u_times is None:
             if self.oversampling is None:
@@ -711,15 +741,15 @@ class CustomTF(TransferFunction):
                     raise ValueError('Unknown boundary type:'
                                      + str(self.bound_type[0]))
 
-            super().set_times(x_times)
+            super().set_times(y_times)
         else:
-            x_times = np.squeeze(x_times)
-            self.x_times = x_times
-            if len(x_times) != self._num_x:
+            y_times = np.squeeze(y_times)
+            self.x_times = y_times
+            if len(y_times) != self._num_x:
                 raise ValueError('Trying to set x_times, which do not fit the'
                                  'dimension of the transfer function.')
 
-    def _make_T(self):
+    def _calculate_transfer_matrix(self):
         """See base class. """
         if self._T is None:
             raise ValueError("The custom transfer function cannot create its"
@@ -734,15 +764,20 @@ def exp_saturation(t: float, t_rise: float, val_1: float, val_2: float) -> int:
 
 class ExponentialTF(TransferFunction):
     """
-    This transfer function models smooths the control amplitudes by exponential
+    This transfer function model smooths the control amplitudes by exponential
     saturation.
 
-    The functionality is meant to model the finite rise time of voltage sources.
+    The functionality is meant to model the finite rise time of voltage
+    sources.
+
+    See Also
+    --------
+    `TransferFunction`: Abstract base class.
+
 
     TODO:
         * add initial and final level. Currently fixed at 0 (or the offset)
 
-    See also base class.
 
     """
 
@@ -758,17 +793,17 @@ class ExponentialTF(TransferFunction):
         self.offset = offset
 
     @property
-    def T(self) -> np.ndarray:
+    def transfer_matrix(self) -> np.ndarray:
         """See base class."""
         if self._T is None:
-            self._make_T()
+            self._calculate_transfer_matrix()
         return self._T
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
+    def __call__(self, y: np.ndarray) -> np.ndarray:
         """See base class."""
         if self._T is None:
-            self._make_T()
-        u = np.einsum('ijk,jk->ik', self._T, x)
+            self._calculate_transfer_matrix()
+        u = np.einsum('ijk,jk->ik', self._T, y)
         if self.offset is not None:
             u += self.offset
         return u
@@ -781,12 +816,12 @@ class ExponentialTF(TransferFunction):
 
         x_tau = self.xtimes[1] - self.xtimes[0]
         if self.bound_type is None:
-            y = np.zeros((self._num_x * self.oversampling))
+            y = np.zeros((self._num_y * self.oversampling))
         elif self.bound_type[0] == 'n':
-            y = np.zeros((self._num_x * self.oversampling + self.bound_type[1],
+            y = np.zeros((self._num_y * self.oversampling + self.bound_type[1],
                           self.num_ctrls))
         elif self.bound_type[0] == 'x':
-            y = np.zeros(((self._num_x + self.bound_type[1]) * self.oversampling,
+            y = np.zeros(((self._num_y + self.bound_type[1]) * self.oversampling,
                           self.num_ctrls))
         else:
             raise ValueError('The boundary type ' + str(self.bound_type[0])
@@ -797,7 +832,7 @@ class ExponentialTF(TransferFunction):
                                          self.awg_rise_time,
                                          start_value[k], x[0, k])
         for k in range(self.num_ctrls):
-            for i in range(1, self._num_x):
+            for i in range(1, self._num_y):
                 for j in range(self.oversampling):
                     y[i * self.oversampling + j, k] = \
                         exp_saturation((j + 1) / self.oversampling * x_tau,
@@ -805,14 +840,14 @@ class ExponentialTF(TransferFunction):
                                        x[i - 1, k], x[i, k])
             if self.bound_type[0] == 'n':
                 for i in range(self.bound_type[1]):
-                    y[self._num_x * self.oversampling + i] = \
+                    y[self._num_y * self.oversampling + i] = \
                         exp_saturation((i + 1) / self.oversampling * x_tau,
                                        self.awg_rise_time, x[-1, k],
                                        self.stop_value[k])
             elif self.bound_type[0] == 'x':
                 for i in range(self.bound_type[1]):
                     for j in range(self.oversampling):
-                        y[self._num_x * self.oversampling
+                        y[self._num_y * self.oversampling
                           + i * self.oversampling + j] = \
                             exp_saturation(((j + 1) / self.oversampling + i)
                                            * x_tau, self.awg_rise_time,
@@ -827,25 +862,25 @@ class ExponentialTF(TransferFunction):
         n_padding_start, n_padding_end = self.num_padding_elements
         for x_per_control, u_per_control in zip(x.T, u.T):
             plt.figure()
-            plt.bar(np.cumsum(self._u_times) - .5 * self._u_times[0],
-                    u_per_control, self._u_times[0])
-            plt.bar(np.cumsum(self._x_times) - .5 * self._x_times[0]
-                    + np.cumsum(self._u_times)[n_padding_start]
-                    - self._u_times[n_padding_start],
-                    x_per_control, self._x_times[0],
+            plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0],
+                    u_per_control, self._y_times[0])
+            plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
+                    + np.cumsum(self._y_times)[n_padding_start]
+                    - self._y_times[n_padding_start],
+                    x_per_control, self._y_times[0],
                     fill=False)
         plt.show()
 
-    def _make_T(self) -> None:
+    def _calculate_transfer_matrix(self) -> None:
         """Calculate the transfer matrix as function of the oversampling, the
         boundary conditions, the set x_times and the awg rise time.
 
         Currently only equal time spacing is supported!"""
 
         num_padding_start, num_padding_end = self.num_padding_elements
-        dudx = np.zeros(shape=(self._num_u - num_padding_start, self._num_x))
+        dudx = np.zeros(shape=(self._num_y - num_padding_start, self._num_y))
 
-        x_tau = self._x_times[0]
+        x_tau = self._y_times[0]
 
         # calculate blocks
         exp = np.zeros((self.oversampling,))
@@ -861,7 +896,7 @@ class ExponentialTF(TransferFunction):
         dudx[self.oversampling:2 * self.oversampling, 0] = exp
 
         # main part
-        for i in range(1, self._num_x - 1):
+        for i in range(1, self._num_y - 1):
             dudx[i * self.oversampling:(i + 1) *
                  self.oversampling, i] = one_minus_exp
 
@@ -869,29 +904,29 @@ class ExponentialTF(TransferFunction):
                  self.oversampling, i] = exp
 
         # at the end
-        dudx[(self._num_x - 1) * self.oversampling:self._num_x *
-                                                   self.oversampling, self._num_x - 1] = one_minus_exp
+        dudx[(self._num_y - 1) * self.oversampling:self._num_y *
+                                                   self.oversampling, self._num_y - 1] = one_minus_exp
 
         for i in range(num_padding_end):
             t = (i + 1) / self.oversampling * x_tau
-            dudx[self._num_x * self.oversampling + i, -1] = np.exp(
+            dudx[self._num_y * self.oversampling + i, -1] = np.exp(
                 -(t / self.awg_rise_time))
 
-        dudx = np.concatenate((np.zeros(shape=(num_padding_start, self._num_x)),
+        dudx = np.concatenate((np.zeros(shape=(num_padding_start, self._num_y)),
                               dudx), axis=0)
 
         dudx = np.repeat(
             np.expand_dims(dudx, axis=2), repeats=self.num_ctrls, axis=2)
         self._T = dudx
 
-    def gradient_chain_rule(self, deriv_by_ctrl_amps: np.ndarray) -> np.ndarray:
+    def gradient_chain_rule(self, deriv_by_transferred_par: np.ndarray) -> np.ndarray:
         """See base class. """
         if self._T is None:
-            self._make_T()
+            self._calculate_transfer_matrix()
 
         # T: shape (num_u, num_x, num_ctrl)
         # deriv_by_ctrl_amps: shape (num_u, num_f, num_ctrl)
-        return np.einsum('ijk,ifk->jfk', self._T, deriv_by_ctrl_amps)
+        return np.einsum('ijk,ifk->jfk', self._T, deriv_by_transferred_par)
 
     @needs_refactoring
     def reverse_state(self, amplitudes=None, times=None, targetfunc=None):
@@ -916,8 +951,8 @@ class ExponentialTF(TransferFunction):
             oversampling = int(round(xtau / tau))
             num_x = times.size // oversampling
         elif amplitudes is not None:
-            oversampling = amplitudes.size // num_ctrls // self._num_x
-            num_x = self._num_x
+            oversampling = amplitudes.size // num_ctrls // self._num_y
+            num_x = self._num_y
         elif targetfunc is not None:
             raise NotImplementedError
         else:
@@ -989,36 +1024,36 @@ class Gaussian(TransferFunction):
     def make_T(self):
         """Calculate the transfer matrix. """
         Dxt = (self.xtimes[1] - self.xtimes[0]) * 0.25
-        self._T = np.zeros((len(self._u_times) - 1, self._num_x, self.num_ctrls))
-        self.cte = np.zeros((len(self._u_times) - 1, self.num_ctrls))
-        time = (self._u_times[:-1] + self._u_times[1:]) * 0.5
+        self._T = np.zeros((len(self._y_times) - 1, self._num_y, self.num_ctrls))
+        self.cte = np.zeros((len(self._y_times) - 1, self.num_ctrls))
+        time = (self._y_times[:-1] + self._y_times[1:]) * 0.5
         xtime = (self.xtimes[:-1] + self.xtimes[1:]) * 0.5
         for j, t in enumerate(time):
-            self.cte[j] = (0.5 - 0.5 * erf(self.omega * 0.5 * t)) \
+            self.cte[j] = (0.5 - 0.5 * scipy.special.erf(self.omega * 0.5 * t)) \
                           * self.boundary[0]
-            self.cte[j] += (0.5 + 0.5 * erf(
+            self.cte[j] += (0.5 + 0.5 * scipy.special.erf(
                 self.omega * 0.5 * (t - self.xtimes[-1]))) * self.boundary[1]
             for k, xt in enumerate(xtime):
                 T = (t - xt) * 0.5
-                self._T[j, k] = (erf(self.omega * (T + Dxt))
-                                 - erf(self.omega * (T - Dxt))) * 0.5
+                self._T[j, k] = (scipy.special.erf(self.omega * (T + Dxt))
+                                 - scipy.special.erf(self.omega * (T - Dxt))) * 0.5
 
-    def __call__(self, x):
+    def __call__(self, y):
         if self._T is None:
             self.make_T()
         try:
-            return np.einsum('ijk,jk->ik', self._T, x) + self.cte
+            return np.einsum('ijk,jk->ik', self._T, y) + self.cte
         except ValueError:
             print('error')
 
     @property
-    def T(self):
+    def transfer_matrix(self):
         """See base class. """
         if self._T is None:
             self.make_T()
         return self._T
 
-    def gradient_chain_rule(self, deriv_by_ctrl_amps):
+    def gradient_chain_rule(self, deriv_by_transferred_par):
         """See base class. """
         # index i over the u_values
         # index j over the x_values
@@ -1027,7 +1062,7 @@ class Gaussian(TransferFunction):
         # index l inserted for the cost functions
         try:
             # return np.einsum('ijk,ik->jk', self._T, gradient)
-            return np.einsum('ijk,...i->...j', self._T, deriv_by_ctrl_amps)
+            return np.einsum('ijk,...i->...j', self._T, deriv_by_transferred_par)
         except ValueError:
             print('error')
 

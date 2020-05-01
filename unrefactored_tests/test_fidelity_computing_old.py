@@ -39,7 +39,7 @@ h_control = np.asarray([[.5 * 2 * math.pi * qutip.control_2.matrix.ControlDense(
              for _ in range(n_t)])
 num_ctrl = 2
 ctrl_amps = np.asarray([[.5] * 50 + [0] * 50 + [.25] * 50 + [.25] * 50,
-                       [0] * 50 + [.5] * 50 + [0] * 50 + [0] * 50]).T
+                       [0] * 50 + [.5] * 50 + [0] * 50 + [0] * 50]).transfer_matrix
 ctrl_amps /= 50
 tau = [1] * n_t
 initial_state = qutip.control_2.matrix.ControlDense(np.eye(2))

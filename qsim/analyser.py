@@ -49,7 +49,7 @@ class Analyser:
         iteration.
 
         """
-        df = pd.DataFrame(data=np.abs(np.asarray(self.data.costs[n]).T),
+        df = pd.DataFrame(data=np.abs(np.asarray(self.data.costs[n]).transfer_matrix),
                           index=self.data.indices)
         df.T.plot(logy=True)
 

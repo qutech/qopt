@@ -47,12 +47,12 @@ class ExponentialTFOld(transfer_function.TransferFunction):
             self.stop_value = stop_value
 
     @property
-    def T(self):
+    def transfer_matrix(self):
         if self._T is None:
             self.make_T()
         return self._T
 
-    def __call__(self, x):
+    def __call__(self, y):
         x_tau = self.xtimes[1] - self.xtimes[0]
         if self.boundary[0] == 'n':
             y = np.zeros((self.num_x * self.oversampling + self.boundary[1],
@@ -67,19 +67,19 @@ class ExponentialTFOld(transfer_function.TransferFunction):
             for j in range(self.oversampling):
                 y[j, k] = exp_saturation((j + 1) / self.oversampling * x_tau,
                                          self.awg_rise_time,
-                                         self.start_value[k], x[0, k])
+                                         self.start_value[k], y[0, k])
         for k in range(self.num_ctrls):
             for i in range(1, self.num_x):
                 for j in range(self.oversampling):
                     y[i * self.oversampling + j, k] = \
                         exp_saturation((j + 1) / self.oversampling * x_tau,
                                        self.awg_rise_time,
-                                       x[i - 1, k], x[i, k])
+                                       y[i - 1, k], y[i, k])
             if self.boundary[0] == 'n':
                 for i in range(self.boundary[1]):
                     y[self.num_x * self.oversampling + i] = \
                         exp_saturation((i + 1) / self.oversampling * x_tau,
-                                       self.awg_rise_time, x[-1, k],
+                                       self.awg_rise_time, y[-1, k],
                                        self.stop_value[k])
             elif self.boundary[0] == 'x':
                 for i in range(self.boundary[1]):
@@ -88,7 +88,7 @@ class ExponentialTFOld(transfer_function.TransferFunction):
                           + i * self.oversampling + j] = \
                             exp_saturation(((j + 1) / self.oversampling + i)
                                            * x_tau, self.awg_rise_time,
-                                           x[-1, k], self.stop_value[k])
+                                           y[-1, k], self.stop_value[k])
 
         return y
 
@@ -107,12 +107,12 @@ class ExponentialTFOld(transfer_function.TransferFunction):
         times[-1] = x_times[-1]
         self.u_times = times
 
-    def plot_pulse(self, x):
+    def plot_pulse(self, y):
         """
         Plot the control amplitudes corresponding
         to the given optimisation variables.
         """
-        u = self(x)
+        u = self(y)
         dt = self.u_times[1] - self.u_times[0]
         dxt = self.xtimes[1] - self.xtimes[0]
 
@@ -133,7 +133,7 @@ class ExponentialTFOld(transfer_function.TransferFunction):
 
         for i in range(self.num_ctrls):
             plt.bar(times[:-1] + .5 * dt, u[:, i], dt)
-            plt.bar(self.xtimes[:-1] + .5 * dxt, x[:, i], dxt, fill=False)
+            plt.bar(self.xtimes[:-1] + .5 * dxt, y[:, i], dxt, fill=False)
             plt.show()
 
     def make_T(self):
@@ -313,7 +313,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         # test application of the transfer function
         x = np.asarray([[1, 3, 2, 4],
-                        [1, 3, 2, 4]]).T
+                        [1, 3, 2, 4]]).transfer_matrix
         u = ex(x)
 
         self.assertAlmostEqual(
@@ -337,7 +337,7 @@ class TestTransferFunctions(unittest.TestCase):
             oversampling * (num_x + 2 * bound_type[1]), 1)
         grad = ex.gradient_chain_rule(test_dfdu)
         np.testing.assert_array_almost_equal(grad.squeeze(),
-                                             ex.T.transpose((1, 0, 2)))
+                                             ex.transfer_matrix.transpose((1, 0, 2)))
 
         # for visual test
         # ex.plot_pulse(x[0])
@@ -360,7 +360,7 @@ class TestTransferFunctions(unittest.TestCase):
         x = np.random.rand(num_x).reshape((num_x, 1))
         u = gaussian_tf(x)
 
-        gaussian_tf._make_T()
+        gaussian_tf._calculate_transfer_matrix()
         gaussian_tf.T.squeeze()
 
         u_emulated = np.zeros(shape=(num_x * oversampling,))
@@ -443,4 +443,4 @@ class TestTransferFunctions(unittest.TestCase):
         ex_2ctrl.set_times(x_times)
         parallel_tf.set_times(x_times)
 
-        assert np.all(ex_2ctrl.T == parallel_tf.T)
+        assert np.all(ex_2ctrl.transfer_matrix == parallel_tf.transfer_matrix)
