@@ -1,3 +1,24 @@
+# -*- coding: utf-8 -*-
+# =============================================================================
+#     filter_functions
+#     Copyright (C) 2020 Julian Teske, Forschungszentrum Juelich
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+#     Contact email: j.teske@fz-juelich.de
+# =============================================================================
+
 """
 Utility functions for the optimal control package.
 
@@ -14,6 +35,17 @@ Functions
 
 :func:`closest_unitary`
     Calculates the closest unitary matrix to a square matrix.
+
+Notes
+-----
+The implementation was inspired by the optimal control package of QuTiP [1]_
+(Quantum Toolbox in Python)
+
+References
+----------
+.. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
+ for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
+[DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 
