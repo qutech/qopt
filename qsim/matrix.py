@@ -3,24 +3,33 @@ This file contains a matrix class which implements the computationally
 expensive numeric calculations.
 
 The matrices can be stored and handled either as dense or sparse
-matrices. The most frequently used and computationally expensive function is the
-matrix exponential and its derivative. These operations are required to
+matrices for the sake of encapsulation of the numeric methods.
+The most frequently used and computationally expensive function is
+the matrix exponential and its derivative. These operations are required to
 calculate the analytic solution of the Schroedinger and Lindblad master
 equation.
 
 
 Classes
 -------
-OperatorMatrix:
-    Abstract base class which defines the interface and implements standard
-    functions.
+:class:`OperatorMatrix`
+    Abstract base class.
 
-OperatorDense
-    The dense control matrices are based on numpy arrays.
+:class:`OperatorDense`
+    Dense control matrices, which are based on numpy arrays.
 
-OperatorSparse
-    The sparse control matrices are based on the QuTiP fast CSR sparse matrices
-    which in turn inherit from the scipy CSR sparse matrices.
+:class:`OperatorSparse`
+    To be implemented
+
+
+Functions
+---------
+:func:`convert_unitary_to_super_operator`
+    Converts a unitary propagator into a super operator in the lindblad
+    formalism.
+
+:func:`closest_unitary`
+    Calculates the closest unitary propagator for a squared matrix.
 
 """
 
@@ -34,24 +43,18 @@ from typing import Tuple, Optional, Union, Sequence
 
 from qutip import Qobj
 
-# TODO: You must be kidding me! How is this globally defined?
-matrix_opt = {
-    "fact_mat_round_prec": 1e-10,
-    "_mem_eigen_adj": False,
-    "_mem_prop": False,
-    "epsilon": 1e-6,
-    "method": "Frechet",
-    "sparse2dense": False,
-    "sparse_exp": True}
 
 VALID_SCALARS = [int, float, complex, np.int8, np.int16, np.int32, np.int64,
                  np.float16, np.float32, np.float64, np.complex64,
                  np.complex128]
+# These types are recognised as scalars in the scalar multiplication with
+# matrices.
 
 
 class OperatorMatrix(ABC):
     """
-    The abstract base class of the control matrix for the qutip control package.
+    The abstract base class of the operator matrix for the qsim control
+    package.
 
     It offers an identical interface to use sparse and dense matrices and has
     hence the limitations of both representations in terms of usability.
@@ -164,10 +167,26 @@ TODO:
         self._prop = None
 
     def __add__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        """
-        Addition with other control matrices or fitting data.
+        """Overloaded addition.
 
-        See __iadd__ of subclasses which is used.
+        Add Matrix of the same dimension or scalar value to each element.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then the value is added to each matrix element.
+
+        Returns
+        -------
+        out:
+            New instance of the same type containing the result of the
+            addition.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
 
         """
         out = self.copy()
@@ -176,37 +195,171 @@ TODO:
 
     @abstractmethod
     def __iadd__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        """In place addition. """
-        return self
+        """Overloaded in place addition.
+
+        Add Matrix of the same dimension or scalar value to each element.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then the value is added to each matrix element.
+
+        Returns
+        -------
+        self:
+            The matrix itself is returned as the operation is executed in
+            place.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
+        pass
 
     @abstractmethod
     def __mul__(self, other: Union['OperatorMatrix', complex, float, int,
                                    np.generic]) -> 'OperatorMatrix':
-        """Matrix or scalar multiplication. """
-        return self
+        """Overloaded multiplication.
+
+        Matrix multiplication with another matrix or scalar multiplication with
+        a scalar value.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then each matrix element is multiplied with the scalar value.
+            Otherwise the matrix product is applied.
+
+        Returns
+        -------
+        self:
+            The matrix itself is returned as the operation is executed in
+            place.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
+        pass
 
     @abstractmethod
     def __imul__(self, other: Union['OperatorMatrix', complex, float, int,
                                     np.generic]) -> 'OperatorMatrix':
-        """In place matrix or scalar multiplication. """
+        """Overloaded in place multiplication.
+
+        Matrix multiplication with another matrix or scalar multiplication with
+        a scalar value in place.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then each matrix element is multiplied with the scalar value.
+            Otherwise the matrix product is applied.
+
+        Returns
+        -------
+        out:
+            New instance of the same type containing the result of the
+            multiplication.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
         pass
 
     @abstractmethod
     def __rmul__(self, other: Union['OperatorMatrix', complex, float, int,
                                     np.generic]) -> 'OperatorMatrix':
-        """Reflective matrix or scalar multiplication. """
-        return self
+        """Overloaded reflected multiplication.
 
-    @abstractmethod
-    def __isub__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        """In place subtraction. """
+        Matrix multiplication with another matrix or scalar multiplication with
+        a scalar value.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then each matrix element is multiplied with the scalar value.
+            Otherwise the matrix product is applied.
+
+        Returns
+        -------
+        out:
+            New instance of the same type containing the result of the
+            multiplication.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
         pass
 
     def __sub__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        """Subtraction of other control matrix or fitting data. """
+        """Overloaded subtraction.
+
+        Subtract Matrix of the same dimension or scalar value from each
+        element.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then the value is added to each matrix element.
+
+        Returns
+        -------
+        out:
+            New instance of the same type containing the result of the
+            addition.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
         out = self.copy()
         out -= other
         return out
+
+    @abstractmethod
+    def __isub__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+        """Overloaded in place subtraction.
+
+        Subtract Matrix of the same dimension or scalar value from each
+        element.
+
+        Parameters
+        ----------
+        other: ControlMatrix or numpy array or scalar
+            If other is a scalar value (int, float, complex, np.complex128)
+            then the value is added to each matrix element.
+
+        Returns
+        -------
+        out:
+            New instance of the same type containing the result of the
+            addition.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
+        pass
 
     @property
     def shape(self) -> Tuple:
@@ -214,20 +367,32 @@ TODO:
         return self.data.shape
 
     @abstractmethod
-    def __getitem__(self, item: Tuple) -> complex:
-        """Returns the corresponding matrix element. """
+    def __getitem__(self, index: Tuple) -> complex:
+        """Returns the corresponding matrix element.
+
+        Parameters
+        ----------
+        index: tuple of int, length: 2
+            Index describing an entry in the marix.
+
+        Returns
+        -------
+        value: complex
+            Matrix element at the position described by the index.
+
+        """
         pass
 
     @abstractmethod
-    def dag(self, copy_: bool) -> Optional['OperatorMatrix']:
+    def dag(self, copy_: bool = True) -> Optional['OperatorMatrix']:
         """
         Adjoint (dagger) of the matrix.
 
         Parameters
         ----------
-        copy_: bool
+        copy_: bool, optional
             If false, then the operation is executed inplace. Otherwise returns
-            a new instance.
+            a new instance. Defaults to True.
 
         Returns
         -------
@@ -239,7 +404,14 @@ TODO:
 
     @abstractmethod
     def tr(self) -> complex:
-        """Trace of the matrix. """
+        """Trace of the matrix.
+
+        Returns
+        -------
+        trace: float
+            Trace of the matrix.
+
+        """
         return 0j
 
     @abstractmethod
@@ -249,9 +421,9 @@ TODO:
 
         Parameters
         ----------
-        copy_: bool
+        copy_: bool, optional
             If false, then the operation is executed inplace. Otherwise returns
-            a new instance.
+            a new instance. Defaults to True.
 
         Returns
         -------
@@ -271,9 +443,9 @@ TODO:
 
         Parameters
         ----------
-        copy_: bool
+        copy_: bool, optional
             If false, then the operation is executed inplace. Otherwise returns
-            a new instance.
+            a new instance. Defaults to True.
 
         Returns
         -------
@@ -284,7 +456,25 @@ TODO:
 
     @abstractmethod
     def kron(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        """Kronecker matrix product. """
+        """
+        Computes the kronecker matrix product with another matrix.
+
+        Parameters
+        ----------
+        other: OperatorMatrix or np.ndarray
+            Second factor of the kronecker product.
+
+        Returns
+        -------
+        out: OperatorMatrix
+            Operator matrix of the same type containing the product.
+
+        Raises
+        ------
+        ValueError:
+            If the operation is not defined for the input type.
+
+        """
         pass
 
     @abstractmethod
@@ -294,7 +484,7 @@ TODO:
 
         Returns
         -------
-        out: np.ndarray
+        out: np.array
             The flattened control matrix as one dimensional numpy array.
 
         """
@@ -317,32 +507,14 @@ TODO:
 
         eig_vecs: array of shape (n, n)
             Right Eigenvectors. The normalized eigenvalue eig_vals[i]
-            coresponds to the eigenvector eig_vec[:,i].
+            corresponds to the eigenvector eig_vec[:,i].
 
         """
         pass
 
     @abstractmethod
-    def prop(self, tau: complex) -> 'OperatorMatrix':
-        """Propagator in the time slice.
-
-        Parameters
-        ----------
-        tau : double
-            Duration of the time slice.
-
-        Returns
-        -------
-        prop : OperatorMatrix
-            Solution to the Schrödinger equation: exp(self*tau)
-
-        Todo:
-            * Is this really useful?
-        """
-        pass
-
-    @abstractmethod
-    def exp(self, tau: complex = 1,
+    def exp(self,
+            tau: complex = 1,
             method: Optional[str] = None,
             is_skew_hermitian: bool = False) -> 'OperatorMatrix':
         """
@@ -370,7 +542,9 @@ TODO:
         pass
 
     @abstractmethod
-    def dexp(self, direction: 'OperatorMatrix', tau: complex = 1,
+    def dexp(self,
+             direction: 'OperatorMatrix',
+             tau: complex = 1,
              compute_expm: bool = False,
              method: Optional[str] = None,
              is_skew_hermitian: bool = False) \
@@ -384,7 +558,7 @@ TODO:
 
         tau : complex
             A scalar by which the matrix is multiplied before exponentiation.
-            This can be i. e. the lenght of a time segment if a propagator is
+            This can be i. e. the length of a time segment if a propagator is
             calculated.
 
         compute_expm : bool
@@ -394,15 +568,15 @@ TODO:
             The method by which the exponential is calculated.
 
         is_skew_hermitian : bool
-            If set to true, the matrix is expected to be Hermitian, which allows
-            to speed up the spectral decomposition.
+            If set to true, the matrix is expected to be hermitian, which
+            allows to speed up the spectral decomposition.
 
         Returns
         -------
         prop : OperatorMatrix
             The matrix exponential: exp(self*tau) (Optional, if compute_expm)
 
-        derr : OperatorMatrix
+        derivative_prop : OperatorMatrix
             The frechet derivative of the matrix exponential:
             (exp((self+direction*dt)*tau)-exp(self*tau)) / dt
         """
@@ -433,8 +607,8 @@ TODO:
 
         Returns
         -------
-        truncated_matrix: 'ControlMatrix'
-            The truncated control matrix.
+        truncated_matrix: 'OperatorMatrix'
+            The truncated operator matrix.
 
         """
         pass
@@ -457,13 +631,9 @@ class DenseOperator(OperatorMatrix):
     data: numpy array
         The data stored in a two dimensional numpy array
 
-    Methods
-    -------
-    _spectral_decomp:
-        Applies the spectral decomposition of the stored matrix.
-
-    _eig_vec_adj
-        Returns the adjoint eigenvectors.
+    See Also
+    --------
+    `OperatorMatrix`: Abstract base class.
 
     """
 
@@ -493,28 +663,8 @@ class DenseOperator(OperatorMatrix):
 
     def __imul__(self, other: Union[
         'DenseOperator', complex, float, int, np.generic]) -> 'DenseOperator':
-        """
-        In place matrix or scalar multiplication.
+        """See base class. """
 
-        Parameters
-        ----------
-        other: ControlMatrix or numpy array or scalar
-            If other is a scalar value (int, float, complex, np.complex128)
-            then the matrix is multiplied by this scalar value.
-            If other is another instance of control matrix of a numpy array,
-            then a matrix multiplication is applied.
-
-        Returns
-        -------
-        self:
-            Returns itself because the multiplication is executed in place.
-
-        Raises
-        ------
-        NotImplementedError:
-            If the implementation with objects of type other is not implemented.
-
-        """
         if type(other) == DenseOperator:
             np.matmul(self.data, other.data, out=self.data)
         elif type(other) == np.ndarray:
@@ -527,29 +677,8 @@ class DenseOperator(OperatorMatrix):
 
     def __mul__(self, other: Union['DenseOperator', complex, float, int,
                                    np.generic]) -> 'DenseOperator':
-        """
-        Matrix or scalar multiplication.
+        """See base class. """
 
-        Parameters
-        ----------
-        other: ControlMatrix or numpy array or scalar
-            If other is a scalar value (int, float, complex, np.complex128)
-            then the matrix is multiplied by this scalar value.
-            If other is another instance of control matrix of a numpy array,
-            then a matrix multiplication is applied.
-
-        Returns
-        -------
-        out:
-            New instance of ControlDense containing the result of the
-            multiplication.
-
-        Raises
-        ------
-        NotImplementedError:
-            If the implementation with objects of type other is not implemented.
-
-        """
         if type(other) in VALID_SCALARS:
             out = self.copy()
             out *= other
@@ -565,28 +694,7 @@ class DenseOperator(OperatorMatrix):
 
     def __rmul__(self, other: Union['DenseOperator', complex, float, int,
                                     np.generic]) -> 'DenseOperator':
-        """
-        Reflective matrix or scalar multiplication.
-
-        Parameters
-        ----------
-        other: numpy array or scalar
-            If other is a scalar value (int, float, complex, np.complex128)
-            then the matrix is multiplied by this scalar value.
-            If other is a numpy array, then a matrix multiplication is applied.
-
-        Returns
-        -------
-        out:
-            New instance of ControlDense containing the result of the
-            multiplication.
-
-        Raises
-        ------
-        NotImplementedError:
-            If the operation is not implemented for objects of others type.
-
-        """
+        """See base class. """
         if type(other) == np.ndarray:
             out = self.copy()
             np.matmul(other, self.data, out=out.data)
@@ -598,28 +706,7 @@ class DenseOperator(OperatorMatrix):
         return out
 
     def __iadd__(self, other: 'DenseOperator') -> 'DenseOperator':
-        """
-        In place addition.
-
-        Parameters
-        ----------
-        other: ControlDense or numpy array
-            The addition is only implemented for other instances of ControlDense
-            or numpy arrays of the same dimensions.
-            Note that scalars are not interpreted as multiples of the identity
-            matrix as it is the case for qutip Qobj!
-
-        Returns
-        -------
-        self:
-            As the operation is executed in place.
-
-        Raises
-        ------
-        NotImplementedError:
-            If the operation is not implemented for objects of others type.
-
-        """
+        """See base class. """
         if type(other) is DenseOperator:
             self.data += other.data
         elif type(other) == np.ndarray:
@@ -629,28 +716,7 @@ class DenseOperator(OperatorMatrix):
         return self
 
     def __isub__(self, other: 'DenseOperator') -> 'DenseOperator':
-        """
-        In place subtraction.
-
-        Parameters
-        ----------
-        other: ControlDense or numpy array
-            The subtraction is only implemented for other instances of
-            ControlDense or numpy arrays of the same dimensions.
-            Note that scalars are not interpreted as multiples of the identity
-            matrix as it is the case for qutip Qobj!
-
-        Returns
-        -------
-        self:
-            As the operation is executed in place.
-
-        Raises
-        ------
-        NotImplementedError:
-            If the operation is not implemented for objects of others type.
-
-        """
+        """See base class. """
 
         if type(other) is DenseOperator:
             self.data -= other.data
@@ -660,9 +726,9 @@ class DenseOperator(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return self
 
-    def __getitem__(self, item: Tuple) -> complex:
+    def __getitem__(self, index: Tuple) -> complex:
         """See base class. """
-        return self.data[item]
+        return self.data[index]
 
     def dag(self, copy_: bool = True) -> Optional['DenseOperator']:
         """See base class. """
@@ -704,25 +770,7 @@ class DenseOperator(OperatorMatrix):
         return self.data.trace()
 
     def kron(self, other: 'DenseOperator') -> 'DenseOperator':
-        """
-        Computes the kronecker matrix product with another matrix.
-
-        Parameters
-        ----------
-        other: DenseOperator or np.ndarray
-            Second factor of the kronecker product.
-
-        Returns
-        -------
-        out: DenseOperator
-            Dense control matrix containing the product.
-
-        Raises
-        ------
-        ValueError:
-            If other is not of type ControlDense or np.ndarray.
-
-        """
+        """See base class. """
         if type(other) == DenseOperator:
             out = np.kron(self.data, other.data)
         elif type(other) == np.ndarray:
@@ -745,6 +793,11 @@ class DenseOperator(OperatorMatrix):
 
         is_skew_hermitian : bool
             If True, the matrix is expected to be skew hermitian.
+
+        Returns
+        -------
+        exp: DenseOperator
+            Dense operator matrix containing the matrix exponential.
 
         """
         if is_skew_hermitian:
@@ -781,6 +834,15 @@ class DenseOperator(OperatorMatrix):
 
         compute_expm : bool
             If True, the matrix exponential is calculated as well.
+
+        Returns
+        -------
+        exp: DenseOperator
+            The matrix exponential. Only returned if compute_expm is set to
+            True.
+
+        dexp: DenseOperator
+            Frechet derivative of the matrix exponential.
 
         """
         if is_skew_hermitian:
@@ -861,11 +923,6 @@ class DenseOperator(OperatorMatrix):
             If the method given as parameter is not implemented.
 
         """
-        if method is None:
-            method = matrix_opt['method']
-
-        if matrix_opt["_mem_prop"] and self._prop is not None:
-            return self._prop
 
         if method == "spectral":
             prop = self._exp_diagonalize(tau=tau,
@@ -897,9 +954,6 @@ class DenseOperator(OperatorMatrix):
             raise ValueError("Unknown or not specified method for the "
                              "calculation of the matrix exponential:"
                              + str(method))
-
-        if matrix_opt["_mem_prop"]:
-            self._prop = DenseOperator(prop)
         return DenseOperator(prop)
 
     def prop(self, tau: complex = 1) -> 'DenseOperator':
@@ -907,8 +961,8 @@ class DenseOperator(OperatorMatrix):
         return DenseOperator(self.exp(tau))
 
     def dexp(self, direction: 'DenseOperator', tau: complex = 1,
-             compute_expm: bool = False, method: Optional[str] = None,
-             is_skew_hermitian: bool = False) \
+             compute_expm: bool = False, method: str = "spectral",
+             is_skew_hermitian: bool = False, epsilon: float = 1e-10) \
             -> Union['DenseOperator', Tuple['DenseOperator']]:
         """
         Frechet derivative of the matrix exponential.
@@ -961,8 +1015,6 @@ class DenseOperator(OperatorMatrix):
         if type(direction) != DenseOperator:
             direction = DenseOperator(direction)
 
-        if method is None:
-            method = matrix_opt['method']
         if method == "Frechet":
             a = self.data * tau
             e = direction.data * tau
@@ -999,10 +1051,10 @@ class DenseOperator(OperatorMatrix):
             prop_grad = self._eig_vec.dot(cdg).dot(self._eig_vec_adj)
 
         elif method == "approx":
-            d_m = (self.data + matrix_opt["epsilon"] * direction.data) * tau
+            d_m = (self.data + epsilon * direction.data) * tau
             dprop = la.expm(d_m)
             prop = self.exp(tau)
-            prop_grad = (dprop - prop) * (1 / matrix_opt["epsilon"])
+            prop_grad = (dprop - prop) * (1 / epsilon)
 
         elif method == "first_order":
             if compute_expm:
@@ -1065,15 +1117,29 @@ class SparseOperator(OperatorMatrix):
     pass
 
 
-def convert_unitary_to_super_operator(unitary):
+def convert_unitary_to_super_operator(
+        unitary: Union['OperatorMatrix', np.array]):
     """
     We assume that the unitary U shall be used to propagate a density matrix m
     like
         U m U^dag
     which is equivalent to
         ( U^\ast \otimes U) \vec{m}
-    :param unitary:
-    :return:
+
+    Parameters
+    ----------
+    unitary: OperatorMatrix or numpy array
+        The unitary propagator.
+
+    Returns
+    -------
+    unitary_super_operator:
+        The unitary propagator in the Lindblad formalism.
+
+    Raises
+    ------
+    ValueError:
+        If the operation is not defined for the input type.
 
     """
     if type(unitary) in (DenseOperator, SparseOperator):
