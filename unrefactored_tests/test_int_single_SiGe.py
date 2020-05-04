@@ -367,7 +367,7 @@ vy = [1.99999999, 1.99999989, -0.36258558, -1.96495835, -1.99545292,
 good_pulse = np.asarray([vx, vy]).T
 
 # dynamic.wrapped_cost_functions(good_pulse)
-# t_slot_comp.set_ctrl_amps(concatenated_tf(good_pulse))
+# t_slot_comp.set_optimization_parameters(concatenated_tf(good_pulse))
 # t_slot_comp.plot_bloch_sphere()
 
 

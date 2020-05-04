@@ -85,7 +85,7 @@ class Lab_frame_rabi_driving(TestCase):
             exponential_method='Frechet'
         )
 
-        ts_comp_unperturbed.set_ctrl_amps(np.expand_dims(ctrl_amps, 1))
+        ts_comp_unperturbed.set_optimization_parameters(np.expand_dims(ctrl_amps, 1))
 
 
         """
@@ -151,10 +151,10 @@ class Lab_frame_rabi_driving(TestCase):
         """
         # for the rotating frame
         delta_rabi = 1.5 / 10 * 1e6
-        tslot_comp.set_ctrl_amps(
+        tslot_comp.set_optimization_parameters(
             (2 * np.pi * delta_rabi) * np.ones((n_time_steps, 1)))
         """
-        tslot_comp.set_ctrl_amps(np.asarray([[driving_frequency]]))
+        tslot_comp.set_optimization_parameters(np.asarray([[driving_frequency]]))
 
         forward_propagators = tslot_comp.forward_propagators_noise
 

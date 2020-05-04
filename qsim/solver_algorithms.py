@@ -1,5 +1,5 @@
 """
-The TimeSlotComputer calculates the propagators as solutions to Schroedingers
+The Solver calculates the propagators as solutions to Schroedinger's
 equation or a master equation in Lindblad form.
 
 If requested, also derivatives of the propagators by the control amplitudes are
@@ -8,54 +8,42 @@ classes currently supported.
 
 Classes
 -------
-Solver
+:class:`Solver`
     Abstract base class of the time slot computers.
 
-SchroedingerSolver
-    Basic time slot computer which solves the unperturbed Schroedinger equation.
+:class:`SchroedingerSolver`
+    Solver for the the unperturbed Schroedinger equation.
 
-SchroedingerSMonteCarlo
-    Time slot computer which solves the Schroedinger equation for a number of
-    noise traces.
+:class:`SchroedingerSMonteCarlo`
+    Solver for the Schroedinger equation under the influence of noise.
 
-LindbladSolver
-    needs refactoring
+:class:`SchroedingerSMCControlNoise`
+    Solver for the Schroedinger equation under the influence of noise affecting
+    the control terms.
 
-LindbladSControlNoise
-    needs refactoring
-
-Functions
----------
-lindblad_to_super_operator_old
-    needs refactoring
+:class:`LindbladSolver`
+    Solves the master equation in Lindblad form.
 
 """
 
 import numpy as np
+import copy
+from typing import Optional, List, Callable, Union
+from abc import ABC, abstractmethod
 
 from filter_functions import pulse_sequence
 from filter_functions import plotting
 from filter_functions import basis
-from typing import Optional, List, Callable, Union
-from abc import ABC, abstractmethod
-
-import copy
-
-
-import qutip.logging_utils as qutip_logging
 
 from qsim import noise, matrix, matrix as q_mat
-
 from qsim.transfer_function import TransferFunction
 from qsim.amplitude_functions import AmplitudeFunction
 from qsim.util import needs_refactoring
 
-logger = qutip_logging.get_logger()
-
 
 class Solver(ABC):
     """
-    Abstract base class for Time Slot Computers
+    Abstract base class for Solvers.
 
     Parameters
     ----------
@@ -74,7 +62,10 @@ class Solver(ABC):
     tau: array of float, shape: (num_t, )
         Durations of the time slices.
 
-    ctrl_amps: np.ndarray, shape: (num_t, num_ctrl), optional
+    opt_pars: np.array, shape: (num_y, num_par), optional
+        Raw optimization parameters.
+
+    ctrl_amps: np.array, shape: (num_t, num_ctrl), optional
         The initial control amplitudes.
 
     filter_function_h_n: List[List[np.array]] or List[List[Qobj]]
@@ -90,10 +81,18 @@ class Solver(ABC):
         sublist (read: operator) was given a identifier, they are automatically
         filled up with 'A_i' where i is the position of the operator.
 
+    filter_function_basis: Basis, shape (d**2, d, d), optional
+        The operator basis in which to calculate. If a Generalized Gell-Mann
+        basis (see :meth:`~basis.Basis.ggm`) is chosen, some calculations will
+        be faster for large dimensions due to a simpler basis expansion.
+        However, when extending the pulse sequence to larger qubit registers,
+        cached filter functions cannot be retained since the GGM basis does not
+        factor into tensor products. In this case a Pauli basis is preferable.
+
     exponential_method: string, optional
-        Method used by the ControlMatrix class for the calculation of the matrix
-        exponential. The default is 'Frechet'. See also the Docstring of the
-        file 'control_2.matrix'.
+        Method used by the ControlMatrix class for the calculation of the
+        matrix exponential. The default is 'Frechet'. See also the Docstring of
+        the file 'control_2.matrix'.
 
     is_skew_hermitian: bool
         Only important for the exponential_method 'spectral'. If set to true,
@@ -117,7 +116,7 @@ class Solver(ABC):
     Attributes
     ----------
     h_ctrl: List[ControlMatrix], len: num_ctrl
-        Control operators in the Hamiltonian as list of lenght num_ctrl.
+        Control operators in the Hamiltonian as list of length num_ctrl.
 
     h_drift: List[ControlMatrix], len: num_t
         Drift operators in the Hamiltonian.
@@ -139,9 +138,9 @@ class Solver(ABC):
         See documentation of the filter function package.
 
     exponential_method: string, optional
-        Method used by the ControlMatrix class for the calculation of the matrix
-        exponential. The default is 'Frechet'. See also the Docstring of the
-        file 'control_2.matrix'.
+        Method used by the ControlMatrix class for the calculation of the
+        matrix exponential. The default is 'Frechet'. See also the Docstring of
+        the file 'control_2.matrix'.
 
     transfer_function: TransferFunction
         The transfer function for reshaping the optimization parameters.
@@ -154,18 +153,18 @@ class Solver(ABC):
         Propagators of the system.
 
     _fwd_prop: List[ControlMatrix], len: num_t + 1
-        Cumulation of the propagators. They describe the forward propagation
-        of the systems state.
+        Ordered product of the propagators. They describe the forward
+        propagation of the systems state.
 
     _reversed_prop: List[ControlMatrix], len: num_t + 1
-        Cumulation of propagators in reversed order.
+        Ordered product of propagators in reversed order.
 
     _derivative_prop: List[List[ControlMatrix]], shape: [[] * num_t] * num_ctrl
         Frechet derivatives of the propagators by the control amplitudes.
 
     Methods
     -------
-    set_ctrl_amps(u, **kwargs):
+    set_optimization_parameters(u, **kwargs):
         Set the control amplitudes. The key word arguments may include the
         key transferred parameters.
 
@@ -187,6 +186,10 @@ class Solver(ABC):
         reversed_propagators[i] propagates a state by the last i time steps, if
         the initial state is the identity matrix.
 
+    plot_bloch_sphere:
+        Uses a pulse sequence to plot the systems evolution on the blochs
+        sphere. For 2 dimensional systems only.
+
     _compute_propagation: abstract method
         Computes the propagators.
 
@@ -203,10 +206,6 @@ class Solver(ABC):
         filter_functions.pulse_sequence.PulseSequence
         Creates a pulse sequence instance corresponding to the current control
         amplitudes.
-
-    plot_bloch_sphere:
-        Uses a pulse sequence to plot the systems evolution on the blochs
-        sphere. For 2 dimensional systems only.
 
 
     TODO:
@@ -225,13 +224,13 @@ class Solver(ABC):
 
     def __init__(
             self,
-            h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
+            h_drift: List[q_mat.OperatorMatrix],
             initial_state: q_mat.OperatorMatrix,
-            tau: np.ndarray,
-            ctrl_amps: Optional[np.ndarray] = None,
-            opt_pars: Optional[np.ndarray] = None,
-            filter_function_h_n: Union[List[List], np.ndarray, None] = None,
+            tau: np.array,
+            opt_pars: Optional[np.array] = None,
+            ctrl_amps: Optional[np.array] = None,
+            filter_function_h_n: Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
             exponential_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
@@ -239,8 +238,6 @@ class Solver(ABC):
             amplitude_function: Optional[AmplitudeFunction] = None,
             paranoia_level: int = 2
     ):
-        self.id_text = 'TS_COMP_BASE'
-        self.cache_text = 'Save'
 
         self.h_drift = h_drift
         self.h_ctrl = h_ctrl
@@ -276,7 +273,7 @@ class Solver(ABC):
 
         self.consistency_checks(paranoia_level=paranoia_level)
 
-    def set_ctrl_amps(self, x: np.ndarray) -> None:
+    def set_optimization_parameters(self, y: np.array) -> None:
         """
         Set the control amplitudes.
 
@@ -287,20 +284,20 @@ class Solver(ABC):
 
         Parameters
         ----------
-        x: np.array, shape: (num_x, num_ctrl)
-            Optimization parameters.
+        y: np.array, shape: (num_x, num_ctrl)
+            Raw optimization parameters.
 
         """
 
-        if np.array_equal(self._opt_pars, x):
+        if np.array_equal(self._opt_pars, y):
             return
         else:
-            self._opt_pars = x
+            self._opt_pars = y
 
         if self.transfer_function is not None:
-            self.transferred_parameters = self.transfer_function(x)
+            self.transferred_parameters = self.transfer_function(y)
         else:
-            self.transferred_parameters = x
+            self.transferred_parameters = y
 
         if self.amplitude_function is not None:
             u = self.amplitude_function(
@@ -329,6 +326,17 @@ class Solver(ABC):
         self.pulse_sequence = None
 
     def consistency_checks(self, paranoia_level: int):
+        """Checks attributes for inner consistency.
+
+        Parameters
+        ----------
+        paranoia_level: int
+            The paranoia_level determines how many checks are conducted.
+            0: No tests
+            1: Some tests
+            2: Exhaustive tests, dimension checks
+
+        """
         if paranoia_level == 0:
             return
 
@@ -344,7 +352,8 @@ class Solver(ABC):
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
                 raise ValueError("The drift hamiltonian must have exactly one "
-                                 "entry for each time step or no entry at all.")
+                                 "entry for each time step or no entry at "
+                                 "all.")
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
@@ -416,9 +425,9 @@ class Solver(ABC):
         """
         Returns the reversed propagation of the initial state for every time
         slice and calculate it if necessary. If the initial state is the
-        identity matrix, then the reversed cumulative propagators are given. The
-        element forward_propagators[i] propagates a state by the first i time
-        steps, if the initial state is the identity matrix.
+        identity matrix, then the reversed cumulative propagators are given.
+        The element forward_propagators[i] propagates a state by the first i
+        time steps, if the initial state is the identity matrix.
 
         Returns
         -------
@@ -463,8 +472,9 @@ class Solver(ABC):
             self._reversed_prop = [matrix.DenseOperator(
                 np.eye(self._prop[0].shape[0])) * (1 + 0j), ]
         elif type(self.initial_state) == matrix.SparseOperator:
-            self._reversed_prop = [matrix.SparseOperator(
-                np.eye(self._prop[0].shape[0])) * (1 + 0j), ]
+            raise NotImplementedError
+            # self._reversed_prop = [matrix.SparseOperator(
+            #    np.eye(self._prop[0].shape[0])) * (1 + 0j), ]
         else:
             raise TypeError("The initial state should be either a dense or "
                             "sparse control matrix.")
@@ -474,12 +484,13 @@ class Solver(ABC):
 
     @abstractmethod
     def _compute_propagation_derivatives(self) -> None:
-        """Compute the derivatives of the propagators by the control amplitudes.
+        """Compute the derivatives of the propagators by the control
+        amplitudes.
         """
         pass
 
     def create_pulse_sequence(
-            self, new_amps: Optional[np.ndarray] = None,
+            self, new_amps: Optional[np.array] = None,
             ff_basis: Optional[basis.Basis] = None
     ) -> pulse_sequence:
         """
@@ -488,15 +499,15 @@ class Solver(ABC):
 
         See the documentation of the filter function package.
 
-        Paramters
-        ---------
-        new_amps: np.ndarray, shape: (num_t, num_ctrl)
+        Parameters
+        ----------
+        new_amps: np.array, shape: (num_t, num_ctrl)
             New control amplitudes can be set before the pulse sequence is
             initialized.
 
         ff_basis: Basis
-            The pulse sequence will be expanded in this basis. See documentation
-            of the filter function package.
+            The pulse sequence will be expanded in this basis. See
+            documentation of the filter function package.
 
         Returns
         -------
@@ -506,7 +517,7 @@ class Solver(ABC):
 
         """
         if new_amps is not None:
-            self.set_ctrl_amps(new_amps)
+            self.set_optimization_parameters(new_amps)
         h_n = self.filter_function_h_n
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
@@ -543,13 +554,16 @@ class Solver(ABC):
         """
         if self.pulse_sequence is None:
             self.create_pulse_sequence()
-        plotting.plot_bloch_vector_evolution(self.pulse_sequence, n_samples=500)
+        plotting.plot_bloch_vector_evolution(self.pulse_sequence,
+                                             n_samples=500)
 
 
 class SchroedingerSolver(Solver):
     """
-    This time slot computer solves the unperturbed Schroedinger equation. All
-    intermediary propagators are calculated and cached.
+    This time slot computer solves the unperturbed Schroedinger equation.
+
+    All intermediary propagators are calculated and cached. Takes also input
+    parameters of the base class.
 
     Parameters
     ----------
@@ -592,6 +606,10 @@ class SchroedingerSolver(Solver):
     _compute_dyn_gen: List[ControlMatrix], len: num_t
         Computes the dynamics generators.
 
+    See Also
+    --------
+    `Solver`: abstract base class
+
     Todo:
         * raise a warning if the approximation method although the gradient
         is always calculated.
@@ -604,8 +622,8 @@ class SchroedingerSolver(Solver):
                  h_drift: List[q_mat.OperatorMatrix],
                  h_ctrl: List[q_mat.OperatorMatrix],
                  initial_state: q_mat.OperatorMatrix,
-                 tau: List[float],
-                 ctrl_amps: Optional[np.ndarray] = None,
+                 tau: np.array,
+                 ctrl_amps: Optional[np.array] = None,
                  calculate_propagator_derivatives: bool = True,
                  filter_function_h_n: Optional[List] = None,
                  filter_function_basis: Optional[basis.Basis] = None,
@@ -626,16 +644,17 @@ class SchroedingerSolver(Solver):
         )
         self.id_text = 'ALL'
         self.cache_text = 'Save'
-        self.calculate_propagator_derivatives = calculate_propagator_derivatives
+        self.calculate_propagator_derivatives = \
+            calculate_propagator_derivatives
         self.frechet_deriv_approx_method = frechet_deriv_approx_method
 
         self._dyn_gen = None
 
-    def set_ctrl_amps(self, x: np.ndarray) -> None:
+    def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
-        if not np.array_equal(self._opt_pars, x):
+        if not np.array_equal(self._opt_pars, y):
             self._dyn_gen = None
-        super().set_ctrl_amps(x)
+        super().set_optimization_parameters(y)
 
     def _compute_dyn_gen(self) -> List[q_mat.OperatorMatrix]:
         """
@@ -654,7 +673,8 @@ class SchroedingerSolver(Solver):
                 dyn_gen += -1j * ctrl_amp * ctrl_op
         return self._dyn_gen
 
-    def _compute_derivative_directions(self) -> List[List[q_mat.OperatorMatrix]]:
+    def _compute_derivative_directions(
+            self) -> List[List[q_mat.OperatorMatrix]]:
         """
         The directions of the frechet derivatives are the control operators.
 
@@ -704,7 +724,8 @@ class SchroedingerSolver(Solver):
         Computes the frechet derivatives of the propagators.
 
         The derivatives are not returned but cached. Since the function is only
-        called when no derivatives are cached, the approximation is prioritised.
+        called when no derivatives are cached, the approximation is
+        prioritised.
         """
         if not self.frechet_deriv_approx_method:
             self._compute_propagation(calculate_propagator_derivatives=True)
@@ -721,12 +742,16 @@ class SchroedingerSolver(Solver):
                         self.tau[t] * derivative_directions[t][ctrl] \
                         * self._prop[t]
         else:
-            raise ValueError('Unknown gradient derivative approximation method:'
+            raise ValueError('Unknown gradient derivative approximation '
+                             'method:'
                              + str(self.frechet_deriv_approx_method))
 
 
 class SchroedingerSMonteCarlo(SchroedingerSolver):
     """
+    Solves Schroedinger's equation for explicit noise realisations as Monte
+    Carlo experiment.
+
     This time slot computer solves the Schroedinger equation explicitly for
     concrete noise realizations. The noise traces are generated by an instance
     of the Noise Trace Generator Class. Then they can be processed by the
@@ -741,10 +766,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     noise_trace_generator: noise.NoiseTraceGenerator
         Noise trace generator object.
 
-    noise_amplitude_function: Callable[[noise_samples: np.ndarray,
-        optimization_parameters: np.ndarray,
-        transferred_parameters: np.ndarray,
-        control_amplitudes: np.ndarray], np.ndarray]
+    noise_amplitude_function: Callable[[noise_samples: np.array,
+        optimization_parameters: np.array,
+        transferred_parameters: np.array,
+        control_amplitudes: np.array], np.array]
         The noise amplitude function calculated the noisy control amplitudes
         corresponding to the noise samples. They recieve 4 keyword arguments
         being the noise samples, the optimization parameters, the transferred
@@ -783,8 +808,8 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
     _derivative_prop_noise: List[List[List[ControlMatrix]]],
                             shape: [[[] * num_t] * num_ctrl] * num_noise_traces
-        Frechet derivatives of the propagators by the control amplitudes for the
-        individual noise traces.
+        Frechet derivatives of the propagators by the control amplitudes for
+        the individual noise traces.
 
     Methods
     -------
@@ -804,8 +829,8 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
     frechet_deriv_propagators_noise: List[List[List[ControlMatrix]]],
                             shape: [[[] * num_t] * num_ctrl] * num_noise_traces
-        Frechet derivatives of the propagators by the control amplitudes for the
-        individual noise traces.
+        Frechet derivatives of the propagators by the control amplitudes for
+        the individual noise traces.
 
     """
     def __init__(
@@ -816,9 +841,9 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             h_noise: List[q_mat.OperatorMatrix],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
-            ctrl_amps: Optional[np.ndarray] = None,
+            ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
-            filter_function_h_n: Union[List[List], np.ndarray, None] = None,
+            filter_function_h_n: Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
@@ -826,8 +851,8 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             transfer_function: Optional[TransferFunction] = None,
             amplitude_function: Optional[AmplitudeFunction] = None,
             noise_amplitude_function: Optional[Callable[
-                [np.ndarray, np.ndarray, np.ndarray,
-                 np.ndarray], np.ndarray]] = None
+                [np.array, np.array, np.array,
+                 np.array], np.array]] = None
     ):
 
         super().__init__(
@@ -852,15 +877,15 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         self._fwd_prop_noise = None
         self._reversed_prop_noise = None
 
-    def set_ctrl_amps(self, x: np.ndarray) -> None:
+    def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
-        if not np.array_equal(self._opt_pars, x):
+        if not np.array_equal(self._opt_pars, y):
             self._dyn_gen_noise = None
             self._prop_noise = None
             self._derivative_prop_noise = None
             self._fwd_prop_noise = None
             self._reversed_prop_noise = None
-        super().set_ctrl_amps(x)
+        super().set_optimization_parameters(y)
 
     @property
     def propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
@@ -924,17 +949,17 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         """
         Returns the reversed propagation of the initial state for every noise
         trace and calculate it if necessary. If the initial state is the
-        identity matrix, then the reversed cumulative propagators are given. The
-        element forward_propagators[k][i] propagates a state by the first i time
-        steps under the kth noise trace, if the initial state is the identity
-        matrix.
+        identity matrix, then the reversed cumulative propagators are given.
+        The element forward_propagators[k][i] propagates a state by the first i
+        time steps under the kth noise trace, if the initial state is the
+        identity matrix.
 
         Returns
         -------
         reversed_propagation_noise: List[List[ControlMatrix]],
-                                    shape: [[] * (num_t + 1)] * num_noise_traces
-            Propagation of the initial state of the system. reversed[k][0] gives
-            the initial state itself.
+                shape: [[] * (num_t + 1)] * num_noise_traces
+            Propagation of the initial state of the system. reversed[k][0]
+            gives the initial state itself.
 
         """
         if self._reversed_prop_noise is None:
@@ -985,8 +1010,8 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             self, calculate_propagator_derivatives: Optional[bool] = None) \
             -> None:
         """
-        Computes the propagators for the perturbed Schroedinger equation and the
-        derivatives on demand.
+        Computes the propagators for the perturbed Schroedinger equation and
+        the derivatives on demand.
 
         Parameters
         ----------
@@ -1074,7 +1099,8 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Computes the frechet derivatives of the propagators.
 
         The derivatives are not returned but cached. Since the function is only
-        called when no derivatives are cached, the approximation is prioritised.
+        called when no derivatives are cached, the approximation is
+        prioritised.
         """
         if not self.frechet_deriv_approx_method:
             self._compute_propagation(calculate_propagator_derivatives=True)
@@ -1103,12 +1129,16 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                             self.tau[t] * derivative_directions[t][ctrl] \
                             * self._prop_noise[k][t]
         else:
-            raise ValueError('Unknown gradient derivative approximation method:'
+            raise ValueError('Unknown gradient derivative approximation '
+                             'method:'
                              + str(self.frechet_deriv_approx_method))
 
 
 class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
     """
+    Convenience class like `SchroedingerSMonteCarlo` but with noise on the
+    optimization parameters.
+
     This time slot computer solves the Schroedinger equation explicitly for
     concrete control noise realizations. This time slot computer assumes,
     that the noise is sampled on the time scale of the already transferred
@@ -1126,9 +1156,9 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             tau: List[float],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
-            ctrl_amps: Optional[np.ndarray] = None,
+            ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
-            filter_function_h_n: Union[List[List], np.ndarray, None] = None,
+            filter_function_h_n: Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
@@ -1136,10 +1166,27 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             transfer_function: Optional[TransferFunction] = None,
             amplitude_function: Optional[AmplitudeFunction] = None):
 
-        def noise_amplitude_function(noise_samples: np.ndarray,
-                                     transferred_parameters: np.ndarray,
-                                     control_amplitudes: np.ndarray,
+        def noise_amplitude_function(noise_samples: np.array,
+                                     transferred_parameters: np.array,
+                                     control_amplitudes: np.array,
                                      **_):
+            """Calculates the noise amplitudes.
+
+            Takes into account the actual optimization parameters and random
+            variations.
+
+            Parameters
+            ----------
+            noise_samples: np.array
+                Noise samples calculated by the noise trace generator.
+
+            transferred_parameters: np.array
+                Transferred optimization parameters.
+
+            control_amplitudes: np.array
+                Control amplitudes.
+
+            """
             noise_amplitudes = np.zeros_like(noise_samples)
             for trace_num in range(noise_samples.shape[1]):
                 noise_amplitudes[:, trace_num, :] = self.amplitude_function(
@@ -1174,16 +1221,24 @@ class LindbladSolver(SchroedingerSolver):
 
     The master equation to be solved is
 
+    .. :math:
+
     d \rho / dt = i [\rho, H] + \sum_k (L_k \rho L_k^\dag
                   - .5 L_k^\dag L_k \rho - .5 \rho L_k^\dag L_k)
 
     with the Lindblad operators L_k. The solution is calculated as
 
+    .. :math:
+
     \rho(t) = exp[(-i \mathcal{H} + \mathcal{G})t] \rho(0)
 
     with the dissipative super operator
 
+    .. :math:
+
     \mathcal{G} = \sum_k D(L_k)
+
+    .. :math:
 
     D(L) = L^\ast \otimes L - .5 I \otimes (L^\dag L)
            - .5 (L^T L^\ast) \otimes I
@@ -1201,25 +1256,25 @@ class LindbladSolver(SchroedingerSolver):
     num_t x num_l where num_t is the number of time steps in the control and
     num_l is the number of Lindblad operators or dissipation super operators.
 
-    If multiple construction arguments are given, the implementation prioritises
-    the function (3.) over the Lindblad operators (2.) over the dissipation
-    super operator (1.).
+    If multiple construction arguments are given, the implementation
+    prioritises the function (3.) over the Lindblad operators (2.) over the
+    dissipation super operator (1.).
 
     Parameters
     ----------
     initial_diss_super_op: List[ControlMatrix], len: num_l
         Initial dissipation super operator; num_l is the number of
         Lindbladians. Set if you want to use (1.) (See documentation above!).
-        The control matrices are expected to be of shape (dim, dim) where dim is
-        the dimension of the system.
+        The control matrices are expected to be of shape (dim, dim) where dim
+        is the dimension of the system.
 
     lindblad_operators: List[ControlMatrix], len: num_l
-        Lindblad operators; num_l is the number of Lindbladians. Set if you want
-        to use (2.) (See documentation above!). The Lindblad operators are
+        Lindblad operators; num_l is the number of Lindbladians. Set if you
+        want to use (2.) (See documentation above!). The Lindblad operators are
         assumend to be of shape (dim, dim) where dim is the dimension of the
         system.
 
-    prefactor_function: Callable[[np.ndarray], np.ndarray]
+    prefactor_function: Callable[[np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns prefactors as numpy array
         of shape (num_t, num_l). The prefactors a_k are used as weights in the
@@ -1232,7 +1287,7 @@ class LindbladSolver(SchroedingerSolver):
             a_k = |b_k|^2
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    prefactor_derivative_function: Callable[[np.ndarray], np.ndarray]
+    prefactor_derivative_function: Callable[[np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the derivatives of the
         prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
@@ -1248,13 +1303,13 @@ class LindbladSolver(SchroedingerSolver):
             d_k = d |b_k|^2 / d u_k
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    super_operator_function: Callable[[np.ndarray], List[ControlMatrix]]
+    super_operator_function: Callable[[np.array], List[ControlMatrix]]
         Receives the control amlitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the total dissipation
         operators as list of length num_t. Set if you want to use method (3.).
         (See class documentation.)
 
-    super_operator_derivative_function: Callable[[np.ndarray],
+    super_operator_derivative_function: Callable[[np.array],
                                                  List[List[ControlMatrix]]]
         Receives the control amlitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the derivatives of the total dissipation
@@ -1282,7 +1337,7 @@ class LindbladSolver(SchroedingerSolver):
     _lindblad_operatorsList[ControlMatrix], len: num_l
         Lindblad operators; num_l is the number of Lindbladians.
 
-    _prefactor_function: Callable[[np.ndarray], np.ndarray]
+    _prefactor_function: Callable[[np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns prefactors as numpy array
         of shape (num_t, num_l). The prefactors a_k are used as weights in the
@@ -1295,7 +1350,7 @@ class LindbladSolver(SchroedingerSolver):
             a_k = |b_k|^2
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    _prefactor_deriv_function: Callable[[np.ndarray], np.ndarray]
+    _prefactor_deriv_function: Callable[[np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the derivatives of the
         prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
@@ -1310,12 +1365,12 @@ class LindbladSolver(SchroedingerSolver):
         absolute value of this number:
             d_k = d |b_k|^2 / d u_k
 
-    _sup_op_func: Callable[[np.ndarray], List[ControlMatrix]]
+    _sup_op_func: Callable[[np.array], List[ControlMatrix]]
         Receives the control amlitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the total dissipation
         operators as list of length num_t.
 
-    _sup_op_deriv_func: Callable[[np.ndarray], List[List[ControlMatrix]]]
+    _sup_op_deriv_func: Callable[[np.array], List[List[ControlMatrix]]]
         Receives the control amlitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the derivatives of the total dissipation
         operators as nested list of shape [[] * num_ctrl] * num_t.
@@ -1341,22 +1396,22 @@ class LindbladSolver(SchroedingerSolver):
             h_ctrl: List[q_mat.OperatorMatrix],
             initial_state: q_mat.OperatorMatrix,
             tau: List[float],
-            ctrl_amps: Optional[np.ndarray] = None,
+            ctrl_amps: Optional[np.array] = None,
             calculate_unitary_derivatives: bool = False,
             filter_function_h_n:
-            Union[List[List], np.ndarray, None] = None,
+            Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             initial_diss_super_op: List[q_mat.OperatorMatrix] = None,
             lindblad_operators: List[q_mat.OperatorMatrix] = None,
-            prefactor_function: Callable[[np.ndarray], np.ndarray] = None,
+            prefactor_function: Callable[[np.array], np.array] = None,
             prefactor_derivative_function:
-            Callable[[np.ndarray], np.ndarray] = None,
+            Callable[[np.array], np.array] = None,
             super_operator_function:
-            Callable[[np.ndarray], List[q_mat.OperatorMatrix]] = None,
+            Callable[[np.array], List[q_mat.OperatorMatrix]] = None,
             super_operator_derivative_function:
-            Callable[[np.ndarray], List[List[q_mat.OperatorMatrix]]] = None,
+            Callable[[np.array], List[List[q_mat.OperatorMatrix]]] = None,
             is_skew_hermitian: bool = False,
             transfer_function: Optional[TransferFunction] = None,
             amplitude_function: Optional[AmplitudeFunction] = None) \
@@ -1385,10 +1440,10 @@ class LindbladSolver(SchroedingerSolver):
         self._sup_op_deriv_func = super_operator_derivative_function
         self._is_hermitian = is_skew_hermitian
 
-    def set_ctrl_amps(self, x: np.ndarray) -> None:
+    def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
-        if not np.array_equal(self._opt_pars, x):
-            super().set_ctrl_amps(x)
+        if not np.array_equal(self._opt_pars, y):
+            super().set_optimization_parameters(y)
             if self._prefactor_function is not None \
                     or self._sup_op_func is not None:
                 self._diss_sup_op = None
@@ -1435,7 +1490,8 @@ class LindbladSolver(SchroedingerSolver):
                     self._diss_sup_op.append(
                         const_diss_sup_op[0] * factor_at_time_t[0])
                     for sup_op, factor \
-                            in zip(const_diss_sup_op[1:], factor_at_time_t[1:]):
+                            in zip(const_diss_sup_op[1:],
+                                   factor_at_time_t[1:]):
                         self._diss_sup_op[-1] += sup_op * factor
             else:
                 self._diss_sup_op = [const_diss_sup_op[0], ]
@@ -1457,15 +1513,15 @@ class LindbladSolver(SchroedingerSolver):
         If the dissipation super operator is given as constant (1.) or as
         lindblad operators (2.) they are assumed not to depend on the control
         parameters and only the derivative of the prefactor is to be taken into
-        account. In order to do so, a function handle containing the derivatives
-        must be given. This function receives the control amplitudes as
-        num_t x num_ctrl numpy array and returns the derivatives as
-        num_t x num_l x num_ctrl array.
+        account. In order to do so, a function handle containing the
+        derivatives must be given. This function receives the control
+        amplitudes as num_t x num_ctrl numpy array and returns the derivatives
+        as num_t x num_l x num_ctrl array.
 
         If the dissipation super operator is given as function handle (3.),
         then the derivatives must also be given as function handle receiving
-        the control amplitudes and returning a nested list of super operators as
-        control matrices.
+        the control amplitudes and returning a nested list of super operators
+        as control matrices.
 
         If the requested derivative functions are not provided (None), then
         the dissipation super operator is considered constant in the control
@@ -1523,7 +1579,8 @@ class LindbladSolver(SchroedingerSolver):
         else:
             return None
 
-    def _compute_derivative_directions(self) -> List[List[q_mat.OperatorMatrix]]:
+    def _compute_derivative_directions(
+            self) -> List[List[q_mat.OperatorMatrix]]:
         """
         Computes the derivative directions of the total dynamics generator.
 
@@ -1562,7 +1619,7 @@ class LindbladSolver(SchroedingerSolver):
         """
         check the dissipative super operator for dimensional consistency
         (maybe even physical properties)
-        :return:
+        - not implemented yet -
         """
         pass
 
@@ -1585,7 +1642,7 @@ class LindbladSolver(SchroedingerSolver):
         ------
         ValueError:
             The computation is only defined for the use of dense control
-            atrices.
+            matrices.
 
         """
         self._dyn_gen = super()._compute_dyn_gen()
@@ -1661,7 +1718,7 @@ class LindbladSControlNoise(LindbladSolver):
 
         # initialize the attributes
         self._prop = [None] * self.num_t
-        self._dU = np.ndarray(shape=(self.num_t, self.num_ctrl),
+        self._dU = np.array(shape=(self.num_t, self.num_ctrl),
                               dtype=matrix.DenseOperator)
         self._fwd = [self.initial_state]
 

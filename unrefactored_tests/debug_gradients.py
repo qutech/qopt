@@ -32,9 +32,9 @@ initial_pulse = amp_bound * (2 * np.random.rand(rabi.n_time_samples, 2) - 1)
 
 tslot_noise = rabi.time_slot_comp_qs_noise_xy
 """
-tslot_noise.set_ctrl_amps(initial_pulse)
+tslot_noise.set_optimization_parameters(initial_pulse)
 for tslot_comp in t_slot_comps_drift:
-    tslot_comp.set_ctrl_amps(initial_pulse)
+    tslot_comp.set_optimization_parameters(initial_pulse)
 
 grad_noise = tslot_noise.frechet_deriv_propagators[0][10].data
 grad_drifts = []

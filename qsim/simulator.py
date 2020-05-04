@@ -176,7 +176,7 @@ class Simulator(object):
             pulse = self.pulse
 
         for tslot_comp in self.tslot_comps:
-            tslot_comp.set_ctrl_amps(pulse)
+            tslot_comp.set_optimization_parameters(pulse)
 
         costs = []
 
@@ -231,7 +231,7 @@ class Simulator(object):
             pulse = self.pulse
 
         for tslot_comp in self.tslot_comps:
-            tslot_comp.set_ctrl_amps(pulse)
+            tslot_comp.set_optimization_parameters(pulse)
 
         jacobians = []
 

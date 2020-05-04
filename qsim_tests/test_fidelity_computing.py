@@ -126,16 +126,16 @@ class TestEntanglementFidelity(unittest.TestCase):
                 cost[1, j, i] = np.real(initial_cost)
                 delta = np.zeros(shape=initial_pulse.shape)
                 delta[i, j] = -1 * delta_amp
-                t_slot_comp.set_ctrl_amps(
+                t_slot_comp.set_optimization_parameters(
                     concatenated_tf(initial_pulse + delta))
                 cost[0, j, i] = fidelity_computer.costs()
                 delta[i, j] = delta_amp
-                t_slot_comp.set_ctrl_amps(
+                t_slot_comp.set_optimization_parameters(
                     concatenated_tf(initial_pulse + delta))
                 cost[2, j, i] = fidelity_computer.costs()
 
         numeric_gradient = np.gradient(cost, delta_amp, axis=0)
-        t_slot_comp.set_ctrl_amps(concatenated_tf(initial_pulse))
+        t_slot_comp.set_optimization_parameters(concatenated_tf(initial_pulse))
         grad = fidelity_computer.grad()
         np.expand_dims(grad, 1)
         analytic_gradient = concatenated_tf.gradient_chain_rule(
@@ -162,8 +162,8 @@ class TestEntanglementFidelity(unittest.TestCase):
             super_operator_formalism=True
         )
 
-        t_slot_comp.set_ctrl_amps(initial_ctrl_amps)
-        lindblad_tslot_obj.set_ctrl_amps(initial_ctrl_amps)
+        t_slot_comp.set_optimization_parameters(initial_ctrl_amps)
+        lindblad_tslot_obj.set_optimization_parameters(initial_ctrl_amps)
 
         self.assertAlmostEqual(fidelity_computer.costs(),
                                fid_comp_sup_op.costs())
@@ -259,16 +259,16 @@ class TestMatrixDistance(unittest.TestCase):
                     cost[1, j, i] = np.real(initial_cost[k])
                     delta = np.zeros(shape=initial_pulse.shape)
                     delta[i, j] = -1 * delta_amp
-                    t_slot_comp.set_ctrl_amps(
+                    t_slot_comp.set_optimization_parameters(
                         concatenated_tf(initial_pulse + delta))
                     cost[0, j, i] = fidelity_computer.costs()[k]
                     delta[i, j] = delta_amp
-                    t_slot_comp.set_ctrl_amps(
+                    t_slot_comp.set_optimization_parameters(
                         concatenated_tf(initial_pulse + delta))
                     cost[2, j, i] = fidelity_computer.costs()[k]
 
             numeric_gradient = np.gradient(cost, delta_amp, axis=0)
-            t_slot_comp.set_ctrl_amps(concatenated_tf(initial_pulse))
+            t_slot_comp.set_optimization_parameters(concatenated_tf(initial_pulse))
             grad = fidelity_computer.grad()
             np.expand_dims(grad, 1)
             analytic_gradient = concatenated_tf.gradient_u2x(

@@ -80,7 +80,7 @@ class RabiDrivingRotatingFrame(TestCase):
             probability = projector_left @ unitary.data @ projector_right
             return np.abs(probability) ** 2
 
-        tslot_comp.set_ctrl_amps(
+        tslot_comp.set_optimization_parameters(
             (2 * np.pi * delta_rabi) * np.ones((n_time_steps, 1)))
         forward_propagators = tslot_comp.forward_propagators_noise
 
@@ -150,7 +150,7 @@ class RabiDrivingRotatingFrame(TestCase):
             prefactor_function=prefactor_function
         )
 
-        tslot_comp_lindblad.set_ctrl_amps(
+        tslot_comp_lindblad.set_optimization_parameters(
             (2 * np.pi * delta_rabi) * np.ones((n_time_steps, 1)))
 
         forward_propagators_lindbladt = tslot_comp_lindblad.forward_propagators

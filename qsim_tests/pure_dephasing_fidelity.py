@@ -32,7 +32,7 @@ class PureDephasing(unittest.TestCase):
                 h_noise=h_ctrl,
                 noise_trace_generator=ntg
             )
-            t_slot_comp.set_ctrl_amps(ctrl_amps)
+            t_slot_comp.set_optimization_parameters(ctrl_amps)
 
             quasi_static_infid = OperationNoiseInfidelity(
                 solver=t_slot_comp,
@@ -77,7 +77,7 @@ class PureDephasing(unittest.TestCase):
                 h_noise=h_ctrl,
                 noise_trace_generator=ntg
             )
-            t_slot_comp.set_ctrl_amps(ctrl_amps)
+            t_slot_comp.set_optimization_parameters(ctrl_amps)
 
             quasi_static_infid = OperationNoiseInfidelity(
                 solver=t_slot_comp,
