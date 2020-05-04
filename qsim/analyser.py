@@ -49,11 +49,13 @@ class Analyser:
         iteration.
 
         """
-        df = pd.DataFrame(data=np.abs(np.asarray(self.data.costs[n]).transfer_matrix),
-                          index=self.data.indices)
+        df = pd.DataFrame(
+            data=np.abs(np.asarray(self.data.costs[n]).transfer_matrix),
+            index=self.data.indices)
         df.T.plot(logy=True)
 
-    def absolute_costs(self) -> None:
+    def plot_absolute_costs(self) -> None:
+        """Plots the absolute costs. """
         n_steps = np.max(list(map(len, self.data.costs)))
 
         # shape: (num_runs, num_step, num_cost_fkt)
@@ -70,16 +72,52 @@ class Analyser:
         df.T.plot(logy=True)
 
     def integral_cost_fkt_times(self, n: int = 0) -> np.ndarray:
+        """Sum of the time required for the evaluation of the cost
+        function.
+
+        Parameters
+        ----------
+        n: int, optional
+            Number of the optimization run. Defaults to 0.
+
+        Returns
+        -------
+        integral_times: np.array
+            Integrated time required for the cost function evaluation.
+
+        """
         times = self.data.optimization_statistics[n].cost_func_eval_times
         integral_times = np.sum(np.asarray(times), axis=0)
         return integral_times
 
     def integral_grad_fkt_times(self, n: int = 0):
+        """Sum of the time required for the evaluation of the cost
+        function gradients.
+
+        Parameters
+        ----------
+        n: int, optional
+            Number of the optimization run. Defaults to 0.
+
+        Returns
+        -------
+        integral_times: np.array
+            Integrated time required for the cost function gradient evaluation.
+
+        """
         times = self.data.optimization_statistics[n].grad_func_eval_times
         integral_times = np.sum(np.asarray(times), axis=0)
         return integral_times
 
     def opt_times(self):
+        """Total optimization times.
+
+        Returns
+        -------
+        total_times: np.array
+            Time required per optimization run.
+
+        """
         total_times = np.zeros((len(self.data.optimization_statistics)))
         for i in range(len(self.data.optimization_statistics)):
             t_start = self.data.optimization_statistics[i].start_t_opt
@@ -88,19 +126,37 @@ class Analyser:
         return total_times
 
     def total_cost_fkt_time(self):
+        """Total time of cost function evaluation.
+
+        Returns
+        -------
+        total_t: np.array
+            Total times for the evaluation of cost functions.
+
+        """
         total_t = 0
         for n in range(len(self.data.optimization_statistics)):
             total_t += np.sum(self.integral_cost_fkt_times(n))
         return total_t
 
     def total_grad_fkt_time(self):
+        """Total time of cost function gradient calculation.
+
+        Returns
+        -------
+        total_t: np.array
+            Total times for the calculation of cost functions gradients.
+
+        """
         total_t = 0
         for n in range(len(self.data.optimization_statistics)):
             total_t += np.sum(self.integral_grad_fkt_times(n))
         return total_t
 
     def time_share_cost_fkt(self):
+        """Time share of the cost function evaluation. """
         return self.total_cost_fkt_time() / np.sum(self.opt_times())
 
     def time_share_grad_fkt(self):
+        """Time share of the cost function gradient calculation. """
         return self.total_grad_fkt_time() / np.sum(self.opt_times())

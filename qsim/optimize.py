@@ -1,20 +1,34 @@
 """
+Optimization algorithms.
 
-This function optimization method can be used to minimize multiple fidelities at
-once as least squares problem.
+This module implements the optimization algorithms for the optimal control
+problem.
+
+Currently supported are:
 
     LS-TRF - Least squares, Trust Region Reflective
 
+Classes
+-------
+:class:`Optimizer`
+    Base class optimizer.
+
+:class:`LeastSquaresOptimizer`
+    An interface to scipy's least squares optimizer.
+
+:class:`WallTimeExceeded`
+    Exception for exceeding the optimization's time limit.
 
 """
 
 import numpy as np
 import scipy
+import scipy.optimize
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable
 
-from qsim import optimization_data, solver_algorithms
+from qsim import optimization_data, solver_algorithms, simulator
 import simanneal
 
 default_termination_conditions = {
@@ -28,6 +42,7 @@ default_termination_conditions = {
 
 
 class WallTimeExceeded(Exception):
+    """Raised when the time limit for the optimization is exceeded. """
     pass
 
 
@@ -71,35 +86,59 @@ class Optimizer(ABC):
         # flags:
         self.save_intermediary_steps = save_intermediary_steps
 
-    def cost_fktn_wrapper(self, control_amplitudes):
+    def cost_fktn_wrapper(self, optimization_parameters):
         """Wraps the cost function given by the dynamics class.
 
-        The relevant information for the analysis is saved."""
+        The relevant information for the analysis is saved.
+
+        Parameters
+        ----------
+        optimization_parameters: np.array
+            Raw optimization parameters in a linear array.
+
+        Returns
+        -------
+        costs: np.array
+            Cost values.
+
+        """
         if (time.time() - self._opt_start_time) \
                 > self.termination_conditions['max_wall_time']:
             raise WallTimeExceeded
 
         costs = self.dynamics.wrapped_cost_functions(
-            control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix)
+            optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix)
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.iter_num += 1
             self.optim_iter_summary.costs._append(costs)
             self.optim_iter_summary.parameters._append(
-                control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix
+                optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix
             )
 
         self._last_costs = costs
-        self._last_par = control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix
+        self._last_par = optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix
         self._n_cost_fkt_eval += 1
         return costs
 
-    def cost_jacobian_wrapper(self, control_amplitudes):
+    def cost_jacobian_wrapper(self, optimization_parameters):
         """Wraps the cost Jacobian function given by the dynamics class.
 
-        The relevant information for the analysis is saved."""
+        The relevant information for the analysis is saved.
+
+        Parameters
+        ----------
+        optimization_parameters: np.array
+            Raw optimization parameters in a linear array.
+
+        Returns
+        -------
+        jacobian: np.array
+            Jacobian of the cost functions.
+
+        """
         jacobian = self.dynamics.wrapped_jac_function(
-            control_amplitudes.reshape(self.pulse_shape[::-1]).transfer_matrix)
+            optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix)
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.gradients._append(jacobian)
@@ -125,18 +164,18 @@ class Optimizer(ABC):
 
         Returns
         -------
-        optimization_result : OptimResult
+        optimization_result : `OptimizationResult`
             The resulting data of the simulation.
 
         """
         pass
 
-    def prepare_optimization(self, initial_control_amplitudes: np.ndarray):
+    def prepare_optimization(self, initial_optimization_parameters: np.ndarray):
         """Prepare for the next optimization.
 
         Parameters
         ----------
-        initial_control_amplitudes : array
+        initial_optimization_parameters : array
             shape (num_t, num_ctrl)
 
         Data stored in this class might be overwritten.
@@ -146,7 +185,7 @@ class Optimizer(ABC):
         self._last_par = None
         self._n_cost_fkt_eval = 0
         self._n_jac_fkt_eval = 0
-        self.pulse_shape = initial_control_amplitudes.shape
+        self.pulse_shape = initial_optimization_parameters.shape
         if self.save_intermediary_steps:
             self.optim_iter_summary = \
                 optimization_data.OptimizationSummary(
@@ -164,6 +203,15 @@ class LeastSquaresOptimizer(Optimizer):
 
     Parameters
     ----------
+    system_simulator: `Simulator`
+        The systems simulator.
+
+    termination_cond: dict
+        Termination conditions.
+
+    save_intermediary_steps: bool, optional
+        If False, only the simulation result is stored. Defaults to False.
+
     method: str, optional
         The optimization method used. Currently implemented are:
         - 'trf': A trust region optimization algorithm. This is the default.
@@ -184,22 +232,24 @@ class LeastSquaresOptimizer(Optimizer):
 
     def __init__(
             self,
-            dynamics: Optional[dynamics.Dynamics] = None,
+            system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
             method: str = 'trf',
             bounds: Optional[np.ndarray] = None,
             use_jacobian_function=True):
-        super().__init__(dynamics=dynamics, termination_cond=termination_cond,
+        super().__init__(dynamics=system_simulator,
+                         termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps)
         self.method = method
         self.bounds = bounds
         self.use_jacobian_function = use_jacobian_function
 
-    def run_optimization(self, initial_control_amplitudes: np.ndarray) \
+    def run_optimization(self, initial_control_amplitudes: np.array) \
             -> optimization_data.OptimizationResult:
+        """See base class. """
         super().prepare_optimization(
-            initial_control_amplitudes=initial_control_amplitudes)
+            initial_optimization_parameters=initial_control_amplitudes)
 
         try:
             if self.use_jacobian_function:
@@ -232,7 +282,8 @@ class LeastSquaresOptimizer(Optimizer):
             optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
                 indices=self.dynamics.cost_indices,
-                final_parameters=result.x.reshape(self.pulse_shape[::-1]).transfer_matrix,
+                final_parameters=result.x.reshape(
+                    self.pulse_shape[::-1]).transfer_matrix,
                 final_grad_norm=np.linalg.norm(result.grad),
                 num_iter=result.nfev,
                 termination_reason=result.message,
@@ -245,12 +296,17 @@ class LeastSquaresOptimizer(Optimizer):
             if self.dynamics.stats is not None:
                 self.dynamics.stats.end_t_opt = time.time()
 
+            if self._last_jac is None:
+                jac_norm = 0
+            else:
+                jac_norm = np.linalg.norm(self._last_jac)
+
             optim_result = optimization_data.OptimizationResult(
                 final_cost=self._last_costs,
                 indices=self.dynamics.cost_indices,
                 final_parameters=self._last_par.reshape(
                     self.pulse_shape[::-1]).transfer_matrix,
-                final_grad_norm=np.linalg.norm(self._last_jac),
+                final_grad_norm=jac_norm,
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
@@ -399,7 +455,7 @@ class SimulatedAnnealing(Optimizer):
         """See base class. """
 
         self.prepare_optimization(
-            initial_control_amplitudes=initial_control_amplitudes)
+            initial_optimization_parameters=initial_control_amplitudes)
 
         pulse, costs = self.annealer.anneal()
 
@@ -417,10 +473,10 @@ class SimulatedAnnealing(Optimizer):
 
         return optim_result
 
-    def prepare_optimization(self, initial_control_amplitudes: np.ndarray):
+    def prepare_optimization(self, initial_optimization_parameters: np.ndarray):
         super().prepare_optimization(
-            initial_control_amplitudes=initial_control_amplitudes)
-        self.annealer.state = initial_control_amplitudes
+            initial_optimization_parameters=initial_optimization_parameters)
+        self.annealer.state = initial_optimization_parameters
 
 
 class SimulatedAnnealingScipy(Optimizer):
@@ -468,7 +524,7 @@ class SimulatedAnnealingScipy(Optimizer):
         """See base class. """
 
         super().prepare_optimization(
-            initial_control_amplitudes=initial_control_amplitudes)
+            initial_optimization_parameters=initial_control_amplitudes)
 
         try:
             result = scipy.optimize.basinhopping(
