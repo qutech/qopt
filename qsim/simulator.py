@@ -3,7 +3,7 @@ actual simulation.
 
 Classes
 -------
-Dynamics
+:class:`Simulator`
     Base class.
 
 Notes
@@ -15,7 +15,8 @@ Regarding the construction of class instance at run time:
     This construction can be encapsulated by set functions working as an
     internal builder pattern.
     Or by explicit construction by the user and sharing the class instance.
-    This might be extended by convenience function as in pulseoptim.
+    This might be extended by convenience function as in pulseoptim of qutip
+    control.
 
 """
 
@@ -23,25 +24,56 @@ from typing import Optional, Sequence
 import numpy as np
 import time
 
-from qsim import cost_functions, optimization_statistics, solver_algorithms
+from qsim import cost_functions, performance_statistics, solver_algorithms
 
 from qsim.util import needs_refactoring
 
 
 class Simulator(object):
     """
-    The Dynamics class provides the interface for the Optimizer class. It
-    wraps the infidelity and optionally the gradient of the infidelity.
+    The Dynamics class provides the interface for the Optimizer class.
+
+    It wraps the infidelity and optionally the gradient of the infidelity.
+
+    Parameters
+    ----------
+    solvers: Solver
+        This object calculates the evolution of the system under
+        consideration.
+
+    cost_fktns: List[FidelityComputer]
+        These are the parameters which are optimized.
+
+    optimization_parameters: numpy array, optional
+        The initial pulse of shape (N_t, N_c) where N_t is the
+        number of time steps and N_c the number of controlled parameters.
+
+    num_ctrl: int, optional
+        The number of controlled parameters N_c.
+
+    times: numpy array or list, optional
+        A one dimensional numpy array of the discrete time steps.
+
+    num_times: int, optional
+        The number of time steps N_t. Mainly for consistency checks.
+
+    record_performance_statistics: bool
+        If True, then the evaluation times of the cost functions and their
+        gradients are stored.
+
+    cost_fktn_weights: list of float, optional
+        The cost functions are multiplied with these weights during the
+        optimisation.
 
     Attributes
     ----------
-    solvers : list of Sover
+    solvers: list of `Solver`
         Instances of the time slot computers used by the cost functions.
 
-    cost_fktns : list of CostFunction
+    cost_fktns: list of `CostFunction`
         Instances of the cost functions which are to be optimized.
 
-    stats : Stats
+    stats: Stats
         Performance statistics.
 
     TODO:
@@ -59,54 +91,24 @@ class Simulator(object):
                 Sequence[solver_algorithms.Solver]],
             cost_fktns: Optional[
                 Sequence[cost_functions.CostFunction]],
-            pulse=None, num_ctrl=None, times=None, num_times=None,
+            optimization_parameters=None,
+            num_ctrl=None,
+            times=None,
+            num_times=None,
             record_performance_statistics: bool = True,
             numeric_jacobian: bool = False,
             cost_fktn_weights: Optional[Sequence[float]] = None
     ):
-        """Initiate a new Dynamics class.
-
-        Parameters
-        ----------
-        solvers: Solver
-            This object calculates the evolution of the system under
-            consideration.
-
-        cost_fktns: List[FidelityComputer]
-            These are the parameters which are optimized.
-
-        pulse: numpy array, optional
-            The initial pulse of shape (N_t, N_c) where N_t is the
-            number of time steps and N_c the number of controlled parameters.
-
-        num_ctrl: int, optional
-            The number of controlled parameters N_c.
-
-        times: numpy array or list, optional
-            A one dimensional numpy array of the discrete time steps.
-
-        num_times: int, optional
-            The number of time steps N_t. Mainly for consistency checks.
-
-        record_performance_statistics: bool
-            If True, then the evaluation times of the cost functions and their
-            gradients are stored.
-
-        cost_fktn_weights: list of float, optional
-            The cost functions are multiplied with these weights during the
-            optimisation.
-
-        """
         self._num_ctrl = num_ctrl
         self._num_times = num_times
-        self._pulse = pulse
+        self._optimization_parameteres = optimization_parameters
         self._times = times
 
         self.tslot_comps = solvers
         self.cost_fktns = cost_fktns
 
         if record_performance_statistics:
-            self.stats = optimization_statistics.OptimizationStatistics()
+            self.stats = performance_statistics.PerformanceStatistics()
         else:
             self.stats = None
 
@@ -121,14 +123,15 @@ class Simulator(object):
 
     @property
     def pulse(self):
-        return self._pulse
+        """Optimization parameters. """
+        return self._optimization_parameteres
 
     @pulse.setter
     def pulse(self, new_pulse):
         """Sets the pulse and the corresponding attributes accordingly. """
         if new_pulse is not None:
-            self._num_times, self._num_ctrl = self._pulse.shape
-        self._pulse = new_pulse
+            self._num_times, self._num_ctrl = self._optimization_parameteres.shape
+        self._optimization_parameteres = new_pulse
 
     @needs_refactoring
     def check(self):
@@ -137,13 +140,14 @@ class Simulator(object):
             raise ValueError(
                 'There must be self.num_times values in self.times!')
 
-        if self._pulse.shape != (self._num_times, self._num_ctrl):
+        if self._optimization_parameteres.shape != (self._num_times, self._num_ctrl):
             raise ValueError(
                 'The shape of self.pulse does not fit to the number of times'
                 ' and control amplitudes!')
 
     @property
     def cost_indices(self):
+        """Indices of cost functions. """
         cost_indices = []
         for cost_fktn in self.cost_fktns:
             cost_indices += cost_fktn.index
