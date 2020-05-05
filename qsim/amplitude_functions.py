@@ -43,6 +43,9 @@ Classes
 :class:`AmplitudeFunction`
     Abstract base class of the amplitude function.
 
+:class:`IdentityAmpFunc`
+    The transferred optimization parameters are the control amplitudes.
+
 :class:`UnaryAnalyticAmpFunc`
     An amplitude function which can be given by a unary function.
 

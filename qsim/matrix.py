@@ -767,11 +767,11 @@ class DenseOperator(OperatorMatrix):
         if copy_:
             cp = self.copy()
             np.conj(cp.data, out=cp.data)
-            cp.data = np.copy(cp.data.transfer_matrix)
+            cp.data = np.copy(cp.data.T)
             return cp
         else:
             np.conj(self.data, out=self.data)
-            self.data = self.data.transfer_matrix
+            self.data = self.data.T
             return self
 
     def conj(self, copy_: bool = True) -> Optional['DenseOperator']:
@@ -883,7 +883,7 @@ class DenseOperator(OperatorMatrix):
         else:
             eig_val, eig_vec = la.eig(self.data)
 
-        eig_vec_dag = eig_vec.conj().transfer_matrix
+        eig_vec_dag = eig_vec.conj().T
 
         eig_val_cols = eig_val * np.ones(self.shape)
         eig_val_diffs = eig_val_cols - eig_val_cols.T
@@ -920,7 +920,7 @@ class DenseOperator(OperatorMatrix):
         return eig_val, eig_vec
 
     def exp(self, tau: complex = 1,
-            method: Optional[str] = None,
+            method: str = "spectral",
             is_skew_hermitian: bool = False) -> 'DenseOperator':
         """
         Matrix exponential.

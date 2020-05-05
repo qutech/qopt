@@ -48,8 +48,8 @@ The implementation was inspired by the optimal control package of QuTiP [1]_
 References
 ----------
 .. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
+ for the simulator of open quantum systems.", Comp. Phys. Comm. 184, 1234
+ (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 
@@ -83,8 +83,8 @@ class Optimizer(ABC):
 
     Attributes
     ----------
-    dynamics : Dynamics
-        The dynamics is the interface to the simulation.
+    system_simulator : Simulator
+        The simulator is the interface to the simulation.
 
     pulse_shape : Tuple of int
         The shape of the control amplitudes is saved and used for the
@@ -96,10 +96,10 @@ class Optimizer(ABC):
 
     def __init__(
             self,
-            dynamics: Optional[solver_algorithms.Solver] = None,
+            system_simulator: Optional[solver_algorithms.Solver] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False):
-        self.dynamics = dynamics
+        self.system_simulator = system_simulator
         if termination_cond is None:
             self.termination_conditions = default_termination_conditions
         else:
@@ -119,7 +119,7 @@ class Optimizer(ABC):
         self.save_intermediary_steps = save_intermediary_steps
 
     def cost_fktn_wrapper(self, optimization_parameters):
-        """Wraps the cost function given by the dynamics class.
+        """Wraps the cost function given by the simulator class.
 
         The relevant information for the analysis is saved.
 
@@ -138,23 +138,24 @@ class Optimizer(ABC):
                 > self.termination_conditions['max_wall_time']:
             raise WallTimeExceeded
 
-        costs = self.dynamics.wrapped_cost_functions(
-            optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix)
+        costs = self.system_simulator.wrapped_cost_functions(
+            optimization_parameters.reshape(self.pulse_shape[::-1]).T)
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.iter_num += 1
-            self.optim_iter_summary.costs._append(costs)
-            self.optim_iter_summary.parameters._append(
-                optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix
+            self.optim_iter_summary.costs.append(costs)
+            self.optim_iter_summary.parameters.append(
+                optimization_parameters.reshape(self.pulse_shape[::-1]).T
             )
 
         self._last_costs = costs
-        self._last_par = optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix
+        self._last_par = optimization_parameters.reshape(
+            self.pulse_shape[::-1]).T
         self._n_cost_fkt_eval += 1
         return costs
 
     def cost_jacobian_wrapper(self, optimization_parameters):
-        """Wraps the cost Jacobian function given by the dynamics class.
+        """Wraps the cost Jacobian function given by the simulator class.
 
         The relevant information for the analysis is saved.
 
@@ -169,11 +170,11 @@ class Optimizer(ABC):
             Jacobian of the cost functions.
 
         """
-        jacobian = self.dynamics.wrapped_jac_function(
-            optimization_parameters.reshape(self.pulse_shape[::-1]).transfer_matrix)
+        jacobian = self.system_simulator.wrapped_jac_function(
+            optimization_parameters.reshape(self.pulse_shape[::-1]).T)
 
         if self.save_intermediary_steps:
-            self.optim_iter_summary.gradients._append(jacobian)
+            self.optim_iter_summary.gradients.append(jacobian)
 
         # jacobian shape (num_t, num_f, num_ctrl) -> (num_f, num_t * num_ctrl)
         jacobian = jacobian.transpose([1, 2, 0])
@@ -202,7 +203,8 @@ class Optimizer(ABC):
         """
         pass
 
-    def prepare_optimization(self, initial_optimization_parameters: np.ndarray):
+    def prepare_optimization(self,
+                             initial_optimization_parameters: np.ndarray):
         """Prepare for the next optimization.
 
         Parameters
@@ -221,12 +223,14 @@ class Optimizer(ABC):
         if self.save_intermediary_steps:
             self.optim_iter_summary = \
                 optimization_data.OptimizationSummary(
-                    indices=self.dynamics.cost_indices
+                    indices=self.system_simulator.cost_indices
                 )
         self._opt_start_time = time.time()
-        if self.dynamics.stats is not None:
-            self.dynamics.stats.start_t_opt = float(self._opt_start_time)
-            self.dynamics.stats.indices = self.dynamics.cost_indices
+        if self.system_simulator.stats is not None:
+            self.system_simulator.stats.start_t_opt = float(
+                self._opt_start_time)
+            self.system_simulator.stats.indices = \
+                self.system_simulator.cost_indices
 
 
 class LeastSquaresOptimizer(Optimizer):
@@ -270,7 +274,7 @@ class LeastSquaresOptimizer(Optimizer):
             method: str = 'trf',
             bounds: Optional[np.ndarray] = None,
             use_jacobian_function=True):
-        super().__init__(dynamics=system_simulator,
+        super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps)
         self.method = method
@@ -308,25 +312,25 @@ class LeastSquaresOptimizer(Optimizer):
                     max_nfev=self.termination_conditions["max_iterations"]
                 )
 
-            if self.dynamics.stats is not None:
-                self.dynamics.stats.end_t_opt = time.time()
+            if self.system_simulator.stats is not None:
+                self.system_simulator.stats.end_t_opt = time.time()
 
             optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
-                indices=self.dynamics.cost_indices,
+                indices=self.system_simulator.cost_indices,
                 final_parameters=result.x.reshape(
-                    self.pulse_shape[::-1]).transfer_matrix,
+                    self.pulse_shape[::-1]).T,
                 final_grad_norm=np.linalg.norm(result.grad),
                 num_iter=result.nfev,
                 termination_reason=result.message,
                 status=result.status,
                 optimizer=self,
                 optim_summary=self.optim_iter_summary,
-                optimization_stats=self.dynamics.stats
+                optimization_stats=self.system_simulator.stats
             )
         except WallTimeExceeded:
-            if self.dynamics.stats is not None:
-                self.dynamics.stats.end_t_opt = time.time()
+            if self.system_simulator.stats is not None:
+                self.system_simulator.stats.end_t_opt = time.time()
 
             if self._last_jac is None:
                 jac_norm = 0
@@ -335,16 +339,16 @@ class LeastSquaresOptimizer(Optimizer):
 
             optim_result = optimization_data.OptimizationResult(
                 final_cost=self._last_costs,
-                indices=self.dynamics.cost_indices,
+                indices=self.system_simulator.cost_indices,
                 final_parameters=self._last_par.reshape(
-                    self.pulse_shape[::-1]).transfer_matrix,
+                    self.pulse_shape[::-1]).T,
                 final_grad_norm=jac_norm,
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
                 optimizer=self,
                 optim_summary=self.optim_iter_summary,
-                optimization_stats=self.dynamics.stats
+                optimization_stats=self.system_simulator.stats
             )
 
         return optim_result
@@ -429,7 +433,7 @@ class PulseAnnealer(simanneal.Annealer):
 
     def energy(self):
         """The energy or cost function of the annealer. """
-        return np.linalg.norm(self.energy_function(self.state.transfer_matrix.flatten()))
+        return np.linalg.norm(self.energy_function(self.state.T.flatten()))
 
 
 class SimulatedAnnealing(Optimizer):
@@ -438,7 +442,7 @@ class SimulatedAnnealing(Optimizer):
 
     Parameters
     ----------
-    temperature: float
+    initial_temperature: float
         Initial temperature for the annealing algorithm.
 
     step_size: int
@@ -455,7 +459,7 @@ class SimulatedAnnealing(Optimizer):
 
     def __init__(
             self,
-            dynamics: Optional[dynamics.Dynamics] = None,
+            system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
             initial_temperature: float = 1.,
@@ -466,7 +470,7 @@ class SimulatedAnnealing(Optimizer):
             updates: Optional[int] = None
     ):
         super().__init__(
-            dynamics=dynamics,
+            system_simulator=system_simulator,
             termination_cond=termination_cond,
             save_intermediary_steps=save_intermediary_steps
         )
@@ -491,16 +495,16 @@ class SimulatedAnnealing(Optimizer):
 
         pulse, costs = self.annealer.anneal()
 
-        if self.dynamics.stats is not None:
-            self.dynamics.stats.end_t_opt = time.time()
+        if self.system_simulator.stats is not None:
+            self.system_simulator.stats.end_t_opt = time.time()
 
         optim_result = optimization_data.OptimizationResult(
             final_cost=costs,
-            indices=self.dynamics.cost_indices,
+            indices=self.system_simulator.cost_indices,
             final_parameters=pulse,
             optimizer=self,
             optim_summary=self.optim_iter_summary,
-            optimization_stats=self.dynamics.stats
+            optimization_stats=self.system_simulator.stats
         )
 
         return optim_result
@@ -534,7 +538,7 @@ class SimulatedAnnealingScipy(Optimizer):
 
     def __init__(
             self,
-            dynamics: Optional[dynamics.Dynamics] = None,
+            system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
             temperature: float = 1.,
@@ -543,7 +547,7 @@ class SimulatedAnnealingScipy(Optimizer):
             bounds: Optional[np.ndarray] = None
     ):
         super().__init__(
-            dynamics=dynamics,
+            system_simulator=system_simulator,
             termination_cond=termination_cond,
             save_intermediary_steps=save_intermediary_steps
         )
@@ -571,36 +575,36 @@ class SimulatedAnnealingScipy(Optimizer):
                 disp=True
             )
 
-            if self.dynamics.stats is not None:
-                self.dynamics.stats.end_t_opt = time.time()
+            if self.system_simulator.stats is not None:
+                self.system_simulator.stats.end_t_opt = time.time()
 
             optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
-                indices=self.dynamics.cost_indices,
-                final_parameters=result.x.reshape(self.pulse_shape[::-1]).transfer_matrix,
+                indices=self.system_simulator.cost_indices,
+                final_parameters=result.x.reshape(self.pulse_shape[::-1]).T,
                 num_iter=result.nfev,
                 termination_reason=result.message,
                 status=result.status,
                 optimizer=self,
                 optim_summary=self.optim_iter_summary,
-                optimization_stats=self.dynamics.stats
+                optimization_stats=self.system_simulator.stats
             )
 
         except WallTimeExceeded:
-            if self.dynamics.stats is not None:
-                self.dynamics.stats.end_t_opt = time.time()
+            if self.system_simulator.stats is not None:
+                self.system_simulator.stats.end_t_opt = time.time()
 
             optim_result = optimization_data.OptimizationResult(
                 final_cost=self._last_costs,
-                indices=self.dynamics.cost_indices,
+                indices=self.system_simulator.cost_indices,
                 final_parameters=self._last_par.reshape(
-                    self.pulse_shape[::-1]).transfer_matrix,
+                    self.pulse_shape[::-1]).T,
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
                 optimizer=self,
                 optim_summary=self.optim_iter_summary,
-                optimization_stats=self.dynamics.stats
+                optimization_stats=self.system_simulator.stats
             )
 
         return optim_result
@@ -620,7 +624,7 @@ class SimulatedAnnealingScipy(Optimizer):
             The pulse initial pulse plus a random variation.
 
         """
-        pulse = current_pulse.reshape(self.pulse_shape[::-1]).transfer_matrix
+        pulse = current_pulse.reshape(self.pulse_shape[::-1]).T
 
         if type(self.step_size) != int:
             raise ValueError("The step size must be integer! But it is: "
@@ -644,4 +648,4 @@ class SimulatedAnnealingScipy(Optimizer):
         new_pulse[lower_limit_exceeded] = self.bounds[0][lower_limit_exceeded]
         new_pulse[upper_limit_exceeded] = self.bounds[1][upper_limit_exceeded]
 
-        return new_pulse.transfer_matrix.flatten()
+        return new_pulse.T.flatten()

@@ -82,7 +82,7 @@ class Analyser:
 
         """
         df = pd.DataFrame(
-            data=np.abs(np.asarray(self.data.costs[n]).transfer_matrix),
+            data=np.abs(np.asarray(self.data.costs[n]).T),
             index=self.data.indices)
         df.T.plot(logy=True)
 

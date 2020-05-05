@@ -142,7 +142,7 @@ class TestEntanglementFidelity(unittest.TestCase):
             np.expand_dims(grad, 1))
 
         self.assertLess(np.sum(
-            np.abs(numeric_gradient[1].transfer_matrix - analytic_gradient.squeeze(1))), 1e-6)
+            np.abs(numeric_gradient[1].T - analytic_gradient.squeeze(1))), 1e-6)
 
         # super operators
         dissipation_sup_op = [matrix.DenseOperator(

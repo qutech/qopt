@@ -313,7 +313,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         # test application of the transfer function
         x = np.asarray([[1, 3, 2, 4],
-                        [1, 3, 2, 4]]).transfer_matrix
+                        [1, 3, 2, 4]]).T
         u = ex(x)
 
         self.assertAlmostEqual(
@@ -390,12 +390,12 @@ class TestTransferFunctions(unittest.TestCase):
 
         custom_tf = transfer_function.CustomTF(custom_t)
 
-        oversampling = 5
         awg_rise_time = .5 / oversampling
 
         boundary_type = ('n', 0)
         ex = transfer_function.ExponentialTF(
-            awg_rise_time=awg_rise_time, oversampling=oversampling,
+            awg_rise_time=awg_rise_time,
+            oversampling=oversampling,
             bound_type=boundary_type)
 
         concatenated_tf = transfer_function.ConcatenateTF(

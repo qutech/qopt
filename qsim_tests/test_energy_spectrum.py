@@ -69,7 +69,7 @@ ex_ham = example_hamiltonian_flopping(eps_vals)
 eps_vals_in_out_theo = np.linspace(start=-50, stop=50, num=n_eps_vals)
 ex_ham_in_out_theo = example_hamiltonian_in_output_theo(eps_vals_in_out_theo)
 
-eig_vals, eig_vecs = plot_energy_spectrum(ex_ham, eps_vals, 'detuning')
+plot_energy_spectrum(ex_ham, eps_vals, 'detuning')
 
 ex_ham_hub = example_simple_hubbard_model(eps_vals)
-eig_vals, eig_vecs = plot_energy_spectrum(ex_ham_hub, eps_vals, 'detuning')
+plot_energy_spectrum(ex_ham_hub, eps_vals, 'detuning')
