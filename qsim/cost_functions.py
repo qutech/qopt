@@ -958,8 +958,14 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             This method has not been implemented yet.
 
         """
-        raise NotImplementedError('The gradient calculation is not implemented'
-                                  ' for the filter functions.')
+        if self.solver.pulse_sequence is None:
+            self.solver.create_pulse_sequence()
+        derivative = filter_functions.numeric.infidelity_derivative(
+            self.solver.pulse_sequence,
+            self.noise_power_spec_density,
+            self.omega
+        )
+        return derivative
 
 
 class LeakageError(CostFunction):
