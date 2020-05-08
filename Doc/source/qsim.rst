@@ -20,10 +20,10 @@ qsim.analyser module
    :undoc-members:
    :show-inheritance:
 
-qsim.const\_function module
+qsim.cost\_functions module
 --------------------------------
 
-.. automodule:: qsim.cost_function
+.. automodule:: qsim.cost_functions
    :members:
    :undoc-members:
    :show-inheritance:
@@ -68,18 +68,18 @@ qsim.optimization\_data module
    :undoc-members:
    :show-inheritance:
 
-qsim.optimization\_statistics module
-------------------------------
-
-.. automodule:: qsim.optimization_statistics
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 qsim.optimize module
 ------------------------------
 
 .. automodule:: qsim.optimize
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+qsim.performance\_statistics module
+------------------------------
+
+.. automodule:: qsim.performance_statistics
    :members:
    :undoc-members:
    :show-inheritance:
