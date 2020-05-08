@@ -18,7 +18,6 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-
 """
 The Solver calculates the propagators as solutions to Schroedinger's
 equation or a master equation in Lindblad form.
@@ -53,8 +52,8 @@ The implementation was inspired by the optimal control package of QuTiP [1]_
 References
 ----------
 .. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
+    for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234
+    (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 
@@ -558,9 +557,17 @@ class Solver(ABC):
         for drift_operator in [self.h_drift[0], ]:
             if type(drift_operator) == matrix.DenseOperator:
                 drift_operator = drift_operator.data
-            h_c += [[drift_operator, len(self.tau) * [1]], ]
-        for i, control_operator in enumerate(self.h_ctrl):
-            h_c += [[control_operator.data, self._ctrl_amps[:, i]], ]
+            h_c += [[drift_operator, len(self.tau) * [1], 'Drift'], ]
+        if len(self.h_ctrl) >= 1:
+            h_c += [
+                [self.h_ctrl[0].data,
+                 self._ctrl_amps[:, 0],
+                 'control'], ]
+            for i, control_operator in enumerate(self.h_ctrl[1:]):
+                h_c += [
+                    [control_operator.data,
+                     self._ctrl_amps[:, i],
+                     'control' + str(i)], ]
 
         dt = self.tau
 
@@ -637,10 +644,6 @@ class SchroedingerSolver(Solver):
 
     _compute_dyn_gen: List[ControlMatrix], len: num_t
         Computes the dynamics generators.
-
-    See Also
-    --------
-    `Solver`: abstract base class
 
     Todo:
         * raise a warning if the approximation method although the gradient

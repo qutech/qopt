@@ -18,7 +18,6 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-
 """This file serves to plot energy spectra of Hamiltonians.
 
 Functions
@@ -28,17 +27,6 @@ Functions
 
 :func:`plot_energy_spectrum`
     plot the energy spectrum of an Hamiltonian.
-
-Notes
------
-The implementation was inspired by the optimal control package of QuTiP [1]_
-(Quantum Toolbox in Python)
-
-References
-----------
-.. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 

@@ -18,7 +18,6 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-
 """The Dynamics class provides the interface between the optimizer and the
 actual simulation.
 
@@ -47,8 +46,8 @@ The implementation was inspired by the optimal control package of QuTiP [1]_
 References
 ----------
 .. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
+    for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234
+    (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 

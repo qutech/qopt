@@ -18,8 +18,7 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-
-"""This class is designed to express a functional relationship between the
+r"""This class is designed to express a functional relationship between the
 optimization parameters, which can be directly controlled and the control
 amplitudes, which appear as factors in the Hamiltonian.
 
@@ -42,13 +41,10 @@ Classes
 -------
 :class:`AmplitudeFunction`
     Abstract base class of the amplitude function.
-
 :class:`IdentityAmpFunc`
     The transferred optimization parameters are the control amplitudes.
-
 :class:`UnaryAnalyticAmpFunc`
     An amplitude function which can be given by a unary function.
-
 :class:`CustomAmpFunc`
     Applies functions handles specified by the user at the initialization.
 
@@ -60,8 +56,8 @@ The implementation was inspired by the optimal control package of QuTiP [1]_
 References
 ----------
 .. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
+    for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234
+    (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 

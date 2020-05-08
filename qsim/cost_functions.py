@@ -18,7 +18,6 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-
 """
 Cost functions which can be minimised in the control optimization.
 
@@ -42,6 +41,12 @@ Classes
 
 :class:`OperationNoiseInfidelity`
     Like Operationfidelity but averaged over noise traces.
+
+:class:`OperatorFilterFunctionInfidelity`
+    Estimates infidelities with filter functions.
+
+:class:`LeakageError`
+    Estimates the leakage of quantum gates.
 
 Functions
 ---------
@@ -73,8 +78,8 @@ The implementation was inspired by the optimal control package of QuTiP [1]_
 References
 ----------
 .. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
+    for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234
+    (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 
@@ -965,6 +970,10 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             self.noise_power_spec_density,
             self.omega
         )
+        # what comes from ff:
+        # num_noise_contribution, num_t, num_ctrls_direction
+        # need to return: (num_t, num_ctrl, num_f)
+        derivative = derivative.transpose(1, 2, 0)
         return derivative
 
 
@@ -974,7 +983,7 @@ class LeakageError(CostFunction):
     The resulting infidelity is measured by truncating the leakage states of
     the propagator U yielding the Propagator V on the computational basis. The
     infidelity is then given as the distance from unitarity:
-        infid = 1 - trace(V^\dag V) / 4
+    infid = 1 - trace(V^\dag V) / 4
 
     Parameters
     ----------
@@ -1093,7 +1102,7 @@ def averge_gate_fidelity(unitary: matrix.OperatorMatrix,
     Average gate fidelity.
 
     Parameters
-    ---------
+    ----------
     unitary: ControlMatrix
         The evolution matrix of the system.
 

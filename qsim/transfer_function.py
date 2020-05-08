@@ -18,7 +18,6 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-
 """Models the response function of control electronics and pulse smoothing.
 
 Due to the imperfection of the control electronics, the generated control pulse
@@ -71,8 +70,8 @@ The implementation was inspired by the optimal control package of QuTiP [1]_
 References
 ----------
 .. [1] J. R. Johansson, P. D. Nation, and F. Nori: "QuTiP 2: A Python framework
- for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234 (2013)
-[DOI: 10.1016/j.cpc.2012.11.019].
+    for the dynamics of open quantum systems.", Comp. Phys. Comm. 184, 1234
+    (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
 
@@ -327,7 +326,7 @@ class TransferFunction(ABC):
         shape = deriv_by_transferred_par.shape
         assert len(shape) == 3
         assert shape[0] == self._num_x
-        assert shape[2] == self.num_ctrls
+        assert shape[1] == self.num_ctrls
 
         if self._transfer_matrix is None:
             self._calculate_transfer_matrix()
@@ -466,10 +465,6 @@ class TransferFunction(ABC):
 class IdentityTF(TransferFunction):
     """Identity as transfer function.
 
-    See Also
-    --------
-    `TransferFunction`: Abstract base class.
-
     """
     def __init__(
             self,
@@ -515,10 +510,6 @@ class LinearTF(IdentityTF):
         The factor by which the optimization parameters are multiplied to
         calculate the control amplitudes.
 
-    See Also
-    --------
-    `TransferFunction`: Abstract base class.
-
     """
     def __init__(
             self,
@@ -560,10 +551,6 @@ class ConcatenateTF(TransferFunction):
     tf2: TransferFunction
         Second transfer function. This function operates on the
         output of the first transfer function.
-
-    See Also
-    --------
-    `TransferFunction`: Abstract base class.
 
     """
     def __init__(self, tf1: TransferFunction, tf2: TransferFunction):
@@ -643,10 +630,6 @@ class ParallelTF(TransferFunction):
         Second transfer function. This function operates on the
         next tf2._num_ctrls number of control pulses.
 
-    See Also
-    --------
-    `TransferFunction`: Abstract base class.
-
     """
 
     def __init__(self, tf1: TransferFunction, tf2: TransferFunction):
@@ -716,10 +699,6 @@ class CustomTF(TransferFunction):
         oversampling: int
             If the oversampling is not explicitly given, it is constructed from
             the bound_type and the transfer matrix.
-
-    See Also
-    --------
-    `TransferFunction`: Abstract base class.
 
 
     TODO:
@@ -804,10 +783,6 @@ class ExponentialTF(TransferFunction):
 
     The functionality is meant to model the finite rise time of voltage
     sources.
-
-    See Also
-    --------
-    `TransferFunction`: Abstract base class.
 
     TODO:
         * add initial and final level. Currently fixed at 0 (or the offset)
