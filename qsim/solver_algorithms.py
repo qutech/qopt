@@ -67,8 +67,8 @@ from filter_functions import plotting
 from filter_functions import basis
 
 from qsim import noise, matrix, matrix as q_mat
-from qsim.transfer_function import TransferFunction
-from qsim.amplitude_functions import AmplitudeFunction
+from qsim.transfer_function import TransferFunction, IdentityTF
+from qsim.amplitude_functions import AmplitudeFunction, IdentityAmpFunc
 from qsim.util import needs_refactoring
 
 
@@ -248,7 +248,6 @@ class Solver(ABC):
             * the operator is already multiplied with the amplitude, which is
             * not coherent with the pulse sequence interface. Alternatively
             * amplitude=1?
-        * document the text attributes. implement their purpose?
         * tau should be taken from the transfer function
 
     """
@@ -298,8 +297,17 @@ class Solver(ABC):
 
         self._is_skew_hermitian = is_skew_hermitian
 
-        self.transfer_function = transfer_function
-        self.amplitude_function = amplitude_function
+        if transfer_function is None:
+            self.transfer_function = IdentityTF(num_ctrls=len(h_ctrl))
+            self.transfer_function.set_times(tau)
+        else:
+            self.transfer_function = transfer_function
+
+        if amplitude_function is None:
+            self.amplitude_function = IdentityAmpFunc()
+        else:
+            self.amplitude_function = amplitude_function
+            
         self.transferred_parameters = None
 
         self.consistency_checks(paranoia_level=paranoia_level)
