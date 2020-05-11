@@ -965,15 +965,19 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         """
         if self.solver.pulse_sequence is None:
             self.solver.create_pulse_sequence()
+
+        c_id = ['Control' + str(i) for i in range(len(self.solver.h_ctrl))]
+
         derivative = filter_functions.numeric.infidelity_derivative(
             self.solver.pulse_sequence,
             self.noise_power_spec_density,
-            self.omega
+            self.omega,
+            c_id=c_id
         )
         # what comes from ff:
         # num_noise_contribution, num_t, num_ctrls_direction
-        # need to return: (num_t, num_ctrl, num_f)
-        derivative = derivative.transpose(1, 2, 0)
+        # need to return: (num_t, num_f, num_ctrl)
+        derivative = derivative.transpose(1, 0, 2)
         return derivative
 
 

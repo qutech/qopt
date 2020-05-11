@@ -558,16 +558,11 @@ class Solver(ABC):
             if type(drift_operator) == matrix.DenseOperator:
                 drift_operator = drift_operator.data
             h_c += [[drift_operator, len(self.tau) * [1], 'Drift'], ]
-        if len(self.h_ctrl) >= 1:
+        for i, control_operator in enumerate(self.h_ctrl):
             h_c += [
-                [self.h_ctrl[0].data,
-                 self._ctrl_amps[:, 0],
-                 'control'], ]
-            for i, control_operator in enumerate(self.h_ctrl[1:]):
-                h_c += [
-                    [control_operator.data,
-                     self._ctrl_amps[:, i],
-                     'control' + str(i)], ]
+                [control_operator.data,
+                 self._ctrl_amps[:, i],
+                 'Control' + str(i)], ]
 
         dt = self.tau
 

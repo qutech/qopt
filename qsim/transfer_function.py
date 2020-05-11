@@ -326,7 +326,7 @@ class TransferFunction(ABC):
         shape = deriv_by_transferred_par.shape
         assert len(shape) == 3
         assert shape[0] == self._num_x
-        assert shape[1] == self.num_ctrls
+        assert shape[2] == self.num_ctrls
 
         if self._transfer_matrix is None:
             self._calculate_transfer_matrix()
