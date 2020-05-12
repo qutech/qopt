@@ -9,6 +9,9 @@ qsim
 .. toctree::
    :maxdepth: 2
    :numbered:
+   :caption: Contents:
+
+Welcome to Qsim.
 
 
 Documentation
@@ -18,6 +21,7 @@ Documentation
    :maxdepth: 2
    :numbered:
 
+   examples/examples
    qsim API Documentation <qsim>
 
 
