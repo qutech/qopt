@@ -256,8 +256,8 @@ class Solver(ABC):
             self,
             h_ctrl: List[q_mat.OperatorMatrix],
             h_drift: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
             tau: np.array,
+            initial_state: q_mat.OperatorMatrix = None,
             opt_pars: Optional[np.array] = None,
             ctrl_amps: Optional[np.array] = None,
             filter_function_h_n: Union[List[List], np.array, None] = None,
@@ -274,7 +274,11 @@ class Solver(ABC):
         self._ctrl_amps = ctrl_amps
         self._opt_pars = opt_pars
 
-        self.initial_state = initial_state
+        if initial_state is None:
+            dim = self.h_ctrl[0].shape[0]
+            self.initial_state = type(self.h_ctrl[0])(np.eye(dim))
+        else:
+            self.initial_state = initial_state
         self.tau = tau
 
         if exponential_method is None:
@@ -307,7 +311,7 @@ class Solver(ABC):
             self.amplitude_function = IdentityAmpFunc()
         else:
             self.amplitude_function = amplitude_function
-            
+
         self.transferred_parameters = None
 
         self.consistency_checks(paranoia_level=paranoia_level)
@@ -659,8 +663,8 @@ class SchroedingerSolver(Solver):
     def __init__(self,
                  h_drift: List[q_mat.OperatorMatrix],
                  h_ctrl: List[q_mat.OperatorMatrix],
-                 initial_state: q_mat.OperatorMatrix,
                  tau: np.array,
+                 initial_state: q_mat.OperatorMatrix = None,
                  ctrl_amps: Optional[np.array] = None,
                  calculate_propagator_derivatives: bool = True,
                  filter_function_h_n: Optional[List] = None,
