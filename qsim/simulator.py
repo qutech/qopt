@@ -113,6 +113,7 @@ class Simulator(object):
         * is the pulse attribute useful?
         * check attributes for duplication: should num_ctrl and num_times be
             saved at this level?
+        * move cost function weights to the optimizer
 
     """
 
@@ -135,16 +136,15 @@ class Simulator(object):
         self._optimization_parameteres = optimization_parameters
         self._times = times
 
-        self.tslot_comps = solvers
+        self.solvers = solvers
         self.cost_fktns = cost_fktns
 
-        if record_performance_statistics:
-            self.stats = performance_statistics.PerformanceStatistics()
-        else:
-            self.stats = None
+        self.stats = (performance_statistics.PerformanceStatistics()
+                      if record_performance_statistics else None)
 
         self.numeric_jacobian = numeric_jacobian
         self.cost_fktn_weights = cost_fktn_weights
+
         if self.cost_fktn_weights is not None:
             if len(self.cost_fktn_weights) == 0:
                 self.cost_fktn_weights = None
@@ -210,8 +210,8 @@ class Simulator(object):
         if pulse is None:
             pulse = self.pulse
 
-        for tslot_comp in self.tslot_comps:
-            tslot_comp.set_optimization_parameters(pulse)
+        for solver in self.solvers:
+            solver.set_optimization_parameters(pulse)
 
         costs = []
 
@@ -265,8 +265,8 @@ class Simulator(object):
         if pulse is None:
             pulse = self.pulse
 
-        for tslot_comp in self.tslot_comps:
-            tslot_comp.set_optimization_parameters(pulse)
+        for solver in self.solvers:
+            solver.set_optimization_parameters(pulse)
 
         jacobians = []
 

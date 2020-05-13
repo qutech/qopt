@@ -445,7 +445,7 @@ class TransferFunction(ABC):
 
         u = self(y)
         n_padding_start, n_padding_end = self.num_padding_elements
-        for x_per_control, u_per_control in zip(y.T, u.transfer_matrix):
+        for x_per_control, u_per_control in zip(y.T, u.T):
             plt.figure()
             plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0],
                     u_per_control, self._y_times[0])

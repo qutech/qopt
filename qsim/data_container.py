@@ -207,13 +207,19 @@ class DataContainer:
             Result of an optimization run.
 
         """
+        if optim_result.optim_summary is None:
+            costs = []
+            parameters = []
+        else:
+            costs = optim_result.optim_summary.costs
+            parameters = optim_result.optim_summary.parameters
 
         self._append(final_costs=optim_result.final_cost,
                      indices=optim_result.indices,
                      init_parameters=optim_result.init_parameters,
                      final_parameters=optim_result.final_parameters,
-                     costs=optim_result.optim_summary.costs,
-                     parameters=optim_result.optim_summary.parameters,
+                     costs=costs,
+                     parameters=parameters,
                      status=optim_result.status,
                      optimization_stats=optim_result.optimization_stats
                      )
