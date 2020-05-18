@@ -77,7 +77,7 @@ qsim.optimize module
    :show-inheritance:
 
 qsim.performance\_statistics module
-------------------------------
+-----------------------------------
 
 .. automodule:: qsim.performance_statistics
    :members:
