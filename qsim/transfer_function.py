@@ -198,6 +198,8 @@ class TransferFunction(ABC):
         For the raw optimisation variables (y), plot the resulting pulse.
 
     TODO:
+        * make the x_times public
+        * bound type seems to be buggy. test with exp_transfer
         * parse bound_type to raise exception only in one function.
         * add exception to the docstring
         * _x_max, _x_min only useful for deprecated functions
@@ -443,16 +445,16 @@ class TransferFunction(ABC):
 
         """
 
-        u = self(y)
+        x = self(y)
         n_padding_start, n_padding_end = self.num_padding_elements
-        for x_per_control, u_per_control in zip(y.T, u.T):
+        for y_per_control, x_per_control in zip(y.T, x.T):
             plt.figure()
-            plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0],
-                    u_per_control, self._y_times[0])
+            plt.bar(np.cumsum(self._x_times) - .5 * self._x_times[0],
+                    x_per_control, self._x_times[0])
             plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
                     + np.cumsum(self._y_times)[n_padding_start]
                     - self._y_times[n_padding_start],
-                    x_per_control, self._y_times[0],
+                    y_per_control, self._y_times[0],
                     fill=False)
         plt.show()
 

@@ -244,6 +244,7 @@ class Solver(ABC):
             * setter for new hamiltonians
             * make hamiltonians private
             * also for the initial state
+            * extend constant drift hamiltonian
         * Implement the drift operator with an amplitude. Right now,
             * the operator is already multiplied with the amplitude, which is
             * not coherent with the pulse sequence interface. Alternatively

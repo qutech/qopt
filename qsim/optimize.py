@@ -57,9 +57,9 @@ import scipy
 import scipy.optimize
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, List, Union
 
-from qsim import optimization_data, solver_algorithms, simulator
+from qsim import optimization_data, simulator
 import simanneal
 
 default_termination_conditions = {
@@ -95,7 +95,7 @@ class Optimizer(ABC):
 
     def __init__(
             self,
-            system_simulator: Optional[solver_algorithms.Solver] = None,
+            system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False):
         self.system_simulator = system_simulator
@@ -251,7 +251,7 @@ class LeastSquaresOptimizer(Optimizer):
         The optimization method used. Currently implemented are:
         - 'trf': A trust region optimization algorithm. This is the default.
 
-    bounds: array of boundaries, optional
+    bounds: array or list of boundaries, optional
         The boundary conditions for the pulse optimizations. If none are given
         then the pulse is assumed to take any real value.
 
@@ -271,7 +271,7 @@ class LeastSquaresOptimizer(Optimizer):
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
             method: str = 'trf',
-            bounds: Optional[np.ndarray] = None,
+            bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,

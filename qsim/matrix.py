@@ -665,7 +665,8 @@ class DenseOperator(OperatorMatrix):
     """
 
     def __init__(
-            self, obj: Union[Qobj, np.ndarray, sp.csr_matrix, 'DenseOperator']) \
+            self,
+            obj: Union[Qobj, np.ndarray, sp.csr_matrix, 'DenseOperator']) \
             -> None:
         super().__init__()
         self.data = None
@@ -688,8 +689,11 @@ class DenseOperator(OperatorMatrix):
         # numpy copy are deep
         return copy_
 
-    def __imul__(self, other: Union[
-        'DenseOperator', complex, float, int, np.generic]) -> 'DenseOperator':
+    def __imul__(self, other: Union['DenseOperator',
+                                    complex,
+                                    float,
+                                    int,
+                                    np.generic]) -> 'DenseOperator':
         """See base class. """
 
         if type(other) == DenseOperator:
@@ -840,7 +844,8 @@ class DenseOperator(OperatorMatrix):
 
         return DenseOperator(exp)
 
-    def _dexp_diagonalization(self, direction: 'DenseOperator', tau: complex = 1,
+    def _dexp_diagonalization(self,
+                              direction: 'DenseOperator', tau: complex = 1,
                               is_skew_hermitian: bool = False,
                               compute_expm: bool = False):
         """ Calculates the matrix exponential by spectral decomposition.
@@ -926,7 +931,8 @@ class DenseOperator(OperatorMatrix):
             The matrix is multiplied by tau before calculating the exponential.
 
         method: string
-            Numerical method used for the calculation of the matrix exponential.
+            Numerical method used for the calculation of the matrix
+            exponential.
             Currently the following are implemented:
             - 'approx', 'Frechet': use the scipy linalg matrix exponential
             - 'first_order': First order taylor approximation
@@ -955,12 +961,6 @@ class DenseOperator(OperatorMatrix):
             prop = self._exp_diagonalize(tau=tau,
                                          is_skew_hermitian=is_skew_hermitian)
 
-        elif method == "spectral_unrefactored":
-            if self._eig_vec is None:
-                self._spectral_decomp(tau=tau,
-                                      is_skew_hermitian=is_skew_hermitian)
-            prop = self._eig_vec.dot(self._prop_eigen).dot(self._eig_vec_adj)
-
         elif method in ["approx", "Frechet"]:
             prop = la.expm(self.data * tau)
 
@@ -987,9 +987,13 @@ class DenseOperator(OperatorMatrix):
         """See base class. """
         return DenseOperator(self.exp(tau))
 
-    def dexp(self, direction: 'DenseOperator', tau: complex = 1,
-             compute_expm: bool = False, method: str = "spectral",
-             is_skew_hermitian: bool = False, epsilon: float = 1e-10) \
+    def dexp(self,
+             direction: 'DenseOperator',
+             tau: complex = 1,
+             compute_expm: bool = False,
+             method: str = "spectral",
+             is_skew_hermitian: bool = False,
+             epsilon: float = 1e-10) \
             -> Union['DenseOperator', Tuple['DenseOperator']]:
         """
         Frechet derivative of the matrix exponential.
@@ -1008,7 +1012,8 @@ class DenseOperator(OperatorMatrix):
             well.
 
         method: string
-            Numerical method used for the calculation of the matrix exponential.
+            Numerical method used for the calculation of the matrix
+            exponential.
             Currently the following are implemented:
             - 'Frechet': Uses the scipy linalg matrix exponential for
             simultaniously calculation of the frechet derivative expm_frechet
@@ -1022,6 +1027,10 @@ class DenseOperator(OperatorMatrix):
             Only required, for the method 'spectral'. If set to True, then the
             matrix is assumed to be skew hermitian in the spectral
             decomposition.
+
+        epsilon: float
+            Width of the finite difference. Only relevant for the method
+            'approx'.
 
         Returns
         -------
@@ -1064,19 +1073,6 @@ class DenseOperator(OperatorMatrix):
                     compute_expm=compute_expm
                 )
 
-        elif method == "spectral_unrefactored":
-            if self._eig_vec is None:
-                self._spectral_decomp(tau=tau,
-                                      is_skew_hermitian=is_skew_hermitian)
-            if compute_expm:
-                prop = self.exp(tau=tau, is_skew_hermitian=is_skew_hermitian)
-                # put control dyn_gen in combined dg diagonal basis
-            cdg = self._eig_vec_dag.dot(direction.data).dot(self._eig_vec)
-            # multiply (elementwise) by timeslice and factor matrix
-            cdg = np.multiply(cdg * tau, self._factormatrix)
-            # Return to canonical basis
-            prop_grad = self._eig_vec.dot(cdg).dot(self._eig_vec_adj)
-
         elif method == "approx":
             d_m = (self.data + epsilon * direction.data) * tau
             dprop = la.expm(d_m)
@@ -1102,10 +1098,10 @@ class DenseOperator(OperatorMatrix):
             prop_grad += (self.data @ direction.data
                           + direction.data @ self.data) * tau * tau * 0.5
             prop_grad += (
-                                 self.data @ self.data @ direction.data
-                                 + direction.data @ self.data @ self.data
-                                 + self.data @ direction.data @ self.data) \
-                         * (tau * tau * tau * 0.16666666666666666)
+                 self.data @ self.data @ direction.data
+                 + direction.data @ self.data @ self.data
+                 + self.data @ direction.data @ self.data
+                         ) * (tau * tau * tau * 0.16666666666666666)
         else:
             raise NotImplementedError(
                 'The specified method ' + method + "is not implemented!")
@@ -1149,8 +1145,15 @@ def convert_unitary_to_super_operator(
     """
     We assume that the unitary U shall be used to propagate a density matrix m
     like
-        U m U^dag
+
+    .. math::
+
+    U m U^dag
+
     which is equivalent to
+
+    .. math::
+
         ( U^\ast \otimes U) \vec{m}
 
     Parameters

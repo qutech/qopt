@@ -113,7 +113,9 @@ class DataContainer:
 
 
     """
-    def __init__(self, storage_path: str, file_name: str = '',
+    def __init__(self,
+                 storage_path: Optional[str] = None,
+                 file_name: str = 'Temp File',
                  indices: Optional[List[str]] = None,
                  final_costs: Optional[List] = None,
                  init_parameters: Optional[List] = None,
@@ -123,45 +125,22 @@ class DataContainer:
                  status: Optional[List] = None,
                  optimization_stats: Optional[List] = None,
                  append_time_to_path=True):
-        if final_costs is None:
-            self.final_costs = []
-        else:
-            self.final_costs = final_costs
 
-        if indices is None:
-            self.indices = []
-        else:
-            self.indices = indices
+        storage_path = os.path.join(
+            __file__, r"..\..\temp"
+        ) if storage_path is None else storage_path
 
-        if init_parameters is None:
-            self.init_parameters = []
-        else:
-            self.init_parameters = init_parameters
-
-        if final_parameters is None:
-            self.final_parameters = []
-        else:
-            self.final_parameters = final_parameters
-
-        if costs is None:
-            self.costs = []
-        else:
-            self.costs = costs
-
-        if parameters is None:
-            self.parameters = []
-        else:
-            self.parameters = parameters
-
-        if status is None:
-            self.status = []
-        else:
-            self.status = status
-
-        if optimization_stats is None:
-            self.optimization_statistics = []
-        else:
-            self.optimization_statistics = optimization_stats
+        self.final_costs = [] if final_costs is None else final_costs
+        self.indices = [] if indices is None else indices
+        self.init_parameters = (
+            [] if init_parameters is None else init_parameters)
+        self.final_parameters = (
+            [] if final_parameters is None else final_parameters)
+        self.costs = [] if costs is None else costs
+        self.parameters = [] if parameters is None else parameters
+        self.status = [] if status is None else status
+        self.optimization_statistics = (
+            [] if optimization_stats is None else optimization_stats)
 
         self.check_length()
 
@@ -254,7 +233,7 @@ class DataContainer:
             status=copy.deepcopy(self.status),
             storage_path=copy.deepcopy(self.storage_path),
             file_name=copy.deepcopy(self.file_name),
-            optimization_statistics=copy.deepcopy(
+            optimization_stats=copy.deepcopy(
                 self.optimization_statistics),
             append_time_to_path=copy.deepcopy(self.append_time_to_path))
         return cpyobj
@@ -303,7 +282,7 @@ class DataContainer:
                     storage_path=self.storage_path,
                     file_name=self.file_name,
                     append_time_to_path=self.append_time_to_path,
-                    optimization_statistics=self.optimization_statistics)
+                    optimization_stats=self.optimization_statistics)
 
     @classmethod
     def _from_dict(cls, data_dict):

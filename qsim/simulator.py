@@ -119,10 +119,8 @@ class Simulator(object):
 
     def __init__(
             self,
-            solvers: Optional[
-                Sequence[solver_algorithms.Solver]],
-            cost_fktns: Optional[
-                Sequence[cost_functions.CostFunction]],
+            solvers: Optional[Sequence[solver_algorithms.Solver]],
+            cost_fktns: Optional[Sequence[cost_functions.CostFunction]],
             optimization_parameters=None,
             num_ctrl=None,
             times=None,
