@@ -108,9 +108,8 @@ class Optimizer(ABC):
         self.pulse_shape = ()
 
         self._opt_start_time = 0
-        self._last_costs = None
-        self._last_jac = None
-        self._last_par = None
+        self._min_costs = np.inf
+        self._min_costs_par = None
         self._n_cost_fkt_eval = 0
         self._n_jac_fkt_eval = 0
 
@@ -146,10 +145,11 @@ class Optimizer(ABC):
             self.optim_iter_summary.parameters.append(
                 optimization_parameters.reshape(self.pulse_shape[::-1]).T
             )
+        if np.linalg.norm(costs) < np.linalg.norm(self._min_costs):
+            self._min_costs = costs
+            self._min_costs_par = optimization_parameters.reshape(
+                self.pulse_shape[::-1]).T
 
-        self._last_costs = costs
-        self._last_par = optimization_parameters.reshape(
-            self.pulse_shape[::-1]).T
         self._n_cost_fkt_eval += 1
         return costs
 
@@ -180,7 +180,6 @@ class Optimizer(ABC):
         jacobian = jacobian.reshape(
             (jacobian.shape[0], jacobian.shape[1] * jacobian.shape[2]))
 
-        self._last_jac = jacobian
         self._n_jac_fkt_eval += 1
         return jacobian
 
@@ -213,9 +212,8 @@ class Optimizer(ABC):
 
         Data stored in this class might be overwritten.
         """
-        self._last_costs = None
-        self._last_jac = None
-        self._last_par = None
+        self._min_costs = np.inf
+        self._min_costs_par = None
         self._n_cost_fkt_eval = 0
         self._n_jac_fkt_eval = 0
         self.pulse_shape = initial_optimization_parameters.shape
@@ -331,16 +329,16 @@ class LeastSquaresOptimizer(Optimizer):
             if self.system_simulator.stats is not None:
                 self.system_simulator.stats.end_t_opt = time.time()
 
-            if self._last_jac is None:
-                jac_norm = 0
+            if self.use_jacobian_function:
+                jac_norm = np.linalg.norm(
+                    self.cost_jacobian_wrapper(self._min_costs_par))
             else:
-                jac_norm = np.linalg.norm(self._last_jac)
+                jac_norm = 0
 
             optim_result = optimization_data.OptimizationResult(
-                final_cost=self._last_costs,
+                final_cost=self._min_costs,
                 indices=self.system_simulator.cost_indices,
-                final_parameters=self._last_par.reshape(
-                    self.pulse_shape[::-1]).T,
+                final_parameters=self._min_costs_par,
                 final_grad_norm=jac_norm,
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
@@ -530,8 +528,8 @@ class SimulatedAnnealingScipy(Optimizer):
         Number of optimization iterations before the step size is reduced.
 
     bounds: array of boundaries, shape: (2, num_t, num_ctrl)
-        The boundary conditions for the pulse optimizations. bounds[0] should be
-        the lower bounds, and bounds[1] the upper ones.
+        The boundary conditions for the pulse optimizations. bounds[0] should
+        be the lower bounds, and bounds[1] the upper ones.
 
     """
 
@@ -594,10 +592,9 @@ class SimulatedAnnealingScipy(Optimizer):
                 self.system_simulator.stats.end_t_opt = time.time()
 
             optim_result = optimization_data.OptimizationResult(
-                final_cost=self._last_costs,
+                final_cost=self._min_costs,
                 indices=self.system_simulator.cost_indices,
-                final_parameters=self._last_par.reshape(
-                    self.pulse_shape[::-1]).T,
+                final_parameters=self._min_costs_par,
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,

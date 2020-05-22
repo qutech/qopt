@@ -808,7 +808,7 @@ class OperationNoiseInfidelity(CostFunction):
                  fidelity_measure: str = 'entanglement',
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False,
-                 neglect_systematic_errors: str = True):
+                 neglect_systematic_errors: bool = True):
         if index is None:
             index = ['Operator Noise Infidelity']
         super().__init__(solver=solver, index=index)

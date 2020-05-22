@@ -137,7 +137,7 @@ class OptimizationResult(object):
                 'termination_reason': self.termination_reason,
                 'optimizer': self.optimizer,
                 'optimization_stats': self.optimization_stats,
-                'optim_iter_summary': self.optim_summary
+                'optim_summary': self.optim_summary
                 }
 
     @classmethod
