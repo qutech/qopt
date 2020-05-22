@@ -1600,7 +1600,7 @@ class LindbladSolver(SchroedingerSolver):
                     const_diss_sup_op.append(
                         (lindblad.conj(copy_=True)).kron(lindblad))
                     const_diss_sup_op[-1] -= .5 * identity.kron(
-                        lindblad * lindblad.dag(copy_=True))
+                        lindblad.dag(copy_=True) * lindblad)
                     const_diss_sup_op[-1] -= .5 * (
                         lindblad.transpose(copy_=True)
                         * lindblad.conj(copy_=True)).kron(identity)
@@ -1610,12 +1610,15 @@ class LindbladSolver(SchroedingerSolver):
             # prefactor_derivatives: shape (num_t, num_ctrl, num_l)
             diss_sup_op_deriv = []
             for factor_per_ctrl_lind in prefactor_derivatives:
+                # create new sub list for eacht time step
                 diss_sup_op_deriv.append([])
                 for factor_per_lind in factor_per_ctrl_lind:
+                    # add the first term for each control direction
                     diss_sup_op_deriv[-1].append(
                         const_diss_sup_op[0] * factor_per_lind[0])
                     for diss_sup_op, factor in zip(
-                            const_diss_sup_op, factor_per_lind):
+                            const_diss_sup_op[1:], factor_per_lind[1:]):
+                        # add the remaining terms
                         diss_sup_op_deriv[-1][-1] += diss_sup_op * factor
             self._diss_sup_op_deriv = diss_sup_op_deriv
             return diss_sup_op_deriv
@@ -1641,7 +1644,8 @@ class LindbladSolver(SchroedingerSolver):
         h_ctrl_sup_op = []
         for ctrl_op in self.h_ctrl:
             h_ctrl_sup_op.append(identity_times_i.kron(ctrl_op))
-            h_ctrl_sup_op[-1] -= ctrl_op.kron(identity_times_i)
+            h_ctrl_sup_op[-1] -= (ctrl_op.transpose(copy_=True)).kron(
+                identity_times_i)
 
         # add derivative of the dissipation part
         if self._diss_sup_op_deriv is None:
