@@ -336,12 +336,12 @@ class Solver(ABC):
         if np.array_equal(self._opt_pars, y):
             return
         else:
-            self._opt_pars = y
+            self._opt_pars = np.copy(y)
 
         if self.transfer_function is not None:
             self.transferred_parameters = self.transfer_function(y)
         else:
-            self.transferred_parameters = y
+            self.transferred_parameters = np.copy(y)
 
         if self.amplitude_function is not None:
             u = self.amplitude_function(

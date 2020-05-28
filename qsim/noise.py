@@ -210,7 +210,8 @@ def sample_2dim_gaussian_distribution(
 
 
 def fast_colored_noise(spectral_density: Callable, dt: float, n_samples: int,
-                       output_shape: Tuple, r_power_of_two=False) -> np.ndarray:
+                       output_shape: Tuple, r_power_of_two=False
+                       ) -> np.ndarray:
     """
     Generates noise traces of arbitrary colored noise.
 
