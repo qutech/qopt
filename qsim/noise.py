@@ -264,7 +264,8 @@ def fast_colored_noise(spectral_density: Callable, dt: float, n_samples: int,
     f = np.linspace(0, f_nyquist, actual_n_samples // 2 + 1)
     f[1:] = spectral_density(f[1:])
     f[0] = 0
-    delta_colored = np.fft.irfft(delta_white_ft * np.sqrt(f / s0), axis=-1)
+    delta_colored = np.fft.irfft(delta_white_ft * np.sqrt(f / s0),
+                                 n=actual_n_samples, axis=-1)
     # the ifft takes r//2 + 1 inputs to generate r outputs
 
     return delta_colored

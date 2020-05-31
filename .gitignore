@@ -2,3 +2,4 @@
 .spyproject/
 qsim/__pycache__/
 build/
+qsim.egg-info/
