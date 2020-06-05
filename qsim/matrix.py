@@ -714,11 +714,9 @@ class DenseOperator(OperatorMatrix):
             out = self.copy()
             out *= other
         elif type(other) == np.ndarray:
-            out = self.copy()
-            np.matmul(self.data, other, out=out.data)
+            out = DenseOperator(np.matmul(self.data, other))
         elif type(other) == DenseOperator:
-            out = self.copy()
-            np.matmul(out.data, other.data, out=out.data)
+            out = DenseOperator(np.matmul(self.data, other.data))
         else:
             raise NotImplementedError(str(type(other)))
         return out
@@ -727,8 +725,7 @@ class DenseOperator(OperatorMatrix):
                                     np.generic]) -> 'DenseOperator':
         """See base class. """
         if type(other) == np.ndarray:
-            out = self.copy()
-            np.matmul(other, self.data, out=out.data)
+            out = DenseOperator(np.matmul(other, self.data))
         elif type(other) in VALID_SCALARS:
             out = self.copy()
             out *= other
@@ -742,6 +739,8 @@ class DenseOperator(OperatorMatrix):
             self.data += other.data
         elif type(other) == np.ndarray:
             self.data += other
+        elif type(other) in VALID_SCALARS:
+            self.data += other
         else:
             raise NotImplementedError(str(type(other)))
         return self
@@ -752,6 +751,8 @@ class DenseOperator(OperatorMatrix):
         if type(other) is DenseOperator:
             self.data -= other.data
         elif type(other) == np.ndarray:
+            self.data -= other
+        elif type(other) in VALID_SCALARS:
             self.data -= other
         else:
             raise NotImplementedError(str(type(other)))
