@@ -12,6 +12,7 @@
 #
 import os
 import sys
+
 sys.path.insert(0, os.path.abspath('../../'))
 
 print(os.path.abspath('../../'))
@@ -24,7 +25,6 @@ author = 'Julian Teske'
 
 # The full version, including alpha/beta/rc tags
 release = '0.1'
-
 
 # -- General configuration ---------------------------------------------------
 
@@ -55,7 +55,8 @@ numpydoc_show_class_members = False
 napoleon_numpy_docstring = True
 napoleon_use_admonition_for_notes = True
 
-# autodoc_default_flags = ['members', 'undoc-members', 'show-inheritance']  # 'private-members', 'special-members', 'inherited-members'
+# autodoc_default_flags = ['members', 'undoc-members', 'show-inheritance']
+# 'private-members', 'special-members', 'inherited-members'
 autoclass_content = 'both'
 # napoleon_include_init_with_doc = True
 
@@ -94,7 +95,7 @@ nbsphinx_execute_arguments = [
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
-#default_role = None
+# default_role = None
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 add_function_parentheses = True
@@ -105,16 +106,16 @@ add_module_names = False
 
 # If true, sectionauthor and moduleauthor directives will be shown in the
 # output. They are ignored by default.
-#show_authors = False
+# show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
 
 # A list of ignored prefixes for module index sorting.
-#modindex_common_prefix = []
+# modindex_common_prefix = []
 
 # If true, keep warnings as "system message" paragraphs in the built documents.
-#keep_warnings = False
+# keep_warnings = False
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
