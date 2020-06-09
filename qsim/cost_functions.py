@@ -1036,12 +1036,70 @@ class LeakageError(CostFunction):
         for ctrl in range(num_ctrls):
             for t in range(num_time_steps):
                 temp = self.solver.reversed_propagators[::-1][t + 1] \
-                     * self.solver.frechet_deriv_propagators[ctrl][t]
+                       * self.solver.frechet_deriv_propagators[ctrl][t]
                 temp *= self.solver.forward_propagators[t]
                 temp = temp.truncate_to_subspace(self.computational_states)
                 temp *= final_leak_dag
                 derivative_fidelity[t, ctrl] = -2. / d * temp.tr().real
         return derivative_fidelity
+
+
+class IncoherentLeakageError(CostFunction):
+    """This class measures leakage as quantum operation error.
+
+    The resulting infidelity is measured by truncating the leakage states of
+    the propagator U yielding the Propagator V on the computational basis. The
+    infidelity is then given as the distance from unitarity:
+    infid = 1 - trace(V^\dag V) / 4
+
+    Parameters
+    ----------
+    solver : TimeSlotComputer
+        The time slot computer computing the propagation of the system.
+
+    computational_states : list of int
+        List of indices marking the computational states of the propagator.
+        These are all but the leakage states.
+
+    index: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    """
+
+    def __init__(self, solver: solver_algorithms.SchroedingerSMonteCarlo,
+                 computational_states: List[int],
+                 index: Optional[List[str]] = None):
+        if index is None:
+            index = ["Leakage Error", ]
+        super().__init__(solver=solver, index=index)
+        self.solver = solver
+        self.computational_states = computational_states
+
+    def costs(self):
+        """See base class. """
+        final_props = [
+            props[-1] for props in self.solver.forward_propagators_noise
+        ]
+        clipped_props = [
+            prop.truncate_to_subspace(self.computational_states,
+                                      map_to_closest_unitary=False)
+            for prop in final_props
+        ]
+        temp = [
+            c_prop.dag(copy_=True) * c_prop
+            for c_prop in clipped_props
+        ]
+        result = [
+            1 - product.tr().real / len(self.computational_states)
+            for product in temp
+        ]
+        result = np.mean(np.asarray(result))
+        return result
+
+    def grad(self):
+        """See base class. """
+        raise NotImplementedError('Derivatives only implemented for the '
+                                  'coherent leakage.')
 
 
 @deprecated
