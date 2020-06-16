@@ -1241,7 +1241,8 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
                 Control amplitudes.
 
             """
-            noise_amplitudes = np.zeros_like(noise_samples)
+            noise_amplitudes = np.zeros_like(noise_samples, dtype=complex)
+            # complex values were requested.
             for trace_num in range(noise_samples.shape[1]):
                 noise_amplitudes[:, trace_num, :] = self.amplitude_function(
                     transferred_parameters + noise_samples[:, trace_num, :]) \
