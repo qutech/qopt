@@ -8,7 +8,6 @@ via email: julian.teske@rwth-aachen.de
 ## Transfer Function
 
 ### Convolution as transfer function
-Increases the number of computable time steps.
 
 ## Solver Algorithms
 
