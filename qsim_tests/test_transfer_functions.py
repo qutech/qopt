@@ -260,7 +260,7 @@ class TestTransferFunctions(unittest.TestCase):
         df_du = np.expand_dims(df_du, axis=1)
         df_du = np.expand_dims(df_du, axis=2)
 
-        identity_tf = transfer_function.IdentityTF(
+        identity_tf = transfer_function.OversamplingTF(
             oversampling=oversampling, bound_type=bound_type, offset=offset)
 
         identity_tf.set_times(x_times)
@@ -282,7 +282,7 @@ class TestTransferFunctions(unittest.TestCase):
         df_du = np.expand_dims(df_du, axis=1)
         df_du = np.expand_dims(df_du, axis=2)
 
-        identity_tf = transfer_function.IdentityTF(
+        identity_tf = transfer_function.OversamplingTF(
             oversampling=oversampling, bound_type=bound_type, offset=offset)
 
         identity_tf.set_times(x_times)
@@ -297,6 +297,31 @@ class TestTransferFunctions(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(u, u_ideal)
         np.testing.assert_array_almost_equal(df_dx, df_dx_ideal)
+
+        # no bound type
+        bound_type = None
+
+        identity_tf_1 = transfer_function.IdentityTF(num_ctrls=1)
+        identity_tf_2 = transfer_function.OversamplingTF(
+            oversampling=1, bound_type=bound_type, offset=0)
+
+        identity_tf_1.set_times(x_times)
+        identity_tf_2.set_times(x_times)
+
+        u_1 = identity_tf_1(x)
+        u_2 = identity_tf_2(x)
+
+        np.testing.assert_array_almost_equal(u_1, u_2)
+
+        df_du = 10 * np.arange(3)
+        df_du = np.expand_dims(df_du, axis=1)
+        df_du = np.expand_dims(df_du, axis=2)
+
+        grad_1 = identity_tf_1.gradient_chain_rule(df_du)
+        grad_2 = identity_tf_2.gradient_chain_rule(df_du)
+
+        np.testing.assert_array_almost_equal(grad_1, grad_2)
+
 
     def test_exponential_transfer_function(self):
         num_x = 4

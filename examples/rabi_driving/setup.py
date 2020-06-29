@@ -6,7 +6,7 @@ for the simulation of rabi drive.
 
 import numpy as np
 from qsim.matrix import DenseOperator
-from qsim.transfer_function import ExponentialTF, IdentityTF, \
+from qsim.transfer_function import ExponentialTF, OversamplingTF, \
     LinearTF, ParallelTF, ConcatenateTF
 from qsim.amplitude_functions import UnaryAnalyticAmpFunc, \
     CustomAmpFunc
@@ -73,8 +73,8 @@ exponential_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # 4.2: Identity
 # No transfer function. Here we assume ideal control electronics.
-identity_transfer_function = IdentityTF(oversampling=oversampling,
-                                        num_ctrls=2)
+identity_transfer_function = OversamplingTF(oversampling=oversampling,
+                                            num_ctrls=2)
 identity_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # ##################### 5. Amplitude Function #################################

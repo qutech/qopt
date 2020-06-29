@@ -465,7 +465,40 @@ class TransferFunction(ABC):
 
 
 class IdentityTF(TransferFunction):
-    """Identity as transfer function.
+    """Numerically efficient identity transfer function which does not change
+    pulse nor time steps.
+
+    Base class functions __call__ and gradient_chane_rule are reimplemented in
+    order to avoid setting a transfer matrix.
+
+    """
+    def __init__(self, num_ctrls=1):
+        super().__init__(
+            bound_type=None,
+            oversampling=1,
+            num_ctrls=num_ctrls,
+            offset=0.
+        )
+        self.name = 'Identity'
+
+    def _calculate_transfer_matrix(self) -> None:
+        """Required for base class.
+
+        """
+        return
+
+    def __call__(self, y: np.array) -> np.array:
+        """See base class. """
+        return y
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """See base class. """
+        return deriv_by_transferred_par
+
+
+class OversamplingTF(TransferFunction):
+    """Oversamples and applies boundary conditions.
 
     """
     def __init__(
@@ -480,7 +513,7 @@ class IdentityTF(TransferFunction):
             num_ctrls=num_ctrls,
             offset=offset
         )
-        self.name = "Identiy"
+        self.name = "Oversampling"
 
     def _calculate_transfer_matrix(self) -> None:
         """See base class. """
@@ -502,7 +535,7 @@ class IdentityTF(TransferFunction):
         self._transfer_matrix = transfer_matrix
 
 
-class LinearTF(IdentityTF):
+class LinearTF(OversamplingTF):
     """
     A linear transfer function.
 
