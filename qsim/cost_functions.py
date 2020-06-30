@@ -372,6 +372,48 @@ class OperatorMatrixNorm(CostFunction):
         return jacobian
 
 
+def state_fidelity(
+    target: Union[np.ndarray, matrix.OperatorMatrix],
+    propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
+) -> np.float64:
+    """
+    Quantum state fidelity.
+
+    The quantum state fidelity between two quantum states is calculated as
+    square norm of the wave function overlap as
+
+    .. math::
+
+        F = \vert \langle \psi_1 \vert \psi_2 \rangle \vert^2
+
+    Parameters
+    ----------
+    target: numpy array or operator matrix of shape (1, d)
+        The target state is assumed to be given as bra-vector.
+
+    propagated_state: numpy array or operator matrix of shape (d, 1)
+        The target state is assumed to be given as ket-vector.
+
+    Returns
+    -------
+    quantum_state_fidelity: float
+        The quantum state fidelity between the propagated and the target state.
+
+    TODO:
+        * functions should not change type of input arrays
+
+    """
+    if type(target) == np.ndarray:
+        target = matrix.DenseOperator(target)
+    if type(propagated_state) == np.ndarray:
+        propagated_state = matrix.DenseOperator(propagated_state)
+
+    scalar_prod = target * propagated_state
+    scalar_prod = scalar_prod[0, 0]
+    abs_sqr = scalar_prod.real ** 2 + scalar_prod.imag ** 2
+    return abs_sqr
+
+
 def entanglement_fidelity(
         target: Union[np.ndarray, matrix.OperatorMatrix],
         propagator: Union[np.ndarray, matrix.OperatorMatrix],
@@ -622,6 +664,42 @@ def deriv_entanglement_fid_sup_op_with_du(
                     computational_states=computational_states,
                     map_to_closest_unitary=map_to_closest_unitary)
     return derivative_fidelity
+
+
+class StateInfidelity(CostFunction):
+    """Quantum state infidelity.
+
+    TODO:
+        * support super operator formalism
+        * handle leakage states?
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 index: Optional[List[str]] = None
+                 ):
+        if index is None:
+            index = ['State Infidelity', ]
+        super().__init__(solver=solver, index=index)
+        # assure target is a bra vector
+
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+
+    def cost(self) -> np.float64:
+        """See base class. """
+        final = self.solver.forward_propagators[-1]
+        infid = 1. - state_fidelity(
+            target=self.target,
+            propagated_state=final
+        )
+        return infid
+
+    def grad(self) -> np.ndarray:
+        """See base class. """
+        raise NotImplementedError
 
 
 class OperationInfidelity(CostFunction):
