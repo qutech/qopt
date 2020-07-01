@@ -522,6 +522,24 @@ TODO:
         pass
 
     @abstractmethod
+    def norm(self, ord: str) -> np.float64:
+        """
+        Calulates the norm of the matrix.
+
+        Parameters
+        ----------
+        ord: string
+            Defines the norm which is calculated.
+
+        Returns
+        -------
+        norm: float
+            Norm of the Matrix.
+
+        """
+        pass
+
+    @abstractmethod
     def spectral_decomposition(self, hermitian: bool = False):
         """
         Calculates the eigenvalues and eigenvectors of a square matrix.
@@ -758,7 +776,7 @@ class DenseOperator(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return self
 
-    def __getitem__(self, index: Tuple) -> complex:
+    def __getitem__(self, index: Tuple) -> np.complex128:
         """See base class. """
         return self.data[index]
 
@@ -796,6 +814,26 @@ class DenseOperator(OperatorMatrix):
     def flatten(self) -> np.ndarray:
         """See base class. """
         return self.data.flatten()
+
+    def norm(self, ord: Union[str, None, int] = 'fro') -> np.float64:
+        """
+        Calulates the norm of the matrix.
+
+        Uses the implementation of numpy.linalg.norm.
+
+        Parameters
+        ----------
+        ord: string
+            Defines the norm which is calculated. Defaults to the Frobenius norm
+            'fro'.
+
+        Returns
+        -------
+        norm: float
+            Norm of the Matrix.
+
+        """
+        return np.linalg.norm(self.data, ord=ord)
 
     def tr(self) -> complex:
         """See base class. """

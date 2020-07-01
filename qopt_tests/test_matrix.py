@@ -104,3 +104,6 @@ class TestMatrix(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(c.data, c_2.data)
         np.testing.assert_array_almost_equal(c.data, c_np)
+
+        norm = sigma_x.norm()
+        self.assertAlmostEqual(norm, np.sqrt(2))
