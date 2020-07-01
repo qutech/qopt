@@ -44,7 +44,7 @@ import copy
 
 from typing import Optional, List
 
-from qsim import optimization_data, performance_statistics
+from qopt import optimization_data, performance_statistics
 
 
 class DataContainer:

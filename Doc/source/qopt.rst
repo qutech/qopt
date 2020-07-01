@@ -1,117 +1,117 @@
-qsim package
+qopt package
 =========================
 
 Submodules
 ----------
 
-qsim.amplitude\_function module
+qopt.amplitude\_function module
 ---------------------------------
 
-.. automodule:: qsim.amplitude_functions
+.. automodule:: qopt.amplitude_functions
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.analyser module
+qopt.analyser module
 ------------------------------
 
-.. automodule:: qsim.analyser
+.. automodule:: qopt.analyser
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.cost\_functions module
+qopt.cost\_functions module
 --------------------------------
 
-.. automodule:: qsim.cost_functions
+.. automodule:: qopt.cost_functions
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.data\_container module
+qopt.data\_container module
 ---------------------------------
 
-.. automodule:: qsim.data_container
+.. automodule:: qopt.data_container
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.energy\_spectrum module
+qopt.energy\_spectrum module
 ----------------------------------------
 
-.. automodule:: qsim.energy_spectrum
+.. automodule:: qopt.energy_spectrum
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.matrix module
+qopt.matrix module
 ------------------------------
 
-.. automodule:: qsim.matrix
+.. automodule:: qopt.matrix
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.noise module
+qopt.noise module
 ------------------------------
 
-.. automodule:: qsim.noise
+.. automodule:: qopt.noise
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.optimization\_data module
+qopt.optimization\_data module
 ------------------------------
 
-.. automodule:: qsim.optimization_data
+.. automodule:: qopt.optimization_data
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.optimize module
+qopt.optimize module
 ------------------------------
 
-.. automodule:: qsim.optimize
+.. automodule:: qopt.optimize
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.performance\_statistics module
+qopt.performance\_statistics module
 -----------------------------------
 
-.. automodule:: qsim.performance_statistics
+.. automodule:: qopt.performance_statistics
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.simulator module
+qopt.simulator module
 ------------------------------
 
-.. automodule:: qsim.simulator
+.. automodule:: qopt.simulator
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.solver\_algorithms module
+qopt.solver\_algorithms module
 ------------------------------
 
-.. automodule:: qsim.solver_algorithms
+.. automodule:: qopt.solver_algorithms
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.transfer\_function module
+qopt.transfer\_function module
 ------------------------------
 
-.. automodule:: qsim.transfer_function
+.. automodule:: qopt.transfer_function
    :members:
    :undoc-members:
    :show-inheritance:
 
-qsim.util module
+qopt.util module
 -----------------------------
 
-.. automodule:: qsim.util
+.. automodule:: qopt.util
    :members:
    :undoc-members:
    :show-inheritance:
@@ -120,7 +120,7 @@ qsim.util module
 Module contents
 ---------------
 
-.. automodule:: qsim
+.. automodule:: qopt
    :members:
    :undoc-members:
    :show-inheritance:

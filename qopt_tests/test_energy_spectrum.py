@@ -1,7 +1,7 @@
 import numpy as np
 
-from qsim.matrix import DenseOperator
-from qsim.energy_spectrum import plot_energy_spectrum
+from qopt.matrix import DenseOperator
+from qopt.energy_spectrum import plot_energy_spectrum
 
 pauli_z = DenseOperator(np.asarray([[1, 0], [0, -1]]))
 pauli_x = DenseOperator(np.asarray([[0, 1], [1, 0]]))

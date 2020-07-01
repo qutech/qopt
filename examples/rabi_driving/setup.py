@@ -5,14 +5,14 @@ for the simulation of rabi drive.
 """
 
 import numpy as np
-from qsim.matrix import DenseOperator
-from qsim.transfer_function import ExponentialTF, OversamplingTF, \
+from qopt.matrix import DenseOperator
+from qopt.transfer_function import ExponentialTF, OversamplingTF, \
     LinearTF, ParallelTF, ConcatenateTF
-from qsim.amplitude_functions import UnaryAnalyticAmpFunc, \
+from qopt.amplitude_functions import UnaryAnalyticAmpFunc, \
     CustomAmpFunc
-from qsim.solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo
-from qsim.noise import NTGQuasiStatic, NTGColoredNoise
-from qsim.cost_functions import OperationInfidelity, \
+from qopt.solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo
+from qopt.noise import NTGQuasiStatic, NTGColoredNoise
+from qopt.cost_functions import OperationInfidelity, \
     OperationNoiseInfidelity
 
 

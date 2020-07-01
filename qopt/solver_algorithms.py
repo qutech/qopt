@@ -66,10 +66,10 @@ from filter_functions import pulse_sequence
 from filter_functions import plotting
 from filter_functions import basis
 
-from qsim import noise, matrix, matrix as q_mat
-from qsim.transfer_function import TransferFunction, IdentityTF
-from qsim.amplitude_functions import AmplitudeFunction, IdentityAmpFunc
-from qsim.util import needs_refactoring
+from qopt import noise, matrix, matrix as q_mat
+from qopt.transfer_function import TransferFunction, IdentityTF
+from qopt.amplitude_functions import AmplitudeFunction, IdentityAmpFunc
+from qopt.util import needs_refactoring
 
 
 class Solver(ABC):

@@ -41,7 +41,7 @@ References
 import pandas as pd
 import numpy as np
 
-from qsim import data_container
+from qopt import data_container
 
 
 class Analyser:

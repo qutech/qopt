@@ -1,4 +1,4 @@
-from qsim import noise, matrix, solver_algorithms
+from qopt import noise, matrix, solver_algorithms
 import qutip
 import numpy as np
 import math

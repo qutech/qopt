@@ -90,8 +90,8 @@ from typing import Sequence, Union, List, Optional, Callable, Dict
 
 import filter_functions.numeric
 
-from qsim import matrix, solver_algorithms
-from qsim.util import needs_refactoring, deprecated
+from qopt import matrix, solver_algorithms
+from qopt.util import needs_refactoring, deprecated
 
 
 class CostFunction(ABC):

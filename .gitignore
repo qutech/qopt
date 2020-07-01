@@ -1,5 +1,5 @@
 .idea/
 .spyproject/
-qsim/__pycache__/
+qopt/__pycache__/
 build/
 qsim.egg-info/

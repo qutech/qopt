@@ -59,7 +59,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable, List, Union
 
-from qsim import optimization_data, simulator
+from qopt import optimization_data, simulator
 import simanneal
 
 default_termination_conditions = {

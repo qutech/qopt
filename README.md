@@ -1,4 +1,4 @@
-# qsim: A Simulation and Quantum Optimal Control Package
+# qopt: A Simulation and Quantum Optimal Control Package
 
 ## Version
 This is the open alpha version. The name might be changed in the future. The

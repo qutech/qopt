@@ -82,7 +82,7 @@ import copy
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 
-from qsim.util import deprecated, needs_refactoring
+from qopt.util import deprecated, needs_refactoring
 
 
 class TransferFunction(ABC):

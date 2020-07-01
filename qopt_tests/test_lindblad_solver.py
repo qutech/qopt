@@ -1,9 +1,9 @@
 import numpy as np
 
-from qsim.matrix import DenseOperator
-from qsim.solver_algorithms import LindbladSolver
-from qsim.cost_functions import OperationInfidelity
-from qsim.simulator import Simulator
+from qopt.matrix import DenseOperator
+from qopt.solver_algorithms import LindbladSolver
+from qopt.cost_functions import OperationInfidelity
+from qopt.simulator import Simulator
 
 sigma_minus = DenseOperator(np.asarray([[0, 0], [1, 0]]))
 zero_matrix = DenseOperator(np.asarray([[0, 0], [0, 0]]))

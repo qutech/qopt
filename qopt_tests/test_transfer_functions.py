@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import unittest
 from typing import Union
 
-from qsim import transfer_function
+from qopt import transfer_function
 
 
 def exp_saturation(t, t_rise, val_1, val_2):

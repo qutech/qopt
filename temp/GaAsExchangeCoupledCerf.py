@@ -8,7 +8,7 @@ All times in nano seconds.
 """
 import numpy as np
 import qutip
-from qsim.matrix import DenseOperator
+from qopt.matrix import DenseOperator
 
 INFIDELITIES = {
     'leakage': 1.8e-5,

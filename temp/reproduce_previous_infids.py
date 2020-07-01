@@ -6,12 +6,12 @@ from scipy.io import loadmat
 import filter_functions as ff
 import temp.ff_testutil as ff_testutil
 
-from qsim.transfer_function import OversamplingTF
-from qsim.amplitude_functions import UnaryAnalyticAmpFunc
-from qsim.solver_algorithms import SchroedingerSolver, \
+from qopt.transfer_function import OversamplingTF
+from qopt.amplitude_functions import UnaryAnalyticAmpFunc
+from qopt.solver_algorithms import SchroedingerSolver, \
     LindbladSolver, SchroedingerSMCControlNoise
-from qsim.noise import NTGColoredNoise
-from qsim.cost_functions import OperationInfidelity, \
+from qopt.noise import NTGColoredNoise
+from qopt.cost_functions import OperationInfidelity, \
     OperationNoiseInfidelity, OperatorFilterFunctionInfidelity
 
 from temp.GaAsExchangeCoupledCerf import \

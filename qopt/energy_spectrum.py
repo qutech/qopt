@@ -35,7 +35,7 @@ import numpy as np
 
 from typing import List
 
-from qsim.matrix import OperatorMatrix
+from qopt.matrix import OperatorMatrix
 
 
 def vector_color_map(vectors: np.array):

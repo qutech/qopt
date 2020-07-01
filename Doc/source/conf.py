@@ -19,7 +19,7 @@ print(os.path.abspath('../../'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'qsim'
+project = 'qopt'
 copyright = '2020, Forschungszentrum Juelich, Julian Teske'
 author = 'Julian Teske'
 
@@ -44,8 +44,8 @@ extensions = [
 ]
 
 # Apidoc config
-apidoc_module_dir = '../../qsim'
-apidoc_excluded_paths = ['../qsim_tests']
+apidoc_module_dir = '../../qopt'
+apidoc_excluded_paths = ['../qopt_tests']
 apidoc_separate_modules = True
 
 # Numpydoc settings

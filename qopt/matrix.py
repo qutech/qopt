@@ -84,7 +84,7 @@ VALID_SCALARS = [int, float, complex, np.int8, np.int16, np.int32, np.int64,
 
 class OperatorMatrix(ABC):
     """
-    The abstract base class of the operator matrix for the qsim control
+    The abstract base class of the operator matrix for the qopt control
     package.
 
     It offers an identical interface to use sparse and dense matrices and has

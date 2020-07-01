@@ -55,9 +55,9 @@ from typing import Optional, Sequence
 import numpy as np
 import time
 
-from qsim import cost_functions, performance_statistics, solver_algorithms
+from qopt import cost_functions, performance_statistics, solver_algorithms
 
-from qsim.util import needs_refactoring
+from qopt.util import needs_refactoring
 
 
 class Simulator(object):

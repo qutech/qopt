@@ -1,8 +1,8 @@
 import numpy as np
-from qsim.matrix import DenseOperator
-from qsim.noise import NTGQuasiStatic
-from qsim.solver_algorithms import SchroedingerSMonteCarlo
-from qsim.cost_functions import IncoherentLeakageError
+from qopt.matrix import DenseOperator
+from qopt.noise import NTGQuasiStatic
+from qopt.solver_algorithms import SchroedingerSMonteCarlo
+from qopt.cost_functions import IncoherentLeakageError
 
 sigma_z = DenseOperator(np.diag([1, -1]))
 sigma_x = DenseOperator(np.asarray([[0, 1], [1, 0]]))

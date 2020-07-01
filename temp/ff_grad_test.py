@@ -1,2 +1,2 @@
-import qsim.matrix
+import qopt.matrix
 

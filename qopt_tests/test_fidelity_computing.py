@@ -1,6 +1,6 @@
 import math
 import unittest
-from qsim import matrix, cost_functions as q_fc, solver_algorithms, \
+from qopt import matrix, cost_functions as q_fc, solver_algorithms, \
     transfer_function
 import numpy as np
 

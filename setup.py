@@ -1,9 +1,9 @@
 from setuptools import setup
 
 setup(
-    name='qsim',
+    name='qopt',
     version='0.1',
-    packages=['qsim'],
+    packages=['qopt'],
     url='',
     license='GLP3',
     author='Julian Teske',

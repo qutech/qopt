@@ -1,6 +1,6 @@
-from qsim.matrix import DenseOperator
-from qsim.noise import NTGQuasiStatic
-from qsim.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver
+from qopt.matrix import DenseOperator
+from qopt.noise import NTGQuasiStatic
+from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver
 
 import examples.rabi_driving.setup as rabi
 import numpy as np

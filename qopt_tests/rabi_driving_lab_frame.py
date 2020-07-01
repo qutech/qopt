@@ -1,9 +1,9 @@
-from qsim.matrix import DenseOperator
-from qsim.noise import NTGQuasiStatic
-from qsim.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
+from qopt.matrix import DenseOperator
+from qopt.noise import NTGQuasiStatic
+from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
     SchroedingerSolver
-from qsim.amplitude_functions import CustomAmpFunc
-from qsim.transfer_function import OversamplingTF
+from qopt.amplitude_functions import CustomAmpFunc
+from qopt.transfer_function import OversamplingTF
 
 import examples.rabi_driving.setup as rabi
 import numpy as np
