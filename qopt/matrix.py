@@ -1166,13 +1166,26 @@ class DenseOperator(OperatorMatrix):
         """See base class. """
         if subspace_indices is None:
             return self
-        else:
+        elif self.shape[0] == self.shape[1]:
+            # square matrix
             out = type(self)(
                 self.data[np.ix_(subspace_indices, subspace_indices)])
             if map_to_closest_unitary:
-                return closest_unitary(out)
-            else:
-                return out
+                out = closest_unitary(out)
+        elif self.shape[0] == 1:
+            # bra-vector
+            out = type(self)(self.data[np.ix_([0], subspace_indices)])
+            if map_to_closest_unitary:
+                out *= 1 / out.norm('fre')
+        elif self.shape[0] == 1:
+            # ket-vector
+            out = type(self)(self.data[np.ix_(subspace_indices, [0])])
+            if map_to_closest_unitary:
+                out *= 1 / out.norm('fre')
+        else:
+            out = type(self)(self.data[np.ix_(subspace_indices)])
+
+        return out
 
 
 class SparseOperator(OperatorMatrix):
