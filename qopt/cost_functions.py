@@ -375,6 +375,8 @@ class OperatorMatrixNorm(CostFunction):
 def state_fidelity(
     target: Union[np.ndarray, matrix.OperatorMatrix],
     propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
+    computational_states: Optional[List[int]] = None,
+    rescale_propagated_state: bool = False
 ) -> np.float64:
     """
     Quantum state fidelity.
@@ -394,6 +396,13 @@ def state_fidelity(
     propagated_state: numpy array or operator matrix of shape (d, 1)
         The target state is assumed to be given as ket-vector.
 
+    computational_states: Optional[List[int]]
+        If set, the entanglement fidelity is only calculated for the specified
+        subspace.
+
+    rescale_propagated_state: bool
+        If True, then the propagated state vector is rescaled to a norm of 1.
+
     Returns
     -------
     quantum_state_fidelity: float
@@ -408,10 +417,65 @@ def state_fidelity(
     if type(propagated_state) == np.ndarray:
         propagated_state = matrix.DenseOperator(propagated_state)
 
-    scalar_prod = target * propagated_state
+    if computational_states is not None:
+        scalar_prod = target * propagated_state.truncate_to_subspace(
+            computational_states,
+            map_to_closest_unitary=rescale_propagated_state
+        )
+    else:
+        scalar_prod = target * propagated_state
+
     scalar_prod = scalar_prod[0, 0]
     abs_sqr = scalar_prod.real ** 2 + scalar_prod.imag ** 2
     return abs_sqr
+
+
+def derivative_state_fidelity(
+    target: matrix.OperatorMatrix,
+    forward_propagators: List[matrix.OperatorMatrix],
+    propagator_derivatives: List[List[matrix.OperatorMatrix]],
+    reversed_propagators: List[matrix.OperatorMatrix],
+    computational_states: Optional[List[int]] = None,
+    rescale_propagated_state: bool = False
+) -> np.ndarray:
+
+    if computational_states is not None:
+        scalar_prod = target * forward_propagators[-1].truncate_to_subspace(
+            subspace_indices=computational_states,
+            map_to_closest_unitary=rescale_propagated_state
+        )
+    else:
+        scalar_prod = target * forward_propagators[-1]
+
+    scalar_prod = np.conj(scalar_prod)
+
+    num_ctrls = len(propagator_derivatives)
+    num_time_steps = len(propagator_derivatives[0])
+
+    derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+                                   dtype=float)
+    for ctrl in range(num_ctrls):
+        for t in range(num_time_steps):
+            # here we need to take the real part.
+            if computational_states:
+                derivative_fidelity[t, ctrl] = 2 * np.real(
+                    scalar_prod * (
+                            target * (
+                            reversed_propagators[::-1][t + 1]
+                            * propagator_derivatives[ctrl][t]
+                            * forward_propagators[t]
+                    ).truncate_to_subspace(
+                        subspace_indices=computational_states,
+                        map_to_closest_unitary=rescale_propagated_state
+                    )
+                    )[0, 0])
+            else:
+                derivative_fidelity[t, ctrl] = 2 * np.real(
+                    scalar_prod * (target * reversed_propagators[::-1][t + 1]
+                                * propagator_derivatives[ctrl][t]
+                                * forward_propagators[t])[0, 0])
+
+    return derivative_fidelity
 
 
 def entanglement_fidelity(
@@ -676,7 +740,9 @@ class StateInfidelity(CostFunction):
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
-                 index: Optional[List[str]] = None
+                 index: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 rescale_propagated_state: bool = False
                  ):
         if index is None:
             index = ['State Infidelity', ]
@@ -688,18 +754,31 @@ class StateInfidelity(CostFunction):
         else:
             self.target = target
 
+        self.computational_states = computational_states
+        self.rescale_propagated_state = rescale_propagated_state
+
     def cost(self) -> np.float64:
         """See base class. """
         final = self.solver.forward_propagators[-1]
         infid = 1. - state_fidelity(
             target=self.target,
-            propagated_state=final
+            propagated_state=final,
+            computational_states=self.computational_states,
+            rescale_propagated_state=self.rescale_propagated_state
         )
         return infid
 
     def grad(self) -> np.ndarray:
         """See base class. """
-        raise NotImplementedError
+        derivative_fid = derivative_state_fidelity(
+            forward_propagators=self.solver.forward_propagators,
+            target=self.target,
+            reversed_propagators=self.solver.reversed_propagators,
+            propagator_derivatives=self.solver.frechet_deriv_propagators,
+            computational_states=self.computational_states,
+            rescale_propagated_state=self.rescale_propagated_state
+        )
+        return -1. * np.real(derivative_fid)
 
 
 class OperationInfidelity(CostFunction):
@@ -762,6 +841,7 @@ class OperationInfidelity(CostFunction):
 
     Todo:
         * add the average fidelity? or remove the fidelity_measure.
+        * gradient does not truncate to the subspace.
 
     """
     def __init__(self,
