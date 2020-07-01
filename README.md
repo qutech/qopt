@@ -23,10 +23,25 @@ The implementation was inspired by the optimal control package of
 
 ## Installation
 To avoid difficulties, QuTiP needs to be installed first. To do so, follow 
-[their instructions](http://qutip.org/docs/latest/installation.html) and 
-install all recommended dependencies. Then install the 
-[filter_functions package](https://github.com/qutech/filter_functions) and two
-remaining dependencies by:
+[their instructions](http://qutip.org/docs/latest/installation.html) or these
+instructions. Start with all recommended dependencies: 
+
+    conda install numpy scipy cython matplotlib pytest pytest-cov jupyter
+
+Then open a conda forge channel:
+
+    conda config --append channels conda-forge
+    
+and install QuTiP:
+
+    conda install qutip
+
+Then install the 
+[filter_functions package](https://github.com/qutech/filter_functions) via pip:
+
+    pip install filter_functions 
+ 
+And two remaining dependencies by:
 
     conda install pandas simanneal
     pip install filter_functions
