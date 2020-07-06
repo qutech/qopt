@@ -1,4 +1,4 @@
-qutip
+git+git://git-ce.rwth-aachen.de/qutech/qutip@julian-dev#egg=qutip
 filter_functions
 simanneal
 pandas
