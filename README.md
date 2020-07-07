@@ -51,7 +51,9 @@ Then download the source code and use
 `python setup.py install` without.
 
 ## Documentation
-The documentation features an API documentation and an introduction in the 
+The documentation can be found on 
+[readthedocs](https://qopt.readthedocs.io/en/latest/index.html). 
+It features an API documentation and an introduction in the 
 form of jupyter notebooks demonstrating how to utilize the package.
 
 ## References
