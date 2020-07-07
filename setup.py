@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='qopt',
     version='0.1',
-    packages=['qopt'],
+    packages=find_packages(),
     url='https://git-ce.rwth-aachen.de/qutech/qopt',
     license='GLP3',
     author='Julian Teske',
