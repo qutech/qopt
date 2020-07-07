@@ -5,7 +5,7 @@ from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
 from qopt.amplitude_functions import CustomAmpFunc
 from qopt.transfer_function import OversamplingTF
 
-import examples.rabi_driving.setup as rabi
+import qopt.examples.rabi_driving.setup as rabi
 import numpy as np
 import scipy.optimize
 

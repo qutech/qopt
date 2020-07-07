@@ -2,7 +2,7 @@ from qopt.matrix import DenseOperator
 from qopt.noise import NTGQuasiStatic
 from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver
 
-import examples.rabi_driving.setup as rabi
+import qopt.examples.rabi_driving.setup as rabi
 import numpy as np
 import scipy.optimize
 
