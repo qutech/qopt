@@ -4,7 +4,7 @@ setup(
     name='qopt',
     version='0.1',
     packages=['qopt'],
-    url='',
+    url='https://git-ce.rwth-aachen.de/qutech/qopt',
     license='GLP3',
     author='Julian Teske',
     author_email='j.teske@fz-juelich.de',

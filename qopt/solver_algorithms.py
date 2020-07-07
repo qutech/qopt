@@ -123,7 +123,7 @@ class Solver(ABC):
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
         matrix exponential. The default is 'Frechet'. See also the Docstring of
-        the file 'control_2.matrix'.
+        the file 'qopt.matrix'.
 
     is_skew_hermitian: bool
         Only important for the exponential_method 'spectral'. If set to true,
@@ -171,7 +171,7 @@ class Solver(ABC):
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
         matrix exponential. The default is 'Frechet'. See also the Docstring of
-        the file 'control_2.matrix'.
+        the file 'qopt.matrix'.
 
     transfer_function: TransferFunction
         The transfer function for reshaping the optimization parameters.

@@ -228,7 +228,7 @@ def fast_colored_noise(spectral_density: Callable, dt: float, n_samples: int,
     Parameters
     ----------
     spectral_density: Callable
-        The spectral density as function of frequency.
+        The one sided spectral density as function of frequency.
 
     dt: float
         Time distance between two samples.
@@ -497,7 +497,7 @@ class NTGColoredNoise(NoiseTraceGenerator):
         are not returned.
 
     noise_spectral_density: function
-        The noise spectral density as function of frequency.
+        The one-sided noise spectral density as function of frequency.
 
     dt: float
         Time distance between two adjacent samples.
