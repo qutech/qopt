@@ -5,7 +5,7 @@ This test uses the rabi driving as test case. So far it covers:
 - Gradient of the entanglement fidelity in the presence of quasi static noise
 """
 
-import examples.rabi_driving.setup as rabi
+import qopt.examples.rabi_driving.setup as rabi
 from qopt.solver_algorithms import SchroedingerSMonteCarlo
 from qopt.matrix import DenseOperator
 from qopt.cost_functions import OperationNoiseInfidelity, \
