@@ -425,6 +425,10 @@ def state_fidelity(
     else:
         scalar_prod = target * propagated_state
 
+    if scalar_prod.shape != (1, 1):
+        raise ValueError('The scalar product is not a scalar. This means that'
+                         'either the target is not a bra vector or the the '
+                         'propagated state not a ket, or both!')
     scalar_prod = scalar_prod[0, 0]
     abs_sqr = scalar_prod.real ** 2 + scalar_prod.imag ** 2
     return abs_sqr
@@ -471,9 +475,9 @@ def derivative_state_fidelity(
                     )[0, 0])
             else:
                 derivative_fidelity[t, ctrl] = 2 * np.real(
-                    scalar_prod * (target * reversed_propagators[::-1][t + 1]
-                                * propagator_derivatives[ctrl][t]
-                                * forward_propagators[t])[0, 0])
+                    (scalar_prod * (target * reversed_propagators[::-1][t + 1]
+                                    * propagator_derivatives[ctrl][t]
+                                    * forward_propagators[t]))[0, 0])
 
     return derivative_fidelity
 
@@ -757,7 +761,7 @@ class StateInfidelity(CostFunction):
         self.computational_states = computational_states
         self.rescale_propagated_state = rescale_propagated_state
 
-    def cost(self) -> np.float64:
+    def costs(self) -> np.float64:
         """See base class. """
         final = self.solver.forward_propagators[-1]
         infid = 1. - state_fidelity(

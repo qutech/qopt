@@ -171,6 +171,29 @@ class TestEntanglementFidelity(unittest.TestCase):
                                              fidelity_computer.grad())
 
 
+class TestStateFidelity(unittest.TestCase):
+
+    def test_state_fid(self):
+        up = matrix.DenseOperator(np.asarray([[1], [0]]))
+        down = matrix.DenseOperator(np.asarray([[0], [1]]))
+        try:
+            q_fc.state_fidelity(up, up)
+        except ValueError:
+            pass
+
+        try:
+            q_fc.state_fidelity(up, up.dag())
+        except ValueError:
+            pass
+
+        assert q_fc.state_fidelity(up.dag(), up) == 1
+        assert q_fc.state_fidelity(up.dag(), down) == 0
+        self.assertAlmostEqual(
+            q_fc.state_fidelity(up.dag(), 1. / np.sqrt(2) * (up + down))
+            , .5
+        )
+
+
 class TestMatrixDistance(unittest.TestCase):
     def test_angle_axis_representation(self):
         beta = .25 * np.pi
