@@ -96,7 +96,7 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
     for i, h in enumerate(hamiltonian):
         eig_val, eig_vec = h.spectral_decomposition(hermitian=True)
         eigenvalues[i, :] = eig_val
-        eigenvectors[i, :, :] = eig_vec
+        eigenvectors[i, :, :] = np.abs(eig_vec)
 
     plt.figure()
     for i in range(d):
