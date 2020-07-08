@@ -1,5 +1,11 @@
 # qopt: A Simulation and Quantum Optimal Control Package
 
+## Documentation
+The documentation can be found on 
+[readthedocs](https://qopt.readthedocs.io/en/latest/index.html). 
+It features an API documentation and an introduction in the 
+form of jupyter notebooks demonstrating how to utilize the package.
+
 ## Version
 This is the open alpha version. The name might be changed in the future. The
 contend will be extended based on feedback concerning the needs and demands of
@@ -49,12 +55,6 @@ And two remaining dependencies by:
 Then download the source code and use
 `python setup.py develop` to install using symlinks or 
 `python setup.py install` without.
-
-## Documentation
-The documentation can be found on 
-[readthedocs](https://qopt.readthedocs.io/en/latest/index.html). 
-It features an API documentation and an introduction in the 
-form of jupyter notebooks demonstrating how to utilize the package.
 
 ## References
 [1]: Khaneja, N., Reiss, T., Kehlet, C., Schulte-Herbrüggen, T., Glaser, S.
