@@ -27,6 +27,11 @@ fidelity.
 ### Handle the time steps
 Avoid setting time steps twice. i. e. for the solver and the transfer function.
 
+### Dynamically change between lab and rotating frame
+(priority low) In the special case of Rabi driving change between two frames 
+connected by a unitary evolution. (i.e. combine single gates in rot frame with
+two qubit gates in the lab frame.)
+
 ## Cost function
 
 ### State fidelity
