@@ -15,4 +15,3 @@ from *Doc/source/examples* using `jupyter notebook`.
    open_quantum_systems
    numerics
    energy_spectra_analyser
-   filter_functions

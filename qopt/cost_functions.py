@@ -131,6 +131,7 @@ class CostFunction(ABC):
         -------
         costs : np.array or float
             Result of the cost function's evaluation.
+
         """
         pass
 
@@ -144,7 +145,9 @@ class CostFunction(ABC):
             shape: (num_t, num_ctrl, num_f) where num_t is the number of time
             slices, num_ctrl the number of control parameters and num_f the
             number of values returned by the cost function. Derivatives of
-            the cost function by the control amplitudes. """
+            the cost function by the control amplitudes.
+
+        """
         pass
 
 
