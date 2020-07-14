@@ -15,10 +15,11 @@ conda:
 # Optionally set the version of Python and requirements required to build your docs
 python:
   version: 3.7
+  system_packages: true
   install:
     - method: pip
       path: .
       extra_requirements:
-        - doc
+        - doc/requirements.txt
     #- requirements: doc/requirements.txt
     #- requirements: requirements.txt
