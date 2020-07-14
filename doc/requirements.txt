@@ -8,3 +8,6 @@ ipython
 numpy
 scipy
 pandas
+matplotlib
+qutip
+filter_functions
