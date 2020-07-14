@@ -20,6 +20,6 @@ python:
     - method: pip
       path: .
       extra_requirements:
-        - doc/requirements.txt
+        - doc
     #- requirements: doc/requirements.txt
     #- requirements: requirements.txt
