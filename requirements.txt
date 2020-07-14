@@ -3,7 +3,6 @@ scipy
 cython
 matplotlib
 nose
-jupyter notebook
 spyder
 simanneal
 pandas
