@@ -42,17 +42,17 @@ and install QuTiP:
 
     conda install qutip
 
-Then install the 
+Then install two remaining dependencies and the 
 [filter_functions package](https://github.com/qutech/filter_functions) via pip:
-
-    pip install filter_functions 
- 
-And two remaining dependencies by:
 
     conda install pandas simanneal
     pip install filter_functions
+    
+And either install qopt via pip 
 
-Then download the source code and use
+    pip install qopt
+
+or alternatively download the source code and use
 `python setup.py develop` to install using symlinks or 
 `python setup.py install` without.
 
