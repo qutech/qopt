@@ -3,3 +3,5 @@
 qopt/__pycache__/
 build/
 qsim.egg-info/
+dist/
+qopt.egg-info/
