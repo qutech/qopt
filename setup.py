@@ -11,7 +11,7 @@ setup(
     description='Optimal Control for Quantum Systems',
     package_dir={'qopt': 'qopt'},
     install_requires=['numpy', 'scipy', 'matplotlib', 'cython', 'nose',
-                      'jupyter notebook', 'simanneal', 'pandas', 'spyder',
+                      'simanneal', 'pandas', 'spyder',
                       'filter_functions', 'qutip', 'opt_einsum', 'sparse'],
     extras_require={
         'fancy_progressbar': ['tqdm', 'requests'],
