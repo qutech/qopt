@@ -5,9 +5,3 @@ numpydoc
 sphinx_rtd_theme
 jupyter_client
 ipython
-numpy
-scipy
-pandas
-matplotlib
-qutip
-filter_functions

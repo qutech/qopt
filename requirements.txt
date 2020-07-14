@@ -1,7 +1,11 @@
-qutip
-filter_functions
+numpy
+scipy
+cython
+matplotlib
+nose
+jupyter notebook
+spyder
 simanneal
 pandas
-numpy
-matplotlib
-scipy
+qutip
+filter_functions

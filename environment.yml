@@ -1,4 +1,4 @@
-name: filter_functions
+name: qopt
 
 channels:
   - conda-forge
@@ -7,4 +7,4 @@ dependencies:
   - qutip
   - pip
 
-prefix: /home/docs/.conda/envs/filter_functions
+prefix: /home/docs/.conda/envs/qopt
