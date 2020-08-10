@@ -120,6 +120,12 @@ class Solver(ABC):
         cached filter functions cannot be retained since the GGM basis does not
         factor into tensor products. In this case a Pauli basis is preferable.
 
+    filter_function_s_derivs: Callable numpy array to numpy array
+        This function calculates the derivatives of the noise susceptibility in
+        the filter function formalism. It receives the optimization parameters
+        as array of shape (num_opt, num_t) and returns the derivatives as array
+        of shape (num_noise_op, n_ctrl, num_t).
+
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
         matrix exponential. The default is 'Frechet'. See also the Docstring of
@@ -263,6 +269,8 @@ class Solver(ABC):
             ctrl_amps: Optional[np.array] = None,
             filter_function_h_n: Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
             transfer_function: Optional[TransferFunction] = None,
@@ -299,6 +307,7 @@ class Solver(ABC):
         else:
             self.filter_function_h_n = filter_function_h_n
         self.filter_function_basis = filter_function_basis
+        self.filter_function_s_derivs = filter_function_s_derivs
 
         self._is_skew_hermitian = is_skew_hermitian
 
@@ -483,6 +492,23 @@ class Solver(ABC):
         if self._reversed_prop is None:
             self._compute_reversed_propagation()
         return self._reversed_prop
+
+    @property
+    def filter_function_s_derivs_vals(self) -> Optional[np.ndarray]:
+        """
+        Calculates the derivatives of the noise susceptibilities from the filter
+        function formalism.
+
+        Returns
+        -------
+        s_derivs: numpy array of shape (num_noise_op, n_ctrl, num_t)
+            Derivatives of the noise susceptibilities by the control amplitudes.
+
+        """
+        if self.filter_function_s_derivs is None:
+            return None
+        else:
+            return self.filter_function_s_derivs(self._opt_pars)
 
     @abstractmethod
     def _compute_propagation(self) -> None:
@@ -681,6 +707,8 @@ class SchroedingerSolver(Solver):
                  calculate_propagator_derivatives: bool = True,
                  filter_function_h_n: Optional[List] = None,
                  filter_function_basis: Optional[basis.Basis] = None,
+                 filter_function_s_derivs: Optional[
+                    Callable[[np.ndarray], np.ndarray]] = None,
                  exponential_method: Optional[str] = None,
                  frechet_deriv_approx_method: Optional[str] = None,
                  is_skew_hermitian: bool = True,
@@ -691,6 +719,7 @@ class SchroedingerSolver(Solver):
             tau=tau, ctrl_amps=ctrl_amps,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             is_skew_hermitian=is_skew_hermitian,
             transfer_function=transfer_function,
@@ -899,6 +928,8 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             calculate_propagator_derivatives: bool = False,
             filter_function_h_n: Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
@@ -914,6 +945,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             tau=tau, ctrl_amps=ctrl_amps,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             calculate_propagator_derivatives=calculate_propagator_derivatives,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
@@ -1214,6 +1246,8 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             calculate_propagator_derivatives: bool = False,
             filter_function_h_n: Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
@@ -1260,6 +1294,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             calculate_propagator_derivatives=calculate_propagator_derivatives,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
             is_skew_hermitian=is_skew_hermitian,
@@ -1456,6 +1491,8 @@ class LindbladSolver(SchroedingerSolver):
             filter_function_h_n:
             Union[List[List], np.array, None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             initial_diss_super_op: List[q_mat.OperatorMatrix] = None,
@@ -1477,6 +1514,7 @@ class LindbladSolver(SchroedingerSolver):
             calculate_propagator_derivatives=calculate_unitary_derivatives,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
             is_skew_hermitian=is_skew_hermitian,

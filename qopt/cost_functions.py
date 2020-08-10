@@ -1133,11 +1133,12 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
         c_id = ['Control' + str(i) for i in range(len(self.solver.h_ctrl))]
 
-        derivative = filter_functions.numeric.infidelity_derivative(
-            self.solver.pulse_sequence,
-            self.noise_power_spec_density,
-            self.omega,
-            c_id=c_id
+        derivative = filter_functions.gradient.infidelity_derivative(
+            pulse=self.solver.pulse_sequence,
+            S=self.noise_power_spec_density,
+            omega=self.omega,
+            c_id=c_id,
+            s_derivs=self.solver.filter_function_s_derivs_vals
         )
         # what comes from ff:
         # num_noise_contribution, num_t, num_ctrls_direction
