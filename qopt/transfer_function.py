@@ -197,7 +197,7 @@ class TransferFunction(ABC):
     plot_pulse(y):
         For the raw optimisation variables (y), plot the resulting pulse.
 
-    TODO:
+    `Todo`
         * make the x_times public
         * bound type seems to be buggy. test with exp_transfer
         * parse bound_type to raise exception only in one function.
@@ -736,7 +736,7 @@ class CustomTF(TransferFunction):
             the bound_type and the transfer matrix.
 
 
-    TODO:
+    `Todo`
         * does it make sense so set the utimes explicitly? breakes the usual
             * workflow
 
@@ -819,7 +819,7 @@ class ExponentialTF(TransferFunction):
     The functionality is meant to model the finite rise time of voltage
     sources.
 
-    TODO:
+    `Todo`
         * add initial and final level. Currently fixed at 0 (or the offset)
 
     """
@@ -853,7 +853,7 @@ class ExponentialTF(TransferFunction):
 
     @deprecated
     def old_call(self, x: np.ndarray):
-        """TODO: only alive for testing"""
+        """ `TODO` only alive for testing"""
         start_value = 0
         stop_value = 0
 
@@ -1050,7 +1050,7 @@ class Gaussian(TransferFunction):
 
     The amplitudes time range is wider than the given times.
 
-    Todo:
+    `Todo`
         * reworked the comments but the code has not been refactored
 
     """

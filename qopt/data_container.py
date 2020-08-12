@@ -100,18 +100,6 @@ class DataContainer:
     append_time_to_path : bool
         If True, the current time is appended to the file name.
 
-    Methods
-    -------
-    append_optim_result(optim_result: `OptimizationResult`)
-        Append the data from a single optimization run to the `DataContainer`.
-
-    to_pickle(filename: str)
-        Dump the class instance into the file.
-
-    from_pickle(filename: str)
-        Classmethod: Load a pickled `DataContainer`.
-
-
     """
     def __init__(self,
                  storage_path: Optional[str] = None,

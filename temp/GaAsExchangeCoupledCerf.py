@@ -171,10 +171,10 @@ for i in range(len(lindbladians)):
     lindbladians[i] = DenseOperator(
         lindbladians[i].data[sub_space_ind])
 
-    diss_op[i] = lindbladians[i].conj(copy_=True).kron(lindbladians[i])
+    diss_op[i] = lindbladians[i].conj(do_copy=True).kron(lindbladians[i])
     diss_op[i] -= .5 * lindbladians[i].identity_like().kron(
-        lindbladians[i].dag(copy_=True) * lindbladians[i])
-    diss_op[i] -= .5 * (lindbladians[i].conj(copy_=True).dag(copy_=True)
+        lindbladians[i].dag(do_copy=True) * lindbladians[i])
+    diss_op[i] -= .5 * (lindbladians[i].conj(do_copy=True).dag(do_copy=True)
                         * lindbladians[i].conj()).kron(
         lindbladians[i].identity_like())
 

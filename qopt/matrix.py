@@ -92,86 +92,11 @@ class OperatorMatrix(ABC):
 
     Attributes
     ----------
-    data:
+    data
         The stored data. Its type is defined in subclasses.
 
-    Methods
-    -------
-    dag:
-        Adjoint (dagger) of matrix. Also called hermitian conjugate.
-
-    tr:
-        Trace of matrix.
-
-    prop(tau):
-        The matrix exponential exp(A*tau) of the matrix A.
-
-    dexp(dirr, tau, compute_expm=False)
-        The deriative of the exponential in the given dirrection
-
-    clean:
-        Delete stored data.
-
-    copy:
-        Returns a deep copy of the object.
-
-    shape:
-        Returns the shape of the matrix.
-
-    conj(copy_):
-        Complex conjugate of the matrix. Returns a copy or operates in place.
-
-    conjugate(copy_):
-        Alias for conj.
-
-    transpose(copy_):
-        Transpose the matrix.
-
-    flatten:
-        Returns the flattened matrix.
-
-    prop(tau):
-        Convenience function to calculate the propagator of the Schroedinger
-        equation.
-
-    exp(tau, method):
-        Returns the matrix exponential.
-
-    dexp(direction, tau, method):
-        Returns the matrix exponential and its frechet derivative.
-
-    kron(other):
-        Kronecker matrix product.
-
-    identity_like: ControlMatrix
-        Returns an identity matrix of the same shape and type. Only for square
-        matrices!
-
-    spectral_decomposition(hermitian):
-        Eigenvalues and eigenvectors.
-
-    __getitem__(identifier):
-        Returns the matrix element corresponding to the identifier.
-
-    __add__(other):
-        Addition with other instances of the same type or instances of the
-        data storage type.
-
-    __iadd__(other):
-        In place addition with other instances of the same type or instances of
-        the data storage type.
-
-    __mul__(other):
-        Either Matrix multiplication or scalar multiplication.
-
-    __imul__(other):
-        Inplace matrix or scalar multiplication.
-
-    __rmul__(other):
-        Reflective scalar or matrix multiplication.
-
-TODO:
-    * implement element wise division for scalars
+    `Todo`
+        * implement element wise division for scalars
     """
 
     def __init__(self) -> None:
@@ -415,20 +340,20 @@ TODO:
         pass
 
     @abstractmethod
-    def dag(self, copy_: bool = True) -> Optional['OperatorMatrix']:
+    def dag(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
         """
         Adjoint (dagger) of the matrix.
 
         Parameters
         ----------
-        copy_: bool, optional
+        do_copy: bool, optional
             If false, then the operation is executed inplace. Otherwise returns
             a new instance. Defaults to True.
 
         Returns
         -------
         out: OperatorMatrix
-            If copy_ is true, then a new instance otherwise self.
+            If do_copy is true, then a new instance otherwise self.
 
         """
         return self
@@ -446,42 +371,42 @@ TODO:
         return 0j
 
     @abstractmethod
-    def conj(self, copy_: bool = True) -> Optional['OperatorMatrix']:
-        """
+    def conj(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
+        r"""
         Complex conjugate of the matrix.
 
         Parameters
         ----------
-        copy_: bool, optional
+        do_copy : bool, optional
             If false, then the operation is executed inplace. Otherwise returns
             a new instance. Defaults to True.
 
         Returns
         -------
         out: OperatorMatrix
-            If copy_ is true, then a new instance otherwise self.
+            If do_copy is true, then a new instance otherwise self.
 
         """
         pass
 
-    def conjugate(self, copy_: bool = True) -> Optional['OperatorMatrix']:
+    def conjugate(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
         """Alias for conj. """
-        return self.conj(copy_=copy_)
+        return self.conj(do_copy=do_copy)
 
     @abstractmethod
-    def transpose(self, copy_: bool = True) -> Optional['OperatorMatrix']:
+    def transpose(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
         """Transpose of the matrix.
 
         Parameters
         ----------
-        copy_: bool, optional
+        do_copy: bool, optional
             If false, then the operation is executed inplace. Otherwise returns
             a new instance. Defaults to True.
 
         Returns
         -------
         out: OperatorMatrix
-            If copy_ is true, then a new instance otherwise self.
+            If do_copy is true, then a new instance otherwise self.
 
         """
 
@@ -780,9 +705,9 @@ class DenseOperator(OperatorMatrix):
         """See base class. """
         return self.data[index]
 
-    def dag(self, copy_: bool = True) -> Optional['DenseOperator']:
+    def dag(self, do_copy: bool = True) -> Optional['DenseOperator']:
         """See base class. """
-        if copy_:
+        if do_copy:
             cp = self.copy()
             np.conj(cp.data, out=cp.data)
             cp.data = np.copy(cp.data.T)
@@ -792,9 +717,9 @@ class DenseOperator(OperatorMatrix):
             self.data = self.data.T
             return self
 
-    def conj(self, copy_: bool = True) -> Optional['DenseOperator']:
+    def conj(self, do_copy: bool = True) -> Optional['DenseOperator']:
         """See base class. """
-        if copy_:
+        if do_copy:
             copy = self.copy()
             np.conj(copy.data, out=copy.data)
             return copy
@@ -802,9 +727,9 @@ class DenseOperator(OperatorMatrix):
             np.conj(self.data, out=self.data)
             return self
 
-    def transpose(self, copy_: bool = True) -> Optional['DenseOperator']:
+    def transpose(self, do_copy: bool = True) -> Optional['DenseOperator']:
         """See base class. """
-        if copy_:
+        if do_copy:
             out = self.copy()
         else:
             out = self
@@ -1194,13 +1119,13 @@ class SparseOperator(OperatorMatrix):
 
 def convert_unitary_to_super_operator(
         unitary: Union['OperatorMatrix', np.array]):
-    """
+    r"""
     We assume that the unitary U shall be used to propagate a density matrix m
     like
 
     .. math::
 
-    U m U^dag
+        U m U^dag
 
     which is equivalent to
 
@@ -1225,7 +1150,7 @@ def convert_unitary_to_super_operator(
 
     """
     if type(unitary) in (DenseOperator, SparseOperator):
-        return unitary.conj(copy_=True).kron(unitary)
+        return unitary.conj(do_copy=True).kron(unitary)
     elif isinstance(unitary, np.ndarray):
         return np.kron(np.conj(unitary), unitary)
     else:
