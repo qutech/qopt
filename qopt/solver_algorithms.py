@@ -1377,11 +1377,12 @@ class LindbladSolver(SchroedingerSolver):
         assumend to be of shape (dim, dim) where dim is the dimension of the
         system.
 
-    prefactor_function: Callable[[np.array], np.array]
+    prefactor_function: Callable[[np.array, np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns prefactors as numpy array
-        of shape (num_t, num_l). The prefactors a_k are used as weights in the
-        sum of the total dissipation operator.
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns prefactors as numpy
+        array of shape (num_t, num_l). The prefactors a_k are used as weights in
+        the sum of the total dissipation operator.
 
         .. math::
 
@@ -1402,10 +1403,11 @@ class LindbladSolver(SchroedingerSolver):
 
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    prefactor_derivative_function: Callable[[np.array], np.array]
+    prefactor_derivative_function: Callable[[np.array, np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns the derivatives of the
-        prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the derivatives of
+        the prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
         derivatives d_k are used as weights in the sum of the derivative of the
         total dissipation operator.
 
@@ -1430,17 +1432,20 @@ class LindbladSolver(SchroedingerSolver):
 
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    super_operator_function: Callable[[np.array], List[ControlMatrix]]
+    super_operator_function: Callable[[np.array, np.array], List[ControlMatrix]]
         Receives the control amlitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns the total dissipation
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the total dissipation
         operators as list of length num_t. Set if you want to use method (3.).
         (See class documentation.)
 
-    super_operator_derivative_function: Callable[[np.array],
-                                                 List[List[ControlMatrix]]]
+    super_operator_derivative_function: Callable[[np.array, np.array],
+        List[List[ControlMatrix]]]
         Receives the control amlitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns the derivatives of the total dissipation
-        operators as nested list of shape [[] * num_ctrl] * num_t. Set if you
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the derivatives of
+        the total dissipation operators as nested list of
+        shape [[] * num_ctrl] * num_t. Set if you
         want to use method (3.). (See class documentation.)
 
     is_skew_hermitian: bool
@@ -1545,8 +1550,8 @@ class LindbladSolver(SchroedingerSolver):
             self,
             h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
             tau: List[float],
+            initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_unitary_derivatives: bool = False,
             filter_function_h_n: Union[
@@ -1558,17 +1563,23 @@ class LindbladSolver(SchroedingerSolver):
             frechet_deriv_approx_method: Optional[str] = None,
             initial_diss_super_op: List[q_mat.OperatorMatrix] = None,
             lindblad_operators: List[q_mat.OperatorMatrix] = None,
-            prefactor_function: Callable[[np.array], np.array] = None,
+            prefactor_function: Callable[[np.array, np.array], np.array] = None,
             prefactor_derivative_function:
-            Callable[[np.array], np.array] = None,
+            Callable[[np.array, np.array], np.array] = None,
             super_operator_function:
-            Callable[[np.array], List[q_mat.OperatorMatrix]] = None,
+            Callable[[np.array, np.array], List[q_mat.OperatorMatrix]] = None,
             super_operator_derivative_function:
-            Callable[[np.array], List[List[q_mat.OperatorMatrix]]] = None,
+            Callable[[np.array, np.array],
+                     List[List[q_mat.OperatorMatrix]]] = None,
             is_skew_hermitian: bool = False,
             transfer_function: Optional[TransferFunction] = None,
             amplitude_function: Optional[AmplitudeFunction] = None) \
             -> None:
+
+        if initial_state is None:
+            dim = self.h_ctrl[0].shape[0]
+            initial_state = type(self.h_ctrl[0])(np.eye(dim ** 2))
+
         super().__init__(
             h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
             tau=tau, ctrl_amps=ctrl_amps,
@@ -1639,7 +1650,8 @@ class LindbladSolver(SchroedingerSolver):
             if self._prefactor_function is not None:
                 self._diss_sup_op = []
                 prefactors = self._prefactor_function(
-                    copy.deepcopy(self._ctrl_amps))
+                    copy.deepcopy(self._ctrl_amps),
+                    copy.deepcopy(self.transferred_parameters))
                 for factor_at_time_t in prefactors:
                     self._diss_sup_op.append(
                         const_diss_sup_op[0] * factor_at_time_t[0])
@@ -1654,8 +1666,8 @@ class LindbladSolver(SchroedingerSolver):
                 self._diss_sup_op *= len(self.tau)
         else:
             self._diss_sup_op = self._sup_op_func(
-                self._ctrl_amps,
-                self.transferred_parameters)
+                copy.deepcopy(self._ctrl_amps),
+                copy.deepcopy(self.transferred_parameters))
         return self._diss_sup_op
 
     def _calc_diss_sup_op_deriv(self) \
@@ -1693,8 +1705,8 @@ class LindbladSolver(SchroedingerSolver):
         if self._sup_op_deriv_func is not None:
             self._diss_sup_op_deriv = \
                 self._sup_op_deriv_func(
-                    self._ctrl_amps,
-                    self.transferred_parameters)
+                    copy.deepcopy(self._ctrl_amps),
+                    copy.deepcopy(self.transferred_parameters))
             return self._diss_sup_op_deriv
 
         elif self._prefactor_deriv_function is not None:
@@ -1717,7 +1729,9 @@ class LindbladSolver(SchroedingerSolver):
                         * lindblad.conj(do_copy=True)).kron(identity)
 
             prefactor_derivatives = \
-                self._prefactor_deriv_function(self._ctrl_amps)
+                self._prefactor_deriv_function(
+                copy.deepcopy(self._ctrl_amps),
+                copy.deepcopy(self.transferred_parameters))
             # prefactor_derivatives: shape (num_t, num_ctrl, num_l)
             diss_sup_op_deriv = []
             for factor_per_ctrl_lind in prefactor_derivatives:
