@@ -6,6 +6,7 @@ from qopt.amplitude_functions import CustomAmpFunc
 from qopt.cost_functions import OperatorFilterFunctionInfidelity, \
     OperationInfidelity
 from qopt.simulator import Simulator
+from qopt.optimize import LeastSquaresOptimizer
 
 
 pauli_x = DenseOperator(np.asarray([[0, 1], [1, 0]]))
@@ -13,10 +14,15 @@ pauli_z = DenseOperator(np.diag([1, -1]))
 
 x_pi_half = (.5 * pauli_x).exp(.5j * np.pi)
 
-J_0 = 1.
-EPS_0 = 1.
-S_0 = 1.
-S_0_WHITE = 1.
+J_0 = 1.  # in ns^-1
+EPS_0 = 1.  # by norming to eps 0
+EPS_MIN = -5.4  # in eps_0
+EPS_MAX = 2.4  # in eps_0
+EPSILON_0 = .272  # mV
+SIGMA_EPS = 8e-3 / EPSILON_0  # mV
+normation_factor = 1 / ((2 * np.pi) ** 2) / (EPSILON_0 ** 2)
+S_0_WHITE = 4e-5 * normation_factor  # in eps_0
+S_0_PINK = 1.
 
 
 def exchange_interaction(eps, j_0=J_0, eps_0=EPS_0):
@@ -53,21 +59,28 @@ def create_simulators(
         target=x_pi_half
 ):
     h_ctrl = [.5 * pauli_x, ]
-    h_drift = [dbz * .5 * pauli_z, ]
+    h_drift = [dbz * .5 * pauli_z, ] * n_time_steps
 
     def noise_hamiltonian(eps):
-        h_n = [.5 * pauli_x,
-               deriv_exchange_interaction(eps=eps, j_0=j_0, eps_0=eps_0)]
+        h_n = [[.5 * pauli_x.data,
+               deriv_exchange_interaction(
+                   eps=eps, j_0=j_0, eps_0=eps_0).flatten()],
+               ]
         return h_n
 
     def s_derivs(eps):
         s_d = deriv_2_exchange_interaction(eps=eps, j_0=j_0, eps_0=eps_0)
         s_d = np.expand_dims(s_d, 0)
-        return s_d
+        return s_d.transpose((0, 2, 1))
+
+    def derivative_function(eps, j_0=J_0, eps_0=EPS_0):
+        x = deriv_exchange_interaction(eps, j_0=J_0, eps_0=EPS_0)
+        x = np.expand_dims(x, 1)
+        return x
 
     amp_func = CustomAmpFunc(
         value_function=exchange_interaction,
-        derivative_function=deriv_exchange_interaction
+        derivative_function=derivative_function
     )
 
     solver = SchroedingerSolver(
@@ -78,6 +91,8 @@ def create_simulators(
         filter_function_s_derivs=s_derivs,
         amplitude_function=amp_func
     )
+
+    solver.set_optimization_parameters(np.zeros((n_time_steps, 1)))
 
     syst_infid = OperationInfidelity(
         solver=solver,
@@ -94,7 +109,7 @@ def create_simulators(
         return s_0_white * (j / eps_0) ** 2
 
     def prefactor_function_derivative(j, _):
-        return s_0_white * 2 * (j / eps_0) ** 2 / eps_0
+        return np.expand_dims(s_0_white * 2 * (j / eps_0) ** 2 / eps_0, 1)
 
     solver_lindblad = LindbladSolver(
         h_drift=h_drift,
@@ -121,4 +136,30 @@ def create_simulators(
         cost_fktns=[lindblad_infid, ]
     )
 
-    return simulator_ff, simulator_l
+    simulator_syst = Simulator(
+        solvers=[solver, ],
+        cost_fktns=[syst_infid, ]
+    )
+
+    return simulator_ff, simulator_l, simulator_syst
+
+
+def create_optimizer(
+        simulator, max_iterations=1000, max_wall_time=30,
+        save_intermediary_steps=True, bounds=None
+):
+    termination_conditions = {
+        "min_gradient_norm": 1e-7,
+        "min_cost_gain": 1e-7,
+        "max_wall_time": max_wall_time,
+        "max_cost_func_calls": 1e6,
+        "max_iterations": max_iterations,
+        "min_amplitude_change": 1e-8
+    }
+    if bounds is None:
+        bounds = [-1, 3]
+    optimizer = LeastSquaresOptimizer(
+        system_simulator=simulator, termination_cond=termination_conditions,
+        save_intermediary_steps=save_intermediary_steps, bounds=bounds
+    )
+    return optimizer
