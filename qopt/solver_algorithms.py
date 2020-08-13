@@ -1577,8 +1577,8 @@ class LindbladSolver(SchroedingerSolver):
             -> None:
 
         if initial_state is None:
-            dim = self.h_ctrl[0].shape[0]
-            initial_state = type(self.h_ctrl[0])(np.eye(dim ** 2))
+            dim = h_ctrl[0].shape[0]
+            initial_state = type(h_ctrl[0])(np.eye(dim ** 2))
 
         super().__init__(
             h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,

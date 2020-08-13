@@ -1094,6 +1094,9 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         super().__init__(solver=solver, index=index)
         self.noise_power_spec_density = noise_power_spec_density
         if omega is None:
+            if self.solver.pulse_sequence is None:
+                self.solver.create_pulse_sequence()
+
             self.omega = filter_functions.util.get_sample_frequencies(
                 pulse=self.solver.pulse_sequence,
                 n_samples=200,
@@ -1118,7 +1121,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             self.solver.create_pulse_sequence()
         infidelity = filter_functions.numeric.infidelity(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density,
+            S=self.noise_power_spec_density(self.omega),
             omega=self.omega)
         return infidelity
 
@@ -1139,7 +1142,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
         derivative = filter_functions.gradient.infidelity_derivative(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density,
+            S=self.noise_power_spec_density(self.omega),
             omega=self.omega,
             c_id=c_id,
             s_derivs=self.solver.filter_function_s_derivs_vals
