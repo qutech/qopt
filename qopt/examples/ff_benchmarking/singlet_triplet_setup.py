@@ -165,7 +165,8 @@ def create_simulators(
 
 def create_optimizer(
         simulator, max_iterations=1000, max_wall_time=30,
-        save_intermediary_steps=True, bounds=None, use_jac_fctn=True
+        save_intermediary_steps=True, bounds=None, use_jac_fctn=True,
+        cost_fkts_weights=None
 ):
     termination_conditions = {
         "min_gradient_norm": 1e-8,
@@ -180,6 +181,6 @@ def create_optimizer(
     optimizer = LeastSquaresOptimizer(
         system_simulator=simulator, termination_cond=termination_conditions,
         save_intermediary_steps=save_intermediary_steps, bounds=bounds,
-        use_jacobian_function=use_jac_fctn
+        use_jacobian_function=use_jac_fctn, cost_fktn_weights=cost_fkts_weights
     )
     return optimizer
