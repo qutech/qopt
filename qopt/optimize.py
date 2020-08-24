@@ -93,8 +93,9 @@ class Optimizer(ABC):
         The cost functions are multiplied with these weights during the
         optimisation.
 
-    TODO:
-        * implement termination conditions such as wall time!
+    use_jacobian_function: bool, optional
+        If set to true, then the jacobians are calculated analytically.
+
     """
 
     def __init__(
@@ -102,8 +103,10 @@ class Optimizer(ABC):
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
-            cost_fktn_weights: Optional[Sequence[float]] = None):
+            cost_fktn_weights: Optional[Sequence[float]] = None,
+            use_jacobian_function=True):
         self.system_simulator = system_simulator
+        self.use_jacobian_function = use_jacobian_function
         if termination_cond is None:
             self.termination_conditions = default_termination_conditions
         else:
@@ -145,7 +148,7 @@ class Optimizer(ABC):
 
         Returns
         -------
-        costs: np.array
+        costs: np.array, shape (n_fun)
             Cost values.
 
         """
@@ -186,7 +189,7 @@ class Optimizer(ABC):
 
         Returns
         -------
-        jacobian: np.array
+        jacobian: np.array, shape (num_func, num_t * num_amp)
             Jacobian of the cost functions.
 
         """
@@ -255,6 +258,41 @@ class Optimizer(ABC):
             self.system_simulator.stats.indices = \
                 self.system_simulator.cost_indices
 
+    def write_state_to_result(self):
+        """ Writes the current state into an instance of 'OptimizationResult'.
+
+        Intended for saving progress when terminating the optimization in an
+        unexpected way.
+
+        Returns
+        -------
+        result: optimization_data.OptimizationResult
+            The current result of the optimization.
+
+        """
+        if self.system_simulator.stats is not None:
+            self.system_simulator.stats.end_t_opt = time.time()
+
+        if self.use_jacobian_function:
+            jac_norm = np.linalg.norm(
+                self.cost_jacobian_wrapper(self._min_costs_par))
+        else:
+            jac_norm = 0
+
+        optim_result = optimization_data.OptimizationResult(
+            final_cost=self._min_costs,
+            indices=self.system_simulator.cost_indices,
+            final_parameters=self._min_costs_par,
+            final_grad_norm=jac_norm,
+            num_iter=self._n_cost_fkt_eval,
+            termination_reason='Maximum Wall Time Exceeded',
+            status=5,
+            optimizer=self,
+            optim_summary=self.optim_iter_summary,
+            optimization_stats=self.system_simulator.stats
+        )
+        return optim_result
+
 
 class LeastSquaresOptimizer(Optimizer):
     """
@@ -279,14 +317,6 @@ class LeastSquaresOptimizer(Optimizer):
         The boundary conditions for the pulse optimizations. If none are given
         then the pulse is assumed to take any real value.
 
-    use_jacobian_function: bool, optional
-        If set to true, then the jacobians are calculated analytically.
-
-
-    TODO:
-        * in the handling of a wall time exceeded message, the last parameters
-            * are stored instead of the best ones.
-
     """
 
     def __init__(
@@ -301,10 +331,10 @@ class LeastSquaresOptimizer(Optimizer):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
-                         cost_fktn_weights=cost_fktn_weights)
+                         cost_fktn_weights=cost_fktn_weights,
+                         use_jacobian_function=use_jacobian_function)
         self.method = method
         self.bounds = bounds
-        self.use_jacobian_function = use_jacobian_function
 
     def run_optimization(self, initial_control_amplitudes: np.array) \
             -> optimization_data.OptimizationResult:
@@ -312,30 +342,23 @@ class LeastSquaresOptimizer(Optimizer):
         super().prepare_optimization(
             initial_optimization_parameters=initial_control_amplitudes)
 
+        if self.use_jacobian_function:
+            jac = super().cost_jacobian_wrapper
+        else:
+            jac = None
+
         try:
-            if self.use_jacobian_function:
-                result = scipy.optimize.least_squares(
-                    fun=super().cost_fktn_wrapper,
-                    x0=initial_control_amplitudes.T.flatten(),
-                    jac=super().cost_jacobian_wrapper,
-                    bounds=self.bounds,
-                    method=self.method,
-                    ftol=self.termination_conditions["min_cost_gain"],
-                    xtol=self.termination_conditions["min_amplitude_change"],
-                    gtol=self.termination_conditions["min_gradient_norm"],
-                    max_nfev=self.termination_conditions["max_iterations"]
-                )
-            else:
-                result = scipy.optimize.least_squares(
-                    fun=super().cost_fktn_wrapper,
-                    x0=initial_control_amplitudes.T.flatten(),
-                    bounds=self.bounds,
-                    method=self.method,
-                    ftol=self.termination_conditions["min_cost_gain"],
-                    xtol=self.termination_conditions["min_amplitude_change"],
-                    gtol=self.termination_conditions["min_gradient_norm"],
-                    max_nfev=self.termination_conditions["max_iterations"]
-                )
+            result = scipy.optimize.least_squares(
+                fun=super().cost_fktn_wrapper,
+                x0=initial_control_amplitudes.T.flatten(),
+                jac=jac,
+                bounds=self.bounds,
+                method=self.method,
+                ftol=self.termination_conditions["min_cost_gain"],
+                xtol=self.termination_conditions["min_amplitude_change"],
+                gtol=self.termination_conditions["min_gradient_norm"],
+                max_nfev=self.termination_conditions["max_iterations"]
+            )
 
             if self.system_simulator.stats is not None:
                 self.system_simulator.stats.end_t_opt = time.time()
@@ -354,27 +377,150 @@ class LeastSquaresOptimizer(Optimizer):
                 optimization_stats=self.system_simulator.stats
             )
         except WallTimeExceeded:
-            if self.system_simulator.stats is not None:
-                self.system_simulator.stats.end_t_opt = time.time()
+            optim_result = self.write_state_to_result()
 
-            if self.use_jacobian_function:
-                jac_norm = np.linalg.norm(
-                    self.cost_jacobian_wrapper(self._min_costs_par))
-            else:
-                jac_norm = 0
+        return optim_result
 
-            optim_result = optimization_data.OptimizationResult(
-                final_cost=self._min_costs,
-                indices=self.system_simulator.cost_indices,
-                final_parameters=self._min_costs_par,
-                final_grad_norm=jac_norm,
-                num_iter=self._n_cost_fkt_eval,
-                termination_reason='Maximum Wall Time Exceeded',
-                status=5,
-                optimizer=self,
-                optim_summary=self.optim_iter_summary,
-                optimization_stats=self.system_simulator.stats
-            )
+
+class ScalarMinimizingOptimizer(Optimizer):
+    """ Interfaces to the minimize functions of the optimization package in
+    scipy.
+
+    Parameters
+    ----------
+    method: string
+        Takes methods implemented by scipy.optimize.minimize.
+
+    """
+    def __init__(
+            self,
+            system_simulator: Optional[simulator.Simulator] = None,
+            termination_cond: Optional[Dict] = None,
+            save_intermediary_steps: bool = False,
+            method: str = 'trf',
+            bounds: Union[np.ndarray, List, None] = None,
+            use_jacobian_function=True,
+            cost_fktn_weights: Optional[Sequence[float]] = None
+    ):
+        super().__init__(system_simulator=system_simulator,
+                         termination_cond=termination_cond,
+                         save_intermediary_steps=save_intermediary_steps,
+                         cost_fktn_weights=cost_fktn_weights,
+                         use_jacobian_function=use_jacobian_function)
+        self.method = method
+        self.bounds = bounds
+
+    def cost_fktn_wrapper(self, optimization_parameters):
+        """ See base class. """
+        costs = super().cost_fktn_wrapper(optimization_parameters)
+        scalar_costs = np.sum(costs ** 2)
+        return scalar_costs
+
+    def cost_jacobian_wrapper(self, optimization_parameters):
+        """ See base class.
+
+        Returns
+        -------
+        gradient: numpy array, shape (num_t * num_amp)
+            The gradient of the costs in the the 2 norm.
+
+        """
+        jac = super().cost_jacobian_wrapper(optimization_parameters)
+        grad = (np.sum(2 * jac, axis=0))
+        return grad
+
+    def run_optimization(self, initial_control_amplitudes: np.array) \
+            -> optimization_data.OptimizationResult:
+        """See base class. """
+        super().prepare_optimization(
+            initial_optimization_parameters=initial_control_amplitudes)
+
+        if self.use_jacobian_function:
+            jac = self.cost_jacobian_wrapper
+        else:
+            jac = None
+
+        if self.method == 'L-BFGS-B':
+            try:
+                result = scipy.optimize.minimize(
+                    fun=super().cost_fktn_wrapper,
+                    x0=initial_control_amplitudes.T.flatten(),
+                    jac=jac,
+                    bounds=self.bounds,
+                    method=self.method,
+                    ftol=self.termination_conditions["min_cost_gain"],
+                    gtol=self.termination_conditions["min_gradient_norm"],
+                    maxiter=self.termination_conditions["max_iterations"]
+                )
+
+                optim_result = optimization_data.OptimizationResult(
+                    final_cost=result.fun,
+                    indices=self.system_simulator.cost_indices,
+                    final_parameters=result.x.reshape(
+                        self.pulse_shape[::-1]).T,
+                    final_grad_norm=np.linalg.norm(result.grad),
+                    num_iter=result.nfev,
+                    termination_reason=result.message,
+                    status=result.status,
+                    optimizer=self,
+                    optim_summary=self.optim_iter_summary,
+                    optimization_stats=self.system_simulator.stats
+                )
+            except WallTimeExceeded:
+                optim_result = self.write_state_to_result()
+
+        elif self.method == 'Nealder-Mead':
+            try:
+                result = scipy.optimize.minimize(
+                    fun=super().cost_fktn_wrapper,
+                    x0=initial_control_amplitudes.T.flatten(),
+                    bounds=self.bounds,
+                    method=self.method,
+                    maxiter=self.termination_conditions["max_iterations"]
+                )
+
+                optim_result = optimization_data.OptimizationResult(
+                    final_cost=result.fun,
+                    indices=self.system_simulator.cost_indices,
+                    final_parameters=result.x.reshape(
+                        self.pulse_shape[::-1]).T,
+                    num_iter=result.nfev,
+                    termination_reason=result.message,
+                    status=result.status,
+                    optimizer=self,
+                    optim_summary=self.optim_iter_summary,
+                    optimization_stats=self.system_simulator.stats
+                )
+            except WallTimeExceeded:
+                optim_result = self.write_state_to_result()
+
+        else:
+            try:
+                result = scipy.optimize.minimize(
+                    fun=super().cost_fktn_wrapper,
+                    x0=initial_control_amplitudes.T.flatten(),
+                    bounds=self.bounds,
+                    method=self.method,
+                    maxiter=self.termination_conditions["max_iterations"]
+                )
+
+                optim_result = optimization_data.OptimizationResult(
+                    final_cost=result.fun,
+                    indices=self.system_simulator.cost_indices,
+                    final_parameters=result.x.reshape(
+                        self.pulse_shape[::-1]).T,
+                    num_iter=result.nfev,
+                    termination_reason=result.message,
+                    status=result.status,
+                    optimizer=self,
+                    optim_summary=self.optim_iter_summary,
+                    optimization_stats=self.system_simulator.stats
+                )
+            except WallTimeExceeded:
+                optim_result = self.write_state_to_result()
+
+        if self.system_simulator.stats is not None:
+            self.system_simulator.stats.end_t_opt = time.time()
 
         return optim_result
 

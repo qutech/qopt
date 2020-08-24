@@ -185,7 +185,7 @@ class Simulator(object):
 
         Returns
         -------
-        costs: numpy array
+        costs: numpy array, shape (n_fun)
             Array of costs (i.e. infidelities).
 
         costs_indices: list of str
