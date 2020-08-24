@@ -209,7 +209,7 @@ class TestTslots(unittest.TestCase):
             [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
         tau = [1, 1, 1, 1]
 
-        def prefactor_function(_):
+        def prefactor_function(*_):
             return ctrl_amps
 
         identity = h_control[0].identity_like()

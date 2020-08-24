@@ -10,12 +10,12 @@ zero_matrix = DenseOperator(np.asarray([[0, 0], [0, 0]]))
 gamma = 3
 
 
-def prefactor_function(control_amplitudes):
+def prefactor_function(control_amplitudes, _):
     return gamma * np.expand_dims(
         np.sum(np.abs(control_amplitudes), axis=1), axis=1)
 
 
-def prefactor_function_derivative(control_amplitudes):
+def prefactor_function_derivative(control_amplitudes, _):
     return np.expand_dims(gamma * np.sign(control_amplitudes), axis=2)
 
 
