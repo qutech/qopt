@@ -57,7 +57,7 @@ import scipy
 import scipy.optimize
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Callable, List, Union
+from typing import Dict, Optional, Callable, List, Union, Sequence
 
 from qopt import optimization_data, simulator
 import simanneal
@@ -89,6 +89,10 @@ class Optimizer(ABC):
         The shape of the control amplitudes is saved and used for the
         cost functions while the optimization function might need them flatted.
 
+    cost_fktn_weights: list of float, optional
+        The cost functions are multiplied with these weights during the
+        optimisation.
+
     TODO:
         * implement termination conditions such as wall time!
     """
@@ -97,7 +101,8 @@ class Optimizer(ABC):
             self,
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
-            save_intermediary_steps: bool = False):
+            save_intermediary_steps: bool = False,
+            cost_fktn_weights: Optional[Sequence[float]] = None):
         self.system_simulator = system_simulator
         if termination_cond is None:
             self.termination_conditions = default_termination_conditions
@@ -115,6 +120,18 @@ class Optimizer(ABC):
 
         # flags:
         self.save_intermediary_steps = save_intermediary_steps
+
+        self.cost_fktn_weights = cost_fktn_weights
+
+        if self.cost_fktn_weights is not None:
+            self.cost_fktn_weights = np.asarray(
+                self.cost_fktn_weights).flatten()
+            if len(self.cost_fktn_weights) == 0:
+                self.cost_fktn_weights = None
+            elif not len(self.system_simulator.cost_fktns) == len(
+                    self.cost_fktn_weights):
+                raise ValueError('A cost function weight must be specified for'
+                                 'each cost function or for none at all.')
 
     def cost_fktn_wrapper(self, optimization_parameters):
         """Wraps the cost function given by the simulator class.
@@ -150,6 +167,10 @@ class Optimizer(ABC):
             self._min_costs_par = optimization_parameters.reshape(
                 self.pulse_shape[::-1]).T
 
+        # apply the cost function weights after saving the values.
+        if self.cost_fktn_weights is not None:
+            costs *= self.cost_fktn_weights
+
         self._n_cost_fkt_eval += 1
         return costs
 
@@ -179,6 +200,11 @@ class Optimizer(ABC):
         jacobian = jacobian.transpose([1, 2, 0])
         jacobian = jacobian.reshape(
             (jacobian.shape[0], jacobian.shape[1] * jacobian.shape[2]))
+
+        # apply the cost function weights after saving the values.
+        if self.cost_fktn_weights is not None:
+            jacobian = np.einsum('ab, a -> ab', jacobian,
+                                 self.cost_fktn_weights)
 
         self._n_jac_fkt_eval += 1
         return jacobian
@@ -270,10 +296,12 @@ class LeastSquaresOptimizer(Optimizer):
             save_intermediary_steps: bool = False,
             method: str = 'trf',
             bounds: Union[np.ndarray, List, None] = None,
-            use_jacobian_function=True):
+            use_jacobian_function=True,
+            cost_fktn_weights: Optional[Sequence[float]] = None):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
-                         save_intermediary_steps=save_intermediary_steps)
+                         save_intermediary_steps=save_intermediary_steps,
+                         cost_fktn_weights=cost_fktn_weights)
         self.method = method
         self.bounds = bounds
         self.use_jacobian_function = use_jacobian_function
