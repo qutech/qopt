@@ -1,4 +1,7 @@
 import numpy as np
+import scipy.optimize
+import time
+from typing import Optional, Dict, Union, Sequence, List
 
 from qopt.matrix import DenseOperator
 from qopt.solver_algorithms import SchroedingerSolver, LindbladSolver
@@ -6,7 +9,11 @@ from qopt.amplitude_functions import CustomAmpFunc
 from qopt.cost_functions import OperatorFilterFunctionInfidelity, \
     OperationInfidelity
 from qopt.simulator import Simulator
-from qopt.optimize import LeastSquaresOptimizer
+from qopt.optimize import LeastSquaresOptimizer, ScalarMinimizingOptimizer, \
+    WallTimeExceeded
+from qopt import optimization_data
+
+import constrNMPy.constrNMPy as cNM
 
 
 pauli_x = DenseOperator(np.asarray([[0, 1], [1, 0]]))
@@ -27,7 +34,56 @@ normation_factor = 1 / ((2 * np.pi) ** 2) / (EPSILON_0 ** 2)
 S_0_WHITE = 4e-5 * normation_factor  # in eps_0
 S_0_PINK = 4e-5 * normation_factor
 
+MAX_ITERATION = 1000
+MAX_WALL_TIME = 300
+MAX_COST_FKTN_CALLS = 1e20
+
 exponential_method = 'Frechet'
+
+
+class BoundedNelderMead(ScalarMinimizingOptimizer):
+    def __init__(
+            self,
+            system_simulator: Optional[Simulator] = None,
+            termination_cond: Optional[Dict] = None,
+            save_intermediary_steps: bool = False,
+            lower_bounds: Union[np.ndarray, List, None] = None,
+            upper_bounds: Union[np.ndarray, List, None] = None,
+            use_jacobian_function=True,
+            cost_fktn_weights: Optional[Sequence[float]] = None
+    ):
+        super().__init__(system_simulator=system_simulator,
+                         termination_cond=termination_cond,
+                         save_intermediary_steps=save_intermediary_steps,
+                         cost_fktn_weights=cost_fktn_weights,
+                         use_jacobian_function=use_jacobian_function)
+        self.lower_bounds = lower_bounds
+        self.uppter_bounds = upper_bounds
+
+    def run_optimization(
+            self, initial_control_amplitudes: np.array
+    ) -> optimization_data.OptimizationResult:
+        super().prepare_optimization(
+            initial_optimization_parameters=initial_control_amplitudes)
+
+        try:
+            result = cNM.constrNM(
+                func=self.cost_fktn_wrapper,
+                x0=initial_control_amplitudes.T.flatten(),
+                LB=np.asarray(self.lower_bounds),
+                UB=np.asarray(self.uppter_bounds),
+                maxiter=self.termination_conditions["max_iterations"],
+                maxfun=self.termination_conditions["max_cost_func_calls"]
+            )
+
+            optim_result = self.write_state_to_result()
+        except WallTimeExceeded:
+            optim_result = self.write_state_to_result()
+
+        if self.system_simulator.stats is not None:
+            self.system_simulator.stats.end_t_opt = time.time()
+
+        return optim_result
 
 
 def exchange_interaction(eps, j_0=J_0, eps_0=EPS_0):
@@ -63,7 +119,6 @@ def create_simulators(
         omega=None,
         s_0_white=S_0_WHITE,
         target=x_pi_half,
-        cost_fkts_weights=None
 ):
     h_ctrl = [.5 * pauli_x, ]
     h_drift = [dbz * .5 * pauli_z, ] * n_time_steps
@@ -141,8 +196,7 @@ def create_simulators(
 
     simulator_ff = Simulator(
         solvers=[solver, ],
-        cost_fktns=[syst_infid, ff_infid],
-        cost_fktn_weights=cost_fkts_weights
+        cost_fktns=[syst_infid, ff_infid]
     )
 
     simulator_l = Simulator(
@@ -164,15 +218,16 @@ def create_simulators(
 
 
 def create_optimizer(
-        simulator, max_iterations=1000, max_wall_time=30,
+        simulator, max_iterations=MAX_ITERATION, max_wall_time=MAX_WALL_TIME,
+        max_cost_fktn_calls=MAX_COST_FKTN_CALLS,
         save_intermediary_steps=True, bounds=None, use_jac_fctn=True,
         cost_fkts_weights=None
 ):
     termination_conditions = {
-        "min_gradient_norm": 1e-8,
-        "min_cost_gain": 1e-6,
+        "min_gradient_norm": 1e-12,
+        "min_cost_gain": 1e-7,
         "max_wall_time": max_wall_time,
-        "max_cost_func_calls": 1e6,
+        "max_cost_func_calls": max_cost_fktn_calls,
         "max_iterations": max_iterations,
         "min_amplitude_change": 1e-8
     }
@@ -181,6 +236,31 @@ def create_optimizer(
     optimizer = LeastSquaresOptimizer(
         system_simulator=simulator, termination_cond=termination_conditions,
         save_intermediary_steps=save_intermediary_steps, bounds=bounds,
+        use_jacobian_function=use_jac_fctn, cost_fktn_weights=cost_fkts_weights
+    )
+    return optimizer
+
+
+def create_bounded_nm(
+        simulator, max_iterations=MAX_ITERATION, max_wall_time=MAX_WALL_TIME,
+        max_cost_fktn_calls=MAX_COST_FKTN_CALLS,
+        save_intermediary_steps=True, use_jac_fctn=True,
+        cost_fkts_weights=None
+):
+    termination_conditions = {
+        "min_gradient_norm": 1e-8,
+        "min_cost_gain": 1e-7,
+        "max_wall_time": max_wall_time,
+        "max_cost_func_calls": max_cost_fktn_calls,
+        "max_iterations": max_iterations,
+        "min_amplitude_change": 1e-8
+    }
+    lower_bounds = [EPS_MIN] * N_TIME_STEPS
+    upper_bounds = [EPS_MAX] * N_TIME_STEPS
+    optimizer = BoundedNelderMead(
+        system_simulator=simulator, termination_cond=termination_conditions,
+        save_intermediary_steps=save_intermediary_steps,
+        lower_bounds=lower_bounds, upper_bounds=upper_bounds,
         use_jacobian_function=use_jac_fctn, cost_fktn_weights=cost_fkts_weights
     )
     return optimizer

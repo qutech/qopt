@@ -93,6 +93,7 @@ class DataContainer:
         2: cost function termination condition is satisfied.
         3: minimal step size termination condition is satisfied.
         4: Both 2 and 3 termination conditions are satisfied.
+        5: Wall time exceeded.
 
     optimization_stats : list
         Optimization statistics, which have been appended to the data.

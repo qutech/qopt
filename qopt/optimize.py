@@ -59,7 +59,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable, List, Union, Sequence
 
-from qopt import optimization_data, simulator
+from qopt import optimization_data, simulator, performance_statistics
 import simanneal
 
 default_termination_conditions = {
@@ -253,6 +253,10 @@ class Optimizer(ABC):
                 )
         self._opt_start_time = time.time()
         if self.system_simulator.stats is not None:
+            # If the system simulator wants to write down statistics, then
+            # initialise a fresh instance
+            self.system_simulator.stats = \
+                performance_statistics.PerformanceStatistics()
             self.system_simulator.stats.start_t_opt = float(
                 self._opt_start_time)
             self.system_simulator.stats.indices = \
@@ -443,14 +447,18 @@ class ScalarMinimizingOptimizer(Optimizer):
         if self.method == 'L-BFGS-B':
             try:
                 result = scipy.optimize.minimize(
-                    fun=super().cost_fktn_wrapper,
+                    fun=self.cost_fktn_wrapper,
                     x0=initial_control_amplitudes.T.flatten(),
                     jac=jac,
                     bounds=self.bounds,
                     method=self.method,
-                    ftol=self.termination_conditions["min_cost_gain"],
-                    gtol=self.termination_conditions["min_gradient_norm"],
-                    maxiter=self.termination_conditions["max_iterations"]
+                    options={
+                        'ftol': self.termination_conditions["min_cost_gain"],
+                        'gtol': self.termination_conditions[
+                            "min_gradient_norm"],
+                        'maxiter': self.termination_conditions[
+                            "max_iterations"]
+                    }
                 )
 
                 optim_result = optimization_data.OptimizationResult(
@@ -469,14 +477,16 @@ class ScalarMinimizingOptimizer(Optimizer):
             except WallTimeExceeded:
                 optim_result = self.write_state_to_result()
 
-        elif self.method == 'Nealder-Mead':
+        elif self.method == 'Nelder-Mead':
             try:
                 result = scipy.optimize.minimize(
-                    fun=super().cost_fktn_wrapper,
+                    fun=self.cost_fktn_wrapper,
                     x0=initial_control_amplitudes.T.flatten(),
                     bounds=self.bounds,
                     method=self.method,
-                    maxiter=self.termination_conditions["max_iterations"]
+                    options={
+                        'maxiter': self.termination_conditions[
+                            "max_iterations"]},
                 )
 
                 optim_result = optimization_data.OptimizationResult(
@@ -497,11 +507,10 @@ class ScalarMinimizingOptimizer(Optimizer):
         else:
             try:
                 result = scipy.optimize.minimize(
-                    fun=super().cost_fktn_wrapper,
+                    fun=self.cost_fktn_wrapper,
                     x0=initial_control_amplitudes.T.flatten(),
                     bounds=self.bounds,
-                    method=self.method,
-                    maxiter=self.termination_conditions["max_iterations"]
+                    method=self.method
                 )
 
                 optim_result = optimization_data.OptimizationResult(
