@@ -28,9 +28,16 @@ The implementation was inspired by the optimal control package of
 [QuTiP](http://qutip.org/).
 
 ## Installation
+The recommended way is to use conda for the installation.
 To avoid difficulties, QuTiP needs to be installed first. To do so, follow 
 [their instructions](http://qutip.org/docs/latest/installation.html) or these
-instructions. Start with all recommended dependencies: 
+instructions. Usually it is most convenient to create a new environment. The 
+package was written and tested using python 3.7.
+
+    conda create --name qopt_env python=3.7
+    conda activate qopt_env
+
+Start with all recommended dependencies: 
 
     conda install numpy scipy cython matplotlib pytest pytest-cov jupyter
 
