@@ -22,7 +22,7 @@ pauli_z = DenseOperator(np.diag([1, -1]))
 x_pi_half = (.5 * pauli_x).exp(.5j * np.pi)
 
 N_TIME_STEPS = 10
-TIME_STEP = 1
+TOTAL_TIME = 10
 DBZ = 1.
 J_0 = 1.  # in ns^-1
 EPS_0 = 1.  # by norming to eps 0
@@ -111,7 +111,7 @@ def white_psd(s_0=S_0_WHITE):
 def create_simulators(
         dbz=DBZ,
         n_time_steps=N_TIME_STEPS,
-        time_step=TIME_STEP,
+        total_time=TOTAL_TIME,
         j_0=J_0,
         eps_0=EPS_0,
         psd=white_psd(2 * S_0_WHITE),
@@ -120,6 +120,7 @@ def create_simulators(
         s_0_white=S_0_WHITE,
         target=x_pi_half,
 ):
+    time_step = total_time / n_time_steps
     h_ctrl = [.5 * pauli_x, ]
     h_drift = [dbz * .5 * pauli_z, ] * n_time_steps
 
