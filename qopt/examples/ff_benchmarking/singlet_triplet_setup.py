@@ -246,7 +246,7 @@ def create_bounded_nm(
         simulator, max_iterations=MAX_ITERATION, max_wall_time=MAX_WALL_TIME,
         max_cost_fktn_calls=MAX_COST_FKTN_CALLS,
         save_intermediary_steps=True, use_jac_fctn=True,
-        cost_fkts_weights=None
+        cost_fkts_weights=None, n_time_steps=N_TIME_STEPS
 ):
     termination_conditions = {
         "min_gradient_norm": 1e-8,
@@ -256,8 +256,8 @@ def create_bounded_nm(
         "max_iterations": max_iterations,
         "min_amplitude_change": 1e-8
     }
-    lower_bounds = [EPS_MIN] * N_TIME_STEPS
-    upper_bounds = [EPS_MAX] * N_TIME_STEPS
+    lower_bounds = [EPS_MIN] * n_time_steps
+    upper_bounds = [EPS_MAX] * n_time_steps
     optimizer = BoundedNelderMead(
         system_simulator=simulator, termination_cond=termination_conditions,
         save_intermediary_steps=save_intermediary_steps,
