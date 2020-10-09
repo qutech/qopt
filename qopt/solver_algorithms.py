@@ -80,8 +80,9 @@ class Solver(ABC):
         Control operators in the Hamiltonian as nested list of
         shape n_t, num_ctrl.
 
-    h_drift: List[ControlMatrix], len num_t
-        Drift operators in the Hamiltonian.
+    h_drift: List[ControlMatrix], len num_t or 1
+        Drift operators in the Hamiltonian. You can either give a single element
+        or one for each transferred time step.
 
     initial_state : ControlMatrix
         Initial state of the system as state vector. Can also be set to the
@@ -162,7 +163,7 @@ class Solver(ABC):
         identity matrix. Then the forward propagation gives the total
         propagator of the system.
 
-    tau: List[float]
+    transferred_time: List[float]
         Durations of the time slices.
 
     filter_function_h_n: List[List[np.array]] or List[List[Qobj]]
@@ -244,7 +245,7 @@ class Solver(ABC):
             * the operator is already multiplied with the amplitude, which is
             * not coherent with the pulse sequence interface. Alternatively
             * amplitude=1?
-        * tau should be taken from the transfer function
+        * transferred_time should be taken from the transfer function
 
     """
 
@@ -268,7 +269,6 @@ class Solver(ABC):
             paranoia_level: int = 2
     ):
 
-        self.h_drift = h_drift
         self.h_ctrl = h_ctrl
         self._ctrl_amps = ctrl_amps
         self._opt_pars = opt_pars
@@ -278,7 +278,6 @@ class Solver(ABC):
             self.initial_state = type(self.h_ctrl[0])(np.eye(dim))
         else:
             self.initial_state = initial_state
-        self.tau = tau
 
         if exponential_method is None:
             self.exponential_method = 'Frechet'
@@ -303,9 +302,17 @@ class Solver(ABC):
 
         if transfer_function is None:
             self.transfer_function = IdentityTF(num_ctrls=len(h_ctrl))
-            self.transfer_function.set_times(tau)
         else:
             self.transfer_function = transfer_function
+        self.transfer_function.set_times(tau)
+        self.transferred_time = self.transfer_function.x_times
+
+        if type(h_drift) in [matrix.DenseOperator, matrix.SparseOperator]:
+            self.h_drift = [h_drift, ] * self.transfer_function.num_x
+        elif len(h_drift) == 1:
+            self.h_drift = h_drift * self.transfer_function.num_x
+        else:
+            self.h_drift = h_drift
 
         if amplitude_function is None:
             self.amplitude_function = IdentityAmpFunc()
@@ -353,7 +360,7 @@ class Solver(ABC):
                              'computer must have two dimensions! '
                              '(time, control operator)')
 
-        if u.shape[0] != len(self.tau):
+        if u.shape[0] != len(self.transferred_time):
             raise ValueError('The new control amplitudes do not have the '
                              'correct number of entries on the time axis!')
 
@@ -386,17 +393,17 @@ class Solver(ABC):
         elif paranoia_level >= 1:
             # check whether the hamiltonian is correct for the number of time
             # steps
-            if isinstance(self.tau, List):
-                self.tau = np.asarray(self.tau)
-            if len(self.tau.shape) > 1:
+            if isinstance(self.transferred_time, List):
+                self.transferred_time = np.asarray(self.transferred_time)
+            if len(self.transferred_time.shape) > 1:
                 raise ValueError("Tau must be a one dimensional numpy array or"
                                  "a list.")
-            n_time_steps = self.tau.shape[0]
+            n_time_steps = self.transferred_time.shape[0]
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
                 raise ValueError("The drift hamiltonian must have exactly one "
-                                 "entry for each time step or no entry at "
-                                 "all.")
+                                 "entry for each transferred time step or no "
+                                 "entry at all.")
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
@@ -517,7 +524,7 @@ class Solver(ABC):
 
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
-                    np.zeros((len(self.tau), ))]]
+                    np.zeros((len(self.transferred_time),))]]
 
         return h_n
 
@@ -605,14 +612,14 @@ class Solver(ABC):
         for drift_operator in [self.h_drift[0], ]:
             if type(drift_operator) == matrix.DenseOperator:
                 drift_operator = drift_operator.data
-            h_c += [[drift_operator, len(self.tau) * [1], 'Drift'], ]
+            h_c += [[drift_operator, len(self.transferred_time) * [1], 'Drift'], ]
         for i, control_operator in enumerate(self.h_ctrl):
             h_c += [
                 [control_operator.data,
                  self._ctrl_amps[:, i],
                  'Control' + str(i)], ]
 
-        dt = self.tau
+        dt = self.transferred_time
 
         if ff_basis is not None:
             self.pulse_sequence = pulse_sequence.PulseSequence(
@@ -777,7 +784,7 @@ class SchroedingerSolver(Solver):
         """
         # The list is multiplied (copied by reference) because the elements
         # will not be manipulated in place. (only as copy)
-        return [[operator * -1j for operator in self.h_ctrl], ] * len(self.tau)
+        return [[operator * -1j for operator in self.h_ctrl], ] * len(self.transferred_time)
 
     def _compute_propagation(
             self, calculate_propagator_derivatives: Optional[bool] = None) \
@@ -793,23 +800,24 @@ class SchroedingerSolver(Solver):
                 self.calculate_propagator_derivatives
 
         # initialize the attributes
-        self._prop = [None for _ in range(len(self.tau))]
+        self._prop = [None for _ in range(len(self.transferred_time))]
 
         if calculate_propagator_derivatives:
             derivative_directions = self._compute_derivative_directions()
-            self._derivative_prop = [[None for _ in range(len(self.tau))]
-                                     for _2 in range(len(self.h_ctrl))]
-            for t in range(len(self.tau)):
+            self._derivative_prop = [
+                [None for _ in range(len(self.transferred_time))]
+                for _2 in range(len(self.h_ctrl))]
+            for t in range(len(self.transferred_time)):
                 for ctrl in range(len(self.h_ctrl)):
                     self._prop[t], self._derivative_prop[ctrl][t] \
                         = self._dyn_gen[t].dexp(
-                        derivative_directions[t][ctrl], self.tau[t],
+                        derivative_directions[t][ctrl], self.transferred_time[t],
                         compute_expm=True, method=self.exponential_method,
                         is_skew_hermitian=self._is_skew_hermitian)
         else:
-            for t in range(len(self.tau)):
+            for t in range(len(self.transferred_time)):
                 self._prop[t] = self._dyn_gen[t].exp(
-                    tau=self.tau[t], method=self.exponential_method,
+                    tau=self.transferred_time[t], method=self.exponential_method,
                     is_skew_hermitian=self._is_skew_hermitian)
 
     def _compute_propagation_derivatives(self) -> None:
@@ -827,12 +835,12 @@ class SchroedingerSolver(Solver):
                 self._compute_propagation(
                     calculate_propagator_derivatives=False)
             self._derivative_prop = [[None for _ in range(len(self.h_ctrl))]
-                                     for _2 in range(len(self.tau))]
+                                     for _2 in range(len(self.transferred_time))]
             derivative_directions = self._compute_derivative_directions()
-            for t in range(len(self.tau)):
+            for t in range(len(self.transferred_time)):
                 for ctrl in range(len(self.h_ctrl)):
                     self._derivative_prop[t][ctrl] = \
-                        self.tau[t] * derivative_directions[t][ctrl] \
+                        self.transferred_time[t] * derivative_directions[t][ctrl] \
                         * self._prop[t]
         else:
             raise ValueError('Unknown gradient derivative approximation '
@@ -929,11 +937,11 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     def __init__(
             self, h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
             tau: List[float],
             h_noise: List[q_mat.OperatorMatrix],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
+            initial_state: q_mat.OperatorMatrix=None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
             filter_function_h_n: Union[
@@ -1125,7 +1133,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             self._dyn_gen_noise = self._compute_dyn_gen_noise()
 
         n_noise_traces = self.noise_trace_generator.n_traces
-        num_t = len(self.tau)
+        num_t = len(self.transferred_time)
         num_ctrl = len(self.h_ctrl)
 
         self._prop_noise = [[None for _ in range(num_t)]
@@ -1149,7 +1157,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                             self._derivative_prop_noise[k][ctrl][t] \
                             = self._dyn_gen_noise[k][t].dexp(
                             derivative_directions[t][ctrl],
-                            self.tau[t],
+                            self.transferred_time[t],
                             compute_expm=True,
                             method=self.exponential_method,
                             is_skew_hermitian=self._is_skew_hermitian)
@@ -1157,7 +1165,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             for k in range(n_noise_traces):
                 for t in range(num_t):
                     self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
-                        tau=self.tau[t], method=self.exponential_method,
+                        tau=self.transferred_time[t], method=self.exponential_method,
                         is_skew_hermitian=self._is_skew_hermitian)
 
     def _compute_forward_propagation(self) -> None:
@@ -1209,7 +1217,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                     calculate_propagator_derivatives=False)
 
             n_noise_traces = self.noise_trace_generator.n_traces
-            num_t = len(self.tau)
+            num_t = len(self.transferred_time)
             num_ctrl = len(self.h_ctrl)
 
             self._derivative_prop_noise = [
@@ -1220,10 +1228,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             derivative_directions = self._compute_derivative_directions()
 
             for k in range(n_noise_traces):
-                for t in range(len(self.tau)):
+                for t in range(len(self.transferred_time)):
                     for ctrl in range(num_ctrl):
                         self._derivative_prop_noise[k][ctrl][t] = \
-                            self.tau[t] * derivative_directions[t][ctrl] \
+                            self.transferred_time[t] * derivative_directions[t][ctrl] \
                             * self._prop_noise[k][t]
         else:
             raise ValueError('Unknown gradient derivative approximation '
@@ -1249,10 +1257,10 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             self,
             h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
             tau: List[float],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
+            initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
             filter_function_h_n: Union[
@@ -1663,7 +1671,7 @@ class LindbladSolver(SchroedingerSolver):
                 self._diss_sup_op = [const_diss_sup_op[0], ]
                 for sup_op in const_diss_sup_op[1:]:
                     self._diss_sup_op[0] += sup_op
-                self._diss_sup_op *= len(self.tau)
+                self._diss_sup_op *= len(self.transferred_time)
         else:
             self._diss_sup_op = self._sup_op_func(
                 copy.deepcopy(self._ctrl_amps),
@@ -1786,7 +1794,7 @@ class LindbladSolver(SchroedingerSolver):
                         in zip(diss_sup_op_deriv_at_t, h_ctrl_sup_op):
                     dh_by_ctrl[-1].append(diss_sup_op_deriv + ctrl_sup_op)
         else:
-            dh_by_ctrl = [h_ctrl_sup_op, ] * len(self.tau)
+            dh_by_ctrl = [h_ctrl_sup_op, ] * len(self.transferred_time)
 
         return dh_by_ctrl
 
@@ -1924,12 +1932,12 @@ class LindbladSControlNoise(LindbladSolver):
                         np.eye(dim), self.h_ctrl[t][ctrl]) - np.kron(
                         self.h_ctrl[t][ctrl], np.eye(dim))
                     self._prop[t], self._dU[t, ctrl] = self._dyn_gen[t].dexp(
-                        direction=direction, tau=self.tau[t],
+                        direction=direction, tau=self.transferred_time[t],
                         compute_expm=True, method=self.exponential_method)
 
             else:
                 self._prop[t] = self._dyn_gen[t].exp(
-                    tau=self.tau[t], method=self.exponential_method)
+                    tau=self.transferred_time[t], method=self.exponential_method)
 
             self._fwd.append(self._prop[t] * self._fwd[t])
 

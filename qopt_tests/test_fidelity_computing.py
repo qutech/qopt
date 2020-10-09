@@ -217,7 +217,7 @@ class TestMatrixDistance(unittest.TestCase):
         bound_type = ("n", 5)
         num_u = over_sample_rate * num_x + 2 * bound_type[1]
 
-        tau = [100e-9 for _ in range(num_x)]
+        transferred_time = [100e-9 for _ in range(num_x)]
         lin_freq_rel = 5.614e-4 * 1e6 * 1e3
 
         h_ctrl = [.5 * 2 * math.pi * matrix.OperatorDense(
@@ -235,7 +235,7 @@ class TestMatrixDistance(unittest.TestCase):
             transfer_function.CustomTF(T)
         exponential_saturation_transfer_function = \
             transfer_function.ExponentialTF(
-                awg_rise_time=.2 * tau[0],
+                awg_rise_time=.2 * transferred_time[0],
                 oversampling=over_sample_rate,
                 bound_type=bound_type
             )
@@ -243,7 +243,7 @@ class TestMatrixDistance(unittest.TestCase):
             tf1=linear_transfer_function,
             tf2=exponential_saturation_transfer_function
         )
-        concatenated_tf.set_times(np.asarray(tau))
+        concatenated_tf.set_times(np.asarray(transferred_time))
 
         # t_slot_comp
         seed = 1
@@ -261,7 +261,7 @@ class TestMatrixDistance(unittest.TestCase):
             h_drift=h_drift,
             h_ctrl=h_ctrl,
             initial_state=initial_state,
-            tau=tau_u,
+            transferred_time=tau_u,
             ctrl_amps=initial_ctrl_amps)
 
         target = matrix.OperatorDense(

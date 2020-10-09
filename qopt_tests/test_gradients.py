@@ -31,14 +31,12 @@ class RabiTestCase(unittest.TestCase):
             sampling_mode='uncorrelated_deterministic')
 
         tslot = SchroedingerSMonteCarlo(
-            h_drift=[0 * rabi.h_drift, ] * rabi.n_time_samples
-            * rabi.oversampling,
+            h_drift=[0 * rabi.h_drift, ],
             h_ctrl=rabi.h_ctrl,
             h_noise=[rabi.h_drift, ],
             noise_trace_generator=ntg_quasi_static,
             initial_state=DenseOperator(np.eye(2)),
-            tau=[rabi.time_step / rabi.oversampling, ]
-            * rabi.n_time_samples * rabi.oversampling,
+            tau=[rabi.time_step, ] * rabi.n_time_samples,
             is_skew_hermitian=True,
             exponential_method='Frechet',
             transfer_function=rabi.exponential_transfer_function,
@@ -53,14 +51,12 @@ class RabiTestCase(unittest.TestCase):
         )
 
         tslot_noise = SchroedingerSMonteCarlo(
-            h_drift=[0 * rabi.h_drift, ] * rabi.n_time_samples
-            * rabi.oversampling,
+            h_drift=[0 * rabi.h_drift, ],
             h_ctrl=rabi.h_ctrl,
             h_noise=[rabi.h_drift, ],
             noise_trace_generator=ntg_quasi_static,
             initial_state=DenseOperator(np.eye(2)),
-            tau=[rabi.time_step / rabi.oversampling, ]
-            * rabi.n_time_samples * rabi.oversampling,
+            tau=[rabi.time_step, ] * rabi.n_time_samples,
             is_skew_hermitian=True,
             exponential_method='Frechet',
             transfer_function=rabi.exponential_transfer_function,
@@ -125,14 +121,12 @@ class RabiTestCase(unittest.TestCase):
             sampling_mode='uncorrelated_deterministic')
 
         time_slot_comp_qs_noise_phase_control = SchroedingerSMonteCarlo(
-            h_drift=[0 * rabi.h_drift, ] * rabi.n_time_samples
-            * rabi.oversampling,
+            h_drift=[0 * rabi.h_drift, ],
             h_ctrl=rabi.h_ctrl,
             h_noise=[rabi.h_drift, ],
             noise_trace_generator=ntg_quasi_static,
             initial_state=DenseOperator(np.eye(2)),
-            tau=[rabi.time_step / rabi.oversampling, ] * rabi.n_time_samples
-            * rabi.oversampling,
+            tau=[rabi.time_step, ] * rabi.n_time_samples,
             is_skew_hermitian=True,
             exponential_method='Frechet',
             transfer_function=rabi.identity_transfer_function,

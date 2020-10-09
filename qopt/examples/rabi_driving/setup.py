@@ -164,10 +164,10 @@ ntg_quasi_static = NTGQuasiStatic(
 
 # 7.1 xy-control
 solver_unperturbed_xy = SchroedingerSolver(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
     transfer_function=exponential_transfer_function,
@@ -175,12 +175,12 @@ solver_unperturbed_xy = SchroedingerSolver(
 )
 
 solver_qs_noise_xy = SchroedingerSMonteCarlo(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_quasi_static,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
     transfer_function=exponential_transfer_function,
@@ -188,12 +188,12 @@ solver_qs_noise_xy = SchroedingerSMonteCarlo(
 )
 
 solver_qs_noise_xy_spectral = SchroedingerSMonteCarlo(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_quasi_static,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method='spectral',
     transfer_function=exponential_transfer_function,
@@ -202,12 +202,12 @@ solver_qs_noise_xy_spectral = SchroedingerSMonteCarlo(
 
 
 solver_colored_noise_xy = SchroedingerSMonteCarlo(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_one_over_f_noise,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
     transfer_function=exponential_transfer_function,
@@ -216,10 +216,10 @@ solver_colored_noise_xy = SchroedingerSMonteCarlo(
 
 # 7.2 phase-control
 solver_unperturbed_phase_control = SchroedingerSolver(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
     transfer_function=exponential_transfer_function,
@@ -227,12 +227,12 @@ solver_unperturbed_phase_control = SchroedingerSolver(
 )
 
 solver_qs_noise_phase_control = SchroedingerSMonteCarlo(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_quasi_static,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
     transfer_function=exponential_transfer_function,
@@ -240,12 +240,12 @@ solver_qs_noise_phase_control = SchroedingerSMonteCarlo(
 )
 
 solver_colored_noise_phase_control = SchroedingerSMonteCarlo(
-    h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
+    h_drift=[0 * h_drift, ],
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
     noise_trace_generator=ntg_one_over_f_noise,
     initial_state=DenseOperator(np.eye(2)),
-    tau=[time_step / oversampling, ] * n_time_samples * oversampling,
+    tau=[time_step, ] * n_time_samples,
     is_skew_hermitian=True,
     exponential_method=exponential_method,
     transfer_function=exponential_transfer_function,

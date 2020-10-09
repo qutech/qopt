@@ -323,14 +323,14 @@ class OperatorMatrixNorm(CostFunction):
             propagators_future.append(propagators_future[-1] * prop)
         propagators_future = propagators_future[::-1]
 
-        if isinstance(self.solver.tau, list):
-            tau = self.solver.tau[0]
-        elif isinstance(self.solver.tau, float):
-            tau = self.solver.tau
+        if isinstance(self.solver.transferred_time, list):
+            tau = self.solver.transferred_time[0]
+        elif isinstance(self.solver.transferred_time, float):
+            tau = self.solver.transferred_time
         else:
             raise NotImplementedError
 
-        num_t = len(self.solver.tau)
+        num_t = len(self.solver.transferred_time)
         num_ctrl = len(self.solver.h_ctrl)
         jacobian_complex_full = np.zeros(
             shape=[self.target.data.size, num_t,
@@ -1025,7 +1025,7 @@ class OperationNoiseInfidelity(CostFunction):
             target = self.target
 
         n_traces = self.solver.noise_trace_generator.n_traces
-        num_t = len(self.solver.tau)
+        num_t = len(self.solver.transferred_time)
         num_ctrl = len(self.solver.h_ctrl)
         derivative = np.zeros((num_t, num_ctrl, n_traces, ))
         for i in range(n_traces):
