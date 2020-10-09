@@ -400,8 +400,8 @@ class ScalarMinimizingOptimizer(Optimizer):
             self,
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
-            save_intermediary_steps: bool = False,
-            method: str = 'trf',
+            save_intermediary_steps: bool = True,
+            method: str = 'L-BFGS-B',
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,
             cost_fktn_weights: Optional[Sequence[float]] = None
@@ -474,7 +474,7 @@ class ScalarMinimizingOptimizer(Optimizer):
                     indices=self.system_simulator.cost_indices,
                     final_parameters=result.x.reshape(
                         self.pulse_shape[::-1]).T,
-                    final_grad_norm=np.linalg.norm(result.grad),
+                    final_grad_norm=np.linalg.norm(result.jac),
                     num_iter=result.nfev,
                     termination_reason=result.message,
                     status=result.status,

@@ -163,7 +163,7 @@ ntg_quasi_static = NTGQuasiStatic(
 # required.
 
 # 7.1 xy-control
-time_slot_comp_unperturbed_xy = SchroedingerSolver(
+solver_unperturbed_xy = SchroedingerSolver(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     initial_state=DenseOperator(np.eye(2)),
@@ -174,7 +174,7 @@ time_slot_comp_unperturbed_xy = SchroedingerSolver(
     amplitude_function=lin_amp_func
 )
 
-time_slot_comp_qs_noise_xy = SchroedingerSMonteCarlo(
+solver_qs_noise_xy = SchroedingerSMonteCarlo(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
@@ -187,7 +187,7 @@ time_slot_comp_qs_noise_xy = SchroedingerSMonteCarlo(
     amplitude_function=lin_amp_func
 )
 
-time_slot_comp_qs_noise_xy_spectral = SchroedingerSMonteCarlo(
+solver_qs_noise_xy_spectral = SchroedingerSMonteCarlo(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
@@ -201,7 +201,7 @@ time_slot_comp_qs_noise_xy_spectral = SchroedingerSMonteCarlo(
 )
 
 
-time_slot_comp_colored_noise_xy = SchroedingerSMonteCarlo(
+solver_colored_noise_xy = SchroedingerSMonteCarlo(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
@@ -215,7 +215,7 @@ time_slot_comp_colored_noise_xy = SchroedingerSMonteCarlo(
 )
 
 # 7.2 phase-control
-time_slot_comp_unperturbed_phase_control = SchroedingerSolver(
+solver_unperturbed_phase_control = SchroedingerSolver(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     initial_state=DenseOperator(np.eye(2)),
@@ -226,7 +226,7 @@ time_slot_comp_unperturbed_phase_control = SchroedingerSolver(
     amplitude_function=phase_ctrl_amp_func
 )
 
-time_slot_comp_qs_noise_phase_control = SchroedingerSMonteCarlo(
+solver_qs_noise_phase_control = SchroedingerSMonteCarlo(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
@@ -239,7 +239,7 @@ time_slot_comp_qs_noise_phase_control = SchroedingerSMonteCarlo(
     amplitude_function=phase_ctrl_amp_func
 )
 
-time_slot_comp_colored_noise_phase_control = SchroedingerSMonteCarlo(
+solver_colored_noise_phase_control = SchroedingerSMonteCarlo(
     h_drift=[0 * h_drift, ] * n_time_samples * oversampling,
     h_ctrl=h_ctrl,
     h_noise=[h_drift, ],
@@ -258,14 +258,14 @@ time_slot_comp_colored_noise_phase_control = SchroedingerSMonteCarlo(
 
 # 8.1 xy-control
 entanglement_infid_xy = OperationInfidelity(
-    solver=time_slot_comp_qs_noise_xy,
+    solver=solver_qs_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
-    solver=time_slot_comp_qs_noise_xy,
+    solver=solver_qs_noise_xy,
     target=y_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity QS-Noise XY-Control'],
@@ -273,14 +273,14 @@ entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
 )
 
 entanglement_infid_xy_spectral = OperationInfidelity(
-    solver=time_slot_comp_qs_noise_xy_spectral,
+    solver=solver_qs_noise_xy_spectral,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy_spectral = OperationNoiseInfidelity(
-    solver=time_slot_comp_qs_noise_xy_spectral,
+    solver=solver_qs_noise_xy_spectral,
     target=y_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity QS-Noise XY-Control'],
@@ -288,7 +288,7 @@ entanglement_infid_qs_noise_xy_spectral = OperationNoiseInfidelity(
 )
 
 entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
-    solver=time_slot_comp_colored_noise_xy,
+    solver=solver_colored_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity 1-over-f-Noise XY-Control'],
@@ -297,7 +297,7 @@ entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
 
 # 8.2 phase-control
 entanglement_infid_phase_control = OperationInfidelity(
-    solver=time_slot_comp_qs_noise_phase_control,
+    solver=solver_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity Phase Control']
@@ -306,7 +306,7 @@ entanglement_infid_phase_control = OperationInfidelity(
 
 # This time slot computer calculates the evolution under quasi static noise.
 entanglement_infid_qs_noise_phase_control = OperationNoiseInfidelity(
-    solver=time_slot_comp_qs_noise_phase_control,
+    solver=solver_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity QS-Noise Phase Control'],
@@ -316,7 +316,7 @@ entanglement_infid_qs_noise_phase_control = OperationNoiseInfidelity(
 
 # This time slot computer calculates the evolution under fast noise.
 entanglement_infid_colored_noise_phase_control = OperationNoiseInfidelity(
-    solver=time_slot_comp_colored_noise_phase_control,
+    solver=solver_colored_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
     index=['Entanglement Fidelity 1-over-f-Noise Phase Control'],
@@ -324,6 +324,13 @@ entanglement_infid_colored_noise_phase_control = OperationNoiseInfidelity(
 )
 
 # ##################### 8. Convenience Functions ##############################
+amp_bound = rabi_frequency_max * 2 * np.pi / lin_freq_rel
+
+
+def random_xy_init_pulse(seed=None):
+    if seed:
+        np.random.seed(seed)
+    return np.random.rand(n_time_samples, len(h_ctrl)) * amp_bound
 
 
 def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):

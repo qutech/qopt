@@ -113,7 +113,7 @@ class RabiTestCase(unittest.TestCase):
                 (np.expand_dims(amp, 1), np.expand_dims(phase, 1)), axis=1)
 
         dynamics_phase_control = Simulator(
-            solvers=[rabi.time_slot_comp_qs_noise_phase_control],
+            solvers=[rabi.solver_qs_noise_phase_control],
             cost_fktns=[rabi.entanglement_infid_phase_control]
         )
 
