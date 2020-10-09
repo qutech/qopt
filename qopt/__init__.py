@@ -34,7 +34,7 @@ from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
 from .data_container import DataContainer
 from .energy_spectrum import plot_energy_spectrum
 from .matrix import DenseOperator, convert_unitary_to_super_operator, \
-    closest_unitary, DENSE_PAULI_0, DENSE_PAULI_X, DENSE_PAULI_Y, DENSE_PAULI_Z
+    closest_unitary
 from .noise import NTGColoredNoise, NTGQuasiStatic
 from .optimization_data import OptimizationResult, OptimizationSummary
 from .optimize import LeastSquaresOptimizer, ScalarMinimizingOptimizer
@@ -52,8 +52,7 @@ __all__ = [
     'angle_axis_representation', 'entanglement_fidelity',
     'entanglement_fidelity_super_operator', 'DataContainer',
     'plot_energy_spectrum', 'DenseOperator',
-    'convert_unitary_to_super_operator', 'closest_unitary', 'DENSE_PAULI_0',
-    'DENSE_PAULI_Z', 'DENSE_PAULI_Y', 'DENSE_PAULI_X', 'NTGColoredNoise',
+    'convert_unitary_to_super_operator', 'closest_unitary', 'NTGColoredNoise',
     'NTGQuasiStatic', 'OptimizationResult', 'OptimizationSummary',
     'LeastSquaresOptimizer', 'ScalarMinimizingOptimizer',
     'PerformanceStatistics', 'Simulator', 'SchroedingerSolver',
