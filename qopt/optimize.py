@@ -415,22 +415,30 @@ class ScalarMinimizingOptimizer(Optimizer):
         self.bounds = bounds
 
     def cost_fktn_wrapper(self, optimization_parameters):
-        """ See base class. """
+        """ Evalutes the cost function.
+
+         The total cost function is defined as the sum of cost functions.
+
+         """
         costs = super().cost_fktn_wrapper(optimization_parameters)
-        scalar_costs = np.sum(costs ** 2)
+        scalar_costs = np.sum(costs)
         return scalar_costs
 
     def cost_jacobian_wrapper(self, optimization_parameters):
-        """ See base class.
+        """ The Jacobian reduced to the gradient.
+
+        The gradient is calculated by summation over the Jacobian along the
+        function axis, because the total cost function is defined as the sum
+        of cost functions.
 
         Returns
         -------
         gradient: numpy array, shape (num_t * num_amp)
-            The gradient of the costs in the the 2 norm.
+            The gradient of the costs in the 2 norm.
 
         """
         jac = super().cost_jacobian_wrapper(optimization_parameters)
-        grad = (np.sum(2 * jac, axis=0))
+        grad = (np.sum(jac, axis=0))
         return grad
 
     def run_optimization(self, initial_control_amplitudes: np.array) \
