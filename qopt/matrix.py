@@ -1177,3 +1177,9 @@ def closest_unitary(matrix: OperatorMatrix):
     left_singular_vec, __, right_singular_vec_h = scipy.linalg.svd(
         matrix.data)
     return type(matrix)(left_singular_vec.dot(right_singular_vec_h))
+
+
+DENSE_PAULI_0 = DenseOperator(np.eye(2))
+DENSE_PAULI_X = DenseOperator(np.asarray([[0, 1], [1, 0]]))
+DENSE_PAULI_Y = DenseOperator(np.asarray([[0, -1j], [1j, 0]]))
+DENSE_PAULI_Z = DenseOperator(np.diag(1, -1))
