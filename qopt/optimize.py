@@ -102,7 +102,7 @@ class Optimizer(ABC):
             self,
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
-            save_intermediary_steps: bool = False,
+            save_intermediary_steps: bool = True,
             cost_fktn_weights: Optional[Sequence[float]] = None,
             use_jacobian_function=True):
         self.system_simulator = system_simulator
@@ -327,7 +327,7 @@ class LeastSquaresOptimizer(Optimizer):
             self,
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
-            save_intermediary_steps: bool = False,
+            save_intermediary_steps: bool = True,
             method: str = 'trf',
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,

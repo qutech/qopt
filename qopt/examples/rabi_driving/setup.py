@@ -325,6 +325,9 @@ entanglement_infid_colored_noise_phase_control = OperationNoiseInfidelity(
 
 # ##################### 8. Convenience Functions ##############################
 amp_bound = rabi_frequency_max * 2 * np.pi / lin_freq_rel
+bounds_xy = [[0, amp_bound]] * (n_time_samples * len(h_ctrl))
+bounds_xy_least_sq = [np.zeros((n_time_samples * len(h_ctrl))),
+                      amp_bound * np.ones((n_time_samples * len(h_ctrl)))]
 
 
 def random_xy_init_pulse(seed=None):
