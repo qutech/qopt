@@ -61,6 +61,7 @@ import numpy as np
 import copy
 from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
+from multiprocessing import Pool
 
 from filter_functions import pulse_sequence, plotting, basis, numeric, gradient
 
@@ -848,6 +849,21 @@ class SchroedingerSolver(Solver):
                              + str(self.frechet_deriv_approx_method))
 
 
+def compute_matrix_exponentials(input_dict):
+    time = input_dict['time']
+    matrices = input_dict['matrices']
+    method = input_dict['method']
+    is_skew_hermitian = input_dict['is_skew_hermitian']
+
+    exponentials = [None, ] * len(time)
+    for i, m, t in zip(range(len(matrices)), matrices, time):
+        exponentials[i] = m.exp(
+            tau=t,
+            method=method,
+            is_skew_hermitian=is_skew_hermitian)
+    return exponentials
+
+
 class SchroedingerSMonteCarlo(SchroedingerSolver):
     r"""
     Solves Schroedinger's equation for explicit noise realisations as Monte
@@ -1112,22 +1128,26 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         return self._dyn_gen_noise
 
     def _compute_propagation(
-            self, calculate_propagator_derivatives: Optional[bool] = None) \
-            -> None:
+            self, calculate_propagator_derivatives: Optional[bool] = None,
+            processes: Optional[int] = 1
+    ) -> None:
         """
         Computes the propagators for the perturbed Schroedinger equation and
         the derivatives on demand.
 
         Parameters
         ----------
-        calculate_propagator_derivatives: bool
+        calculate_propagator_derivatives: bool, optional
             Calculate the derivatives of the propagators with respect to the
             control amplitudes if true.
 
+        processes: int, optional
+            If an integer is given, then the propagation is calculated in
+            this number of parallel processes. If 1 then no parallel
+            computing is applied. If None then cpu_count() is called to use
+            all cores available. Defaults to 1.
+
         """
-        # call the parent method for the noiseless propagators
-        super()._compute_propagation(
-            calculate_propagator_derivatives=calculate_propagator_derivatives)
 
         if self._dyn_gen_noise is None:
             self._dyn_gen_noise = self._compute_dyn_gen_noise()
@@ -1143,6 +1163,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             calculate_propagator_derivatives = \
                 self.calculate_propagator_derivatives
 
+        # parallelization of following code probably unnecessary
         if calculate_propagator_derivatives:
             self._derivative_prop_noise = \
                 [[[None for _ in range(num_t)]
@@ -1150,23 +1171,58 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                  for _3 in range(n_noise_traces)]
             derivative_directions = self._compute_derivative_directions()
 
-            for k in range(n_noise_traces):
-                for t in range(num_t):
-                    for ctrl in range(len(self.h_ctrl)):
-                        self._prop_noise[k][t], \
-                            self._derivative_prop_noise[k][ctrl][t] \
-                            = self._dyn_gen_noise[k][t].dexp(
-                            derivative_directions[t][ctrl],
-                            self.transferred_time[t],
-                            compute_expm=True,
+        # call the parent method for the noiseless propagators
+        super()._compute_propagation(
+            calculate_propagator_derivatives=calculate_propagator_derivatives)
+
+        if processes == 1:
+            if calculate_propagator_derivatives:
+                for k in range(n_noise_traces):
+                    for t in range(num_t):
+                        for ctrl in range(len(self.h_ctrl)):
+                            self._prop_noise[k][t], \
+                                self._derivative_prop_noise[k][ctrl][t] \
+                                = self._dyn_gen_noise[k][t].dexp(
+                                derivative_directions[t][ctrl],
+                                self.transferred_time[t],
+                                compute_expm=True,
+                                method=self.exponential_method,
+                                is_skew_hermitian=self._is_skew_hermitian)
+            else:
+                for k in range(n_noise_traces):
+                    for t in range(num_t):
+                        self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
+                            tau=self.transferred_time[t],
                             method=self.exponential_method,
                             is_skew_hermitian=self._is_skew_hermitian)
+
+        elif (type(processes) == int and processes > 0) or processes is None:
+
+            if calculate_propagator_derivatives:
+                raise NotImplementedError
+            else:
+                input_dicts = []
+                # input_dicts = [dict()]
+                # input_dicts[-1]['time'] = self.transferred_time
+                # input_dicts[-1]['matrices'] = self._dyn_gen
+                # input_dicts[-1]['method'] = self.exponential_method
+                # input_dicts[-1][
+                #    'is_skew_hermitian'] = self._is_skew_hermitian
+                for k in range(n_noise_traces):
+                    input_dicts.append(dict())
+                    input_dicts[-1]['time'] = self.transferred_time
+                    input_dicts[-1]['matrices'] = self._dyn_gen_noise[k]
+                    input_dicts[-1]['method'] = self.exponential_method
+                    input_dicts[-1][
+                        'is_skew_hermitian'] = self._is_skew_hermitian
+
+                with Pool(processes=processes) as pool:
+                    self._prop_noise = pool.map(
+                        compute_matrix_exponentials, input_dicts)
+
         else:
-            for k in range(n_noise_traces):
-                for t in range(num_t):
-                    self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
-                        tau=self.transferred_time[t], method=self.exponential_method,
-                        is_skew_hermitian=self._is_skew_hermitian)
+            raise ValueError('Invalid number of processes for parallel '
+                             'computation!')
 
     def _compute_forward_propagation(self) -> None:
         """Computes the forward propagators. """
