@@ -40,7 +40,7 @@ cProfile.run('solver._compute_propagation('
 
 cProfile.run('solver._compute_propagation('
              'calculate_propagator_derivatives=False,'
-             'processes=None)')  #50
+             'processes=None)')  # 50
 
 cProfile.run('solver._compute_propagation('
              'calculate_propagator_derivatives=True)')  # 19.085
@@ -53,12 +53,20 @@ cProfile.run('solver._compute_propagation_derivatives()')  # 20
 
 # Its only worth to parallelize the calculation of the propagators.
 
-solver._compute_propagation(
-    calculate_propagator_derivatives=False,
-    processes=4)
 
+##################################
 
-matrices = [2,3,4]
-time = [2,5,6]
-for i, m, t in zip(range(len(matrices)), matrices, time):
-    print(str(i) + str(m) + str(t))
+from qopt.examples.rabi_driving.rabi_xy_setup import *
+
+qs_solver = solver_qs_noise_xy
+fast_mc_solver = solver_colored_noise_xy
+syst_infid = entanglement_infid_xy
+qs_infid = entanglement_infid_qs_noise_xy
+fast_infid = entanglement_infid_colored_noise_xy
+
+def simulate_propagation(initial_pulse):
+    simulator = Simulator(
+        solvers=[qs_solver, fast_mc_solver],
+        cost_fktns=[syst_infid, qs_infid, fast_infid]
+    )
+    total_propagator
