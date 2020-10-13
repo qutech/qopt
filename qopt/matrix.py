@@ -589,19 +589,33 @@ class OperatorMatrix(ABC):
 
     @classmethod
     def pauli_0(cls):
+        """Pauli 0 i.e. the Identity matrix. """
         return cls(np.eye(2))
 
     @classmethod
     def pauli_x(cls):
+        """Pauli x Matrix. """
         return cls(np.asarray([[0, 1], [1, 0]]))
 
     @classmethod
     def pauli_y(cls):
+        """Pauli y Matrix. """
         return cls(np.asarray([[0, -1j], [1j, 0]]))
 
     @classmethod
     def pauli_z(cls):
+        """Pauli z Matrix. """
         return cls(np.diag([1, -1]))
+
+    @classmethod
+    def pauli_m(cls):
+        """Pauli minus Matrix i.e. descending operator. """
+        return cls(np.asarray([[0, 0], [1, 0]]))
+
+    @classmethod
+    def pauli_p(cls):
+        """Pauli plus Matrix i.e. ascending operator. """
+        return cls(np.asarray([[0, 1], [0, 0]]))
 
 
 class DenseOperator(OperatorMatrix):
