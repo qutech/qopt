@@ -65,9 +65,24 @@ transfer_function = ExponentialTF(
 # ##################### 5. Amplitude Function #################################
 
 # 5.1: x,y control
+# lin_amp_func = UnaryAnalyticAmpFunc(
+#    value_function=lambda x: lin_freq_rel * x,
+#    derivative_function=lambda x: lin_freq_rel)
+# lambda functions cannot be pickled and subsequently used for multiprocessing.
+
+
+def value_function(x):
+    return lin_freq_rel * x
+
+
+def derivative_function(x):
+    return lin_freq_rel
+
+
 lin_amp_func = UnaryAnalyticAmpFunc(
-    value_function=lambda x: lin_freq_rel * x,
-    derivative_function=lambda x: lin_freq_rel)
+   value_function=value_function,
+   derivative_function=derivative_function)
+
 
 # ##################### 6. Noise Trace Generator ##############################
 
@@ -100,7 +115,7 @@ ntg_one_over_f_noise = NTGColoredNoise(
     noise_spectral_density=toms_spectral_noise_density,
     dt=(time_step / oversampling),
     n_samples_per_trace=n_time_samples * oversampling,
-    n_traces=1000,
+    n_traces=100,
     n_noise_operators=1,
     always_redraw_samples=True
 )
@@ -202,4 +217,33 @@ def random_xy_init_pulse(seed=None):
         np.random.seed(seed)
     return np.random.rand(n_time_samples, len(h_ctrl)) * amp_bound
 
+#### for multiprocessing test
+
+qs_solver = solver_qs_noise_xy
+fast_mc_solver = solver_colored_noise_xy
+syst_infid = entanglement_infid_xy
+qs_infid = entanglement_infid_qs_noise_xy
+fast_infid = entanglement_infid_colored_noise_xy
+
+
+def simulate_propagation(initial_pulse):
+    simulator = Simulator(
+        solvers=[qs_solver, fast_mc_solver],
+        cost_fktns=[syst_infid, qs_infid, fast_infid]
+    )
+    infid = simulator.wrapped_cost_functions(pulse=initial_pulse)
+    return infid
+
+
+from qopt.parallel import ParallelOptimizer
+
+simulator = Simulator(
+        solvers=[qs_solver],
+        cost_fktns=[syst_infid, qs_infid,]
+)
+
+optimizer = LeastSquaresOptimizer(
+    system_simulator=simulator,
+    bounds=bounds_xy_least_sq
+)
 

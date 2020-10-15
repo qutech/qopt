@@ -57,16 +57,29 @@ cProfile.run('solver._compute_propagation_derivatives()')  # 20
 ##################################
 
 from qopt.examples.rabi_driving.rabi_xy_setup import *
+from multiprocessing import Pool
+import time
 
-qs_solver = solver_qs_noise_xy
-fast_mc_solver = solver_colored_noise_xy
-syst_infid = entanglement_infid_xy
-qs_infid = entanglement_infid_qs_noise_xy
-fast_infid = entanglement_infid_colored_noise_xy
 
-def simulate_propagation(initial_pulse):
-    simulator = Simulator(
-        solvers=[qs_solver, fast_mc_solver],
-        cost_fktns=[syst_infid, qs_infid, fast_infid]
-    )
-    total_propagator
+n_pulses = 2
+random_pulses = np.random.rand(n_pulses, n_time_samples, len(qs_solver.h_ctrl))
+
+start_parallel = time.time()
+with Pool(processes=None) as pool:
+    infids = pool.map(simulate_propagation, random_pulses)
+end_parallel = time.time()
+parallel_time = end_parallel - start_parallel  # 85.55985116958618
+
+start_sequential = time.time()
+infids_sequential = list(map(simulate_propagation, random_pulses))
+end_sequential = time.time()
+sequential_time = end_sequential - start_sequential  # 274.9153392314911
+
+############################
+
+from qopt.parallel import run_optimization_parallel
+
+
+results = run_optimization_parallel(optimizer, initial_pulses=random_pulses)
+
+
