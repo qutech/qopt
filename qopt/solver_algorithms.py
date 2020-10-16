@@ -590,7 +590,7 @@ class Solver(ABC):
 
         Parameters
         ----------
-        new_amps: np.array, shape (num_t, num_ctrl)
+        new_amps: np.array, shape (num_t, num_ctrl), optional
             New control amplitudes can be set before the pulse sequence is
             initialized.
 
@@ -634,7 +634,8 @@ class Solver(ABC):
 
         return self.pulse_sequence
 
-    def plot_bloch_sphere(self, return_Bloch: bool=False) -> None:
+    def plot_bloch_sphere(
+            self, new_amps=None, return_Bloch: bool=False) -> None:
         """
         Uses the pulse sequence to plot the systems evolution on the bloch
         sphere.
@@ -643,6 +644,10 @@ class Solver(ABC):
 
         Parameters
         ----------
+        new_amps: np.array, shape (num_t, num_ctrl), optional
+            New control amplitudes can be set before the pulse sequence is
+            initialized.
+
         return_Bloch: bool
             If True, then qutips Bloch object is returned.
 
@@ -653,7 +658,8 @@ class Solver(ABC):
 
         """
         if self.pulse_sequence is None:
-            self.create_pulse_sequence()
+            self.create_pulse_sequence(new_amps=new_amps)
+
         return plotting.plot_bloch_vector_evolution(self.pulse_sequence,
                                                     n_samples=500,
                                                     return_Bloch=return_Bloch)
@@ -849,7 +855,24 @@ class SchroedingerSolver(Solver):
                              + str(self.frechet_deriv_approx_method))
 
 
-def compute_matrix_exponentials(input_dict):
+def _compute_matrix_exponentials(input_dict):
+    """Computes the propagator of the Schroedinger equation by evaluation of
+    a matrix exponential.
+
+    Parameters
+    ----------
+    input_dict: dict
+        Holds the parameters in a single dict, because the function
+        multiprocessing.Pool.map requires a single input argument. The dict
+        has the fields time, matrices, method and is_skew_hermitian. See also
+        _compute_propagator.
+
+    Returns
+    -------
+    exponentials: list of ControlMatrix
+        A list of the propagators.
+
+    """
     time = input_dict['time']
     matrices = input_dict['matrices']
     method = input_dict['method']
@@ -882,6 +905,12 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
     noise_trace_generator: noise.NoiseTraceGenerator
         Noise trace generator object.
+
+    processes: int, optional
+        If an integer is given, then the propagation is calculated in
+        this number of parallel processes. If 1 then no parallel
+        computing is applied. If None then cpu_count() is called to use
+        all cores available. Defaults to 1.
 
     noise_amplitude_function: Callable[[noise_samples: np.array,
         optimization_parameters: np.array,
@@ -957,9 +986,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             h_noise: List[q_mat.OperatorMatrix],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
-            initial_state: q_mat.OperatorMatrix=None,
+            initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
+            processes: Optional[int] = 1,
             filter_function_h_n: Union[
                 Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
@@ -991,6 +1021,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         self.h_noise = h_noise
         self.noise_trace_generator = noise_trace_generator
         self.noise_amplitude_function = noise_amplitude_function
+        self.processes = processes
 
         self._dyn_gen_noise = None
         self._prop_noise = None
@@ -1128,8 +1159,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         return self._dyn_gen_noise
 
     def _compute_propagation(
-            self, calculate_propagator_derivatives: Optional[bool] = None,
-            processes: Optional[int] = 1
+            self, calculate_propagator_derivatives: Optional[bool] = None
     ) -> None:
         """
         Computes the propagators for the perturbed Schroedinger equation and
@@ -1140,12 +1170,6 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         calculate_propagator_derivatives: bool, optional
             Calculate the derivatives of the propagators with respect to the
             control amplitudes if true.
-
-        processes: int, optional
-            If an integer is given, then the propagation is calculated in
-            this number of parallel processes. If 1 then no parallel
-            computing is applied. If None then cpu_count() is called to use
-            all cores available. Defaults to 1.
 
         """
 
@@ -1175,7 +1199,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         super()._compute_propagation(
             calculate_propagator_derivatives=calculate_propagator_derivatives)
 
-        if processes == 1:
+        if self.processes == 1:
             if calculate_propagator_derivatives:
                 for k in range(n_noise_traces):
                     for t in range(num_t):
@@ -1196,18 +1220,13 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                             method=self.exponential_method,
                             is_skew_hermitian=self._is_skew_hermitian)
 
-        elif (type(processes) == int and processes > 0) or processes is None:
+        elif (type(self.processes) == int and self.processes > 0) \
+                or self.processes is None:
 
             if calculate_propagator_derivatives:
                 raise NotImplementedError
             else:
                 input_dicts = []
-                # input_dicts = [dict()]
-                # input_dicts[-1]['time'] = self.transferred_time
-                # input_dicts[-1]['matrices'] = self._dyn_gen
-                # input_dicts[-1]['method'] = self.exponential_method
-                # input_dicts[-1][
-                #    'is_skew_hermitian'] = self._is_skew_hermitian
                 for k in range(n_noise_traces):
                     input_dicts.append(dict())
                     input_dicts[-1]['time'] = self.transferred_time
@@ -1216,9 +1235,9 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                     input_dicts[-1][
                         'is_skew_hermitian'] = self._is_skew_hermitian
 
-                with Pool(processes=processes) as pool:
+                with Pool(processes=self.processes) as pool:
                     self._prop_noise = pool.map(
-                        compute_matrix_exponentials, input_dicts)
+                        _compute_matrix_exponentials, input_dicts)
 
         else:
             raise ValueError('Invalid number of processes for parallel '
@@ -1319,6 +1338,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
+            processes: Optional[int] = 1,
             filter_function_h_n: Union[
                 Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
@@ -1368,6 +1388,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             noise_trace_generator=noise_trace_generator,
             ctrl_amps=ctrl_amps,
             calculate_propagator_derivatives=calculate_propagator_derivatives,
+            processes=processes,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
             filter_function_s_derivs=filter_function_s_derivs,
