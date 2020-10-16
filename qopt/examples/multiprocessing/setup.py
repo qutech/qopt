@@ -80,6 +80,25 @@ sequential_time = end_sequential - start_sequential  # 274.9153392314911
 from qopt.parallel import run_optimization_parallel
 
 
-results = run_optimization_parallel(optimizer, initial_pulses=random_pulses)
+data = run_optimization_parallel(optimizer, initial_pulses=random_pulses)
+
+optimizer.system_simulator.solvers[0].plot_bloch_sphere(
+    data.final_parameters[0])
+
+analyser = Analyser(data)
+analyser.plot_costs(0)
+
+#
+
+from qopt.examples.rabi_driving.rabi_xy_setup import *
+
+n_pulses = 2
+random_pulses = np.random.rand(n_pulses, n_time_samples, len(qs_solver.h_ctrl))
+
+from qopt.parallel import run_optimization_parallel
 
 
+data = run_optimization_parallel(optimizer, initial_pulses=random_pulses)
+
+analyser = Analyser(data)
+analyser.plot_costs(0)

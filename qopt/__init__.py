@@ -44,6 +44,7 @@ from .solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo, \
     SchroedingerSMCControlNoise, LindbladSolver, LindbladSControlNoise
 from .transfer_function import IdentityTF, OversamplingTF, LinearTF, \
     ConcatenateTF, ParallelTF, CustomTF, ExponentialTF
+from .parallel import run_optimization_parallel
 
 __all__ = [
     'IdentityAmpFunc', 'UnaryAnalyticAmpFunc', 'CustomAmpFunc', 'Analyser',
@@ -58,7 +59,8 @@ __all__ = [
     'PerformanceStatistics', 'Simulator', 'SchroedingerSolver',
     'SchroedingerSMonteCarlo', 'SchroedingerSMCControlNoise', 'LindbladSolver',
     'LindbladSControlNoise', 'IdentityTF', 'OversamplingTF', 'LinearTF',
-    'ConcatenateTF', 'ParallelTF', 'CustomTF', 'ExponentialTF'
+    'ConcatenateTF', 'ParallelTF', 'CustomTF', 'ExponentialTF',
+    'run_optimization_parallel'
 ]
 
 __version__ = '1.0.2'

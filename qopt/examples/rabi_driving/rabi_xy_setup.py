@@ -21,15 +21,15 @@ exponential_method = 'Frechet'
 
 # The time steps could be chosen more densely giving more flexibility at the
 # cost of computational time
-n_time_samples = 10
-total_time = 1
+n_time_samples = 20
+total_time = 4
 time_step = total_time / n_time_samples
 rabi_frequency_max = 2 * np.pi
 
 oversampling = 5
 awg_rise_time = time_step * .2
 lin_freq_rel = 1.
-sigma_eps = 1 * lin_freq_rel
+sigma_eps = .02 * lin_freq_rel
 
 # ##################### 3. Operators ##########################################
 
@@ -115,7 +115,7 @@ ntg_one_over_f_noise = NTGColoredNoise(
     noise_spectral_density=toms_spectral_noise_density,
     dt=(time_step / oversampling),
     n_samples_per_trace=n_time_samples * oversampling,
-    n_traces=100,
+    n_traces=1000,
     n_noise_operators=1,
     always_redraw_samples=True
 )
@@ -125,7 +125,8 @@ ntg_one_over_f_noise = NTGColoredNoise(
 # for the remaining quasi static noise contribution, we integrate the spectral
 # density from 10^-3 Hz to 1 / (time_step / oversampling)
 ntg_quasi_static = NTGQuasiStatic(
-    standard_deviation=[sigma_f, ],
+    # standard_deviation=[sigma_f, ],
+    standard_deviation=[sigma_eps],
     n_samples_per_trace=n_time_samples * oversampling,
     n_traces=8,
     always_redraw_samples=False,
@@ -217,7 +218,7 @@ def random_xy_init_pulse(seed=None):
         np.random.seed(seed)
     return np.random.rand(n_time_samples, len(h_ctrl)) * amp_bound
 
-#### for multiprocessing test
+# ### for multiprocessing test
 
 qs_solver = solver_qs_noise_xy
 fast_mc_solver = solver_colored_noise_xy
@@ -235,8 +236,6 @@ def simulate_propagation(initial_pulse):
     return infid
 
 
-from qopt.parallel import ParallelOptimizer
-
 simulator = Simulator(
         solvers=[qs_solver],
         cost_fktns=[syst_infid, qs_infid,]
@@ -244,6 +243,7 @@ simulator = Simulator(
 
 optimizer = LeastSquaresOptimizer(
     system_simulator=simulator,
-    bounds=bounds_xy_least_sq
+    bounds=bounds_xy_least_sq,
+    cost_fktn_weights=[1, 1e2]
 )
 
