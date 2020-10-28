@@ -1109,7 +1109,8 @@ class Gaussian(TransferFunction):
         # index l inserted for the cost functions
         try:
             # return np.einsum('ijk,ik->jk', self._transfer_matrix, gradient)
-            return np.einsum('ijk,...i->...j', self._transfer_matrix, deriv_by_transferred_par)
+            return np.einsum('ijk,...i->...j', self._transfer_matrix,
+                             deriv_by_transferred_par)
         except ValueError:
             print('error')
 

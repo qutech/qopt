@@ -982,7 +982,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     def __init__(
             self, h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            tau: List[float],
+            tau: np.array,
             h_noise: List[q_mat.OperatorMatrix],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
@@ -1332,7 +1332,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             self,
             h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            tau: List[float],
+            tau: np.array,
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
             initial_state: q_mat.OperatorMatrix = None,
@@ -1635,7 +1635,7 @@ class LindbladSolver(SchroedingerSolver):
             self,
             h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            tau: List[float],
+            tau: np.array,
             initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_unitary_derivatives: bool = False,
