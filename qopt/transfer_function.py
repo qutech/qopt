@@ -1026,7 +1026,7 @@ class ExponentialTF(TransferFunction):
         return x
 
 
-class Gaussian(TransferFunction):
+class GaussianTF(TransferFunction):
     """
     Represent square function filtered through a gaussian filter.
 
