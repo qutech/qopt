@@ -78,8 +78,9 @@ References
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.special
+import scipy.ndimage
 import copy
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union, Sequence
 from abc import ABC, abstractmethod
 
 from qopt.util import deprecated, needs_refactoring
@@ -465,8 +466,16 @@ class TransferFunction(ABC):
 
 
 class EfficientOversamplingTF(TransferFunction):
-    """ Handles oversampling and boundaries without transfer matrix. """
+    """ Handles oversampling and boundaries without transfer matrix.
 
+    This function is destined to be used for the oversampling and the boundary
+    functions for all transfer functions which do not compute a transfer matrix.
+
+    See Also
+    --------
+    Base Class
+
+    """
     @property
     def transfer_matrix(self) -> np.array:
         """Overrides the base class method. """
@@ -552,6 +561,134 @@ class EfficientOversamplingTF(TransferFunction):
         )
         deriv_by_opt_par = np.sum(cropped_derivs, axis=1)
         return deriv_by_opt_par
+
+
+class GaussianConvolution(TransferFunction):
+    """ A gaussian convolution is applied as filter function.
+
+    The implementation makes use of the gaussian filter function in the
+    scipy.ndimage package.
+
+    Parameters
+    ----------
+    sigma: float or sequence of float
+        standard deviation for Gaussian kernel
+
+    order: int, optional
+        An order of 0 corresponds to convolution with a Gaussian kernel. A
+        positive order corresponds to convolution with that derivative of a
+        Gaussian.
+
+    mode: {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}, optional
+        The mode parameter determines how the input array is extended beyond its
+        boundaries. Default is ‘reflect’. Behavior for each valid value is as
+        follows:
+
+        ‘reflect’ (d c b a | a b c d | d c b a)
+        The input is extended by reflecting about the edge of the last pixel.
+
+        ‘constant’ (k k k k | a b c d | k k k k)
+        The input is extended by filling all values beyond the edge with the
+        same constant value, defined by the cval parameter.
+
+        ‘nearest’ (a a a a | a b c d | d d d d)
+        The input is extended by replicating the last pixel.
+
+        ‘mirror’ (d c b | a b c d | c b a)
+        The input is extended by reflecting about the center of the last pixel.
+
+        ‘wrap’ (a b c d | a b c d | a b c d)
+        The input is extended by wrapping around to the opposite edge
+
+        Default is 'nearest'.
+
+    truncate: float, optinal
+        Truncate the filter at this many standard deviations. Default is 4.0.
+
+    See Also
+    --------
+    Base Class
+
+    scipy.ndimage
+
+    """
+    def __init__(self,
+                 sigma: Union[float, Sequence[float]],
+                 order: int = 0,
+                 mode: str = 'nearest',
+                 truncate: float = 4.):
+        super().__init__()
+        self.sigma = sigma
+        self.order = order
+        self.mode = mode
+        self.truncate = truncate
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        shape = y.shape
+        assert len(shape) == 2
+        assert shape[0] == self._num_y
+        assert shape[1] == self.num_ctrls
+
+        return scipy.ndimage.gaussian_filter1d(
+            y, self.sigma, axis=0, order=self.order, mode=self.mode,
+            truncate=self.truncate
+        )
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """ See base class.
+
+        The application of the chain rule is another Gaussian filter.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self._num_x
+        assert shape[2] == self.num_ctrls
+
+        return scipy.ndimage.gaussian_filter1d(
+            deriv_by_transferred_par, self.sigma, axis=0, order=self.order,
+            mode=self.mode, truncate=self.truncate
+        )
+
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
 
 
 class IdentityTF(TransferFunction):
@@ -1158,7 +1295,7 @@ class GaussianTF(TransferFunction):
         self._transfer_matrix = None
         self.cte = None
 
-    def make_T(self):
+    def _calculate_transfer_matrix(self):
         """Calculate the transfer matrix. """
         Dxt = (self.xtimes[1] - self.xtimes[0]) * 0.25
         self._transfer_matrix = np.zeros((len(self._y_times) - 1, self._num_y, self.num_ctrls))
@@ -1177,7 +1314,7 @@ class GaussianTF(TransferFunction):
 
     def __call__(self, y):
         if self._transfer_matrix is None:
-            self.make_T()
+            self._calculate_transfer_matrix()
         try:
             return np.einsum('ijk,jk->ik', self._transfer_matrix, y) + self.cte
         except ValueError:
@@ -1187,7 +1324,7 @@ class GaussianTF(TransferFunction):
     def transfer_matrix(self):
         """See base class. """
         if self._transfer_matrix is None:
-            self.make_T()
+            self._calculate_transfer_matrix()
         return self._transfer_matrix
 
     def gradient_chain_rule(self, deriv_by_transferred_par):

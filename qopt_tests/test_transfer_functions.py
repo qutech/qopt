@@ -469,3 +469,24 @@ class TestTransferFunctions(unittest.TestCase):
         parallel_tf.set_times(x_times)
 
         assert np.all(ex_2ctrl.transfer_matrix == parallel_tf.transfer_matrix)
+
+    def test_efficient_oversampling_tf(self):
+
+        ef_ov_tf = transfer_function.EfficientOversamplingTF(
+            oversampling=2,
+            bound_type=("n", 2)
+        )
+
+        ef_ov_tf.set_times(.5 * np.ones(3))
+        np.testing.assert_array_almost_equal(
+            ef_ov_tf._x_times,
+            .25 * np.ones(10)
+        )
+        transferred = ef_ov_tf(np.asarray([[1, 2, 3]]).T)
+        np.testing.assert_array_almost_equal(
+            transferred,
+            np.asarray([[0, 0, 1, 1, 2, 2, 3, 3, 0, 0]]).T
+        )
+
+    def test_gaussian_convolution(self):
+        pass
