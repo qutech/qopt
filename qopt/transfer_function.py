@@ -464,6 +464,96 @@ class TransferFunction(ABC):
         pass
 
 
+class EfficientOversamplingTF(TransferFunction):
+    """ Handles oversampling and boundaries without transfer matrix. """
+
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Oversampling and boundary conditions applied without generating a
+        transfer function.
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        # oversample pulse by repetition
+        u = np.repeat(y, self.oversampling, axis=0)
+
+        # add the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        u = np.concatenate(
+            (np.zeros((padding_start, self.num_ctrls)),
+             u,
+             np.zeros((padding_end, self.num_ctrls))), axis=0)
+
+        return u
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """
+        See base class.
+
+        Processing without transfer matrix.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self._num_x
+        assert shape[2] == self.num_ctrls
+
+        # delete the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        cropped_derivs = deriv_by_transferred_par[
+                         padding_start:-padding_end, :, :]
+
+        cropped_derivs = np.expand_dims(cropped_derivs, axis=1)
+        cropped_derivs = np.reshape(
+            cropped_derivs, (
+                self._num_y,
+                self.oversampling,
+                cropped_derivs.shape[2],
+                cropped_derivs.shape[3]
+            )
+        )
+        deriv_by_opt_par = np.sum(cropped_derivs, axis=1)
+        return deriv_by_opt_par
+
+
 class IdentityTF(TransferFunction):
     """Numerically efficient identity transfer function which does not change
     pulse nor time steps.
