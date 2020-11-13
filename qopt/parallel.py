@@ -33,8 +33,8 @@ def run_optimization_parallel(optimizer, initial_pulses, processes=None):
     optimizer: Optimizer
         The Optimizer.
 
-    initial_pulses: numpy array, shape (num_t, num_ctrl)
-        The initial pulse.
+    initial_pulses: numpy array, shape (num_init, num_t, num_ctrl)
+        The initial pulse. Where num_init is the number of initial pulses.
 
     processes: int, optional
         If an integer is given, then the propagation is calculated in

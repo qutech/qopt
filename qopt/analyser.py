@@ -75,7 +75,7 @@ class Analyser:
         final_costs = np.asarray(self.data.final_costs)
         if len(final_costs.shape) == 2:
             final_costs = np.reshape(
-                final_costs, (len(self.data.final_costs, 1)))
+                final_costs, (len(self.data.final_costs), 1))
         squared_sum = np.sum(final_costs**2, axis=1)
         return int(np.argmin(squared_sum, axis=0))
 
