@@ -566,6 +566,8 @@ class EfficientOversamplingTF(TransferFunction):
 class GaussianConvolution(TransferFunction):
     """ A gaussian convolution is applied as filter function.
 
+    For oversampling and boundaries use this TransferFunction in combination
+    with EfficientOversamplingTF and ConcatenateTF.
     The implementation makes use of the gaussian filter function in the
     scipy.ndimage package.
 
@@ -647,6 +649,7 @@ class GaussianConvolution(TransferFunction):
         assert len(shape) == 2
         assert shape[0] == self._num_y
         assert shape[1] == self.num_ctrls
+        assert y.dtype in [np.float64, np.float32]
 
         return scipy.ndimage.gaussian_filter1d(
             y, self.sigma, axis=0, order=self.order, mode=self.mode,
@@ -675,6 +678,7 @@ class GaussianConvolution(TransferFunction):
         assert len(shape) == 3
         assert shape[0] == self._num_x
         assert shape[2] == self.num_ctrls
+        assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
 
         return scipy.ndimage.gaussian_filter1d(
             deriv_by_transferred_par, self.sigma, axis=0, order=self.order,

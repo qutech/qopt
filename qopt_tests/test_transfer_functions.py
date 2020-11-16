@@ -4,6 +4,7 @@ import unittest
 from typing import Union
 
 from qopt import transfer_function
+from qopt_tests import testutil
 
 
 def exp_saturation(t, t_rise, val_1, val_2):
@@ -248,6 +249,14 @@ class ExponentialTFOld(transfer_function.TransferFunction):
         return x
 
 
+def quadratic_sum(x):
+    return np.sum(x ** 2)
+
+
+def deriv_quadratic_sum(x):
+    return np.expand_dims(2 * x, axis=1)
+
+
 class TestTransferFunctions(unittest.TestCase):
 
     def test_identity(self):
@@ -321,7 +330,6 @@ class TestTransferFunctions(unittest.TestCase):
         grad_2 = identity_tf_2.gradient_chain_rule(df_du)
 
         np.testing.assert_array_almost_equal(grad_1, grad_2)
-
 
     def test_exponential_transfer_function(self):
         num_x = 4
@@ -482,11 +490,55 @@ class TestTransferFunctions(unittest.TestCase):
             ef_ov_tf._x_times,
             .25 * np.ones(10)
         )
-        transferred = ef_ov_tf(np.asarray([[1, 2, 3]]).T)
+        x0 = np.asarray([[1, 2, 3]], dtype=np.float64).T
+        transferred = ef_ov_tf(x0)
         np.testing.assert_array_almost_equal(
             transferred,
             np.asarray([[0, 0, 1, 1, 2, 2, 3, 3, 0, 0]]).T
         )
 
+        def test_function(x):
+            y = ef_ov_tf(x)
+            return quadratic_sum(y)
+
+        def analytic_grad(x):
+            y = deriv_quadratic_sum(x)
+            return ef_ov_tf.gradient_chain_rule(y)
+
+        grad_numeric = testutil.calculate_jacobian(
+            test_function, x0=x0, delta_x=1e-6)
+        grad_analytic = analytic_grad(transferred)
+        np.testing.assert_array_almost_equal(
+            np.expand_dims(grad_numeric, axis=2), grad_analytic)
+
     def test_gaussian_convolution(self):
-        pass
+
+        ef_ov_tf = transfer_function.EfficientOversamplingTF(
+            oversampling=5,
+            bound_type=("n", 2)
+        )
+
+        gaussian_tf = transfer_function.GaussianConvolution(
+            sigma=2.
+        )
+
+        concatenated_tf = transfer_function.ConcatenateTF(ef_ov_tf, gaussian_tf)
+
+        concatenated_tf.set_times(.5 * np.ones(5))
+
+        def test_function(x):
+            y = concatenated_tf(x)
+            return quadratic_sum(y)
+
+        def analytic_grad(x):
+            y = deriv_quadratic_sum(x)
+            return concatenated_tf.gradient_chain_rule(y)
+
+        x0 = np.asarray([[1, 2, 3, 4, 5]], dtype=np.float64).T
+
+        grad_numeric = testutil.calculate_jacobian(
+            test_function, x0=x0, delta_x=1e-6)
+        grad_analytic = analytic_grad(concatenated_tf(x0))
+
+        np.testing.assert_array_almost_equal(
+            np.expand_dims(grad_numeric, axis=2), grad_analytic, 1e-5)
