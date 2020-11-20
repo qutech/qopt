@@ -40,6 +40,7 @@ References
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 from qopt import data_container
 
@@ -72,8 +73,11 @@ class Analyser:
 
         """
         final_costs = np.asarray(self.data.final_costs)
+        if len(final_costs.shape) == 2:
+            final_costs = np.reshape(
+                final_costs, (len(self.data.final_costs), 1))
         squared_sum = np.sum(final_costs**2, axis=1)
-        return np.argmin(squared_sum, axis=0)
+        return int(np.argmin(squared_sum, axis=0))
 
     def plot_costs(self, n=0) -> None:
         """Plots the absolute cost values as function of optimization
@@ -85,22 +89,46 @@ class Analyser:
             index=self.data.indices)
         df.T.plot(logy=True)
 
-    def plot_absolute_costs(self) -> None:
-        """Plots the absolute costs. """
+    def absolute_costs(self) -> np.ndarray:
+        """
+        Calculates for each optimization run and each iteration in the
+        optimization algorithm the sum of the costs.
+
+        Returns
+        -------
+        costs: numpy array, shape (n_runs, n_iter)
+            The sum of the costs.
+
+        """
         n_steps = np.max(list(map(len, self.data.costs)))
 
         # shape: (num_runs, num_step, num_cost_fkt)
         costs = np.empty(
             (len(self.data.costs), n_steps, len(self.data.costs[0][0])))
+        costs[:] = np.nan
 
         for i, run in enumerate(self.data.costs):
             num_steps = len(run)
             costs[i, :num_steps, :] = np.stack(run, axis=0)
 
-        costs = np.sum(costs, axis=2)
-        df = pd.DataFrame(costs, index=range(costs.shape[0]),
-                          columns=range(costs.shape[1]))
-        df.T.plot(logy=True)
+        costs = np.sqrt(np.sum(costs ** 2, axis=2))
+        return costs
+
+    def plot_absolute_costs(self) -> (plt.Figure, plt.Axes):
+        """Plots the absolute costs. """
+        costs = self.absolute_costs()
+        fig, axes = plt.subplots(1, 1)
+        ax = axes
+        ax.plot(costs.T)
+        ax.set_yscale('log')
+        ax.set_title('Sum of Infidelitites')
+        ax.set_xlabel('Iteration')
+        ax.set_ylabel('Infidelity')
+        return fig, ax
+
+        # df = pd.DataFrame(costs, index=range(costs.shape[0]),
+        #                  columns=range(costs.shape[1]))
+        # df.T.plot(logy=True)
 
     def integral_cost_fkt_times(self, n: int = 0) -> np.ndarray:
         """Sum of the time required for the evaluation of the cost

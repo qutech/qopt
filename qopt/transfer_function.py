@@ -157,15 +157,15 @@ class TransferFunction(ABC):
     offset: float
         Constant offset which is added to the optimization parameters.
 
-    _num_y: int
-        Number of time slices of the raw optimization variables.
-
-    _num_x: int
+    num_x: int
         Number of time slices of the transferred optimization variables.
 
-    _x_times: array, shape (num_u)
+    x_times: array, shape (num_u)
         Time values for the transferred optimization parameters. These
         describe the length of the time slices.
+
+    _num_y: int
+        Number of time slices of the raw optimization variables.
 
     _y_times: array, shape (num_x)
         Time values for the raw control variables. These  describe the length
@@ -198,7 +198,7 @@ class TransferFunction(ABC):
     plot_pulse(y):
         For the raw optimisation variables (y), plot the resulting pulse.
 
-    TODO:
+    `Todo`
         * make the x_times public
         * bound type seems to be buggy. test with exp_transfer
         * parse bound_type to raise exception only in one function.
@@ -231,8 +231,8 @@ class TransferFunction(ABC):
         self._y_times = None
         self._absolute_y_times = None
         # num_x is calculated when setting the time
-        self._num_x = 0
-        self._x_times = None
+        self.num_x = 0
+        self.x_times = None
 
     def __call__(self, y: np.array) -> np.array:
         """Calculate the transferred optimization parameters (x).
@@ -328,7 +328,7 @@ class TransferFunction(ABC):
 
         shape = deriv_by_transferred_par.shape
         assert len(shape) == 3
-        assert shape[0] == self._num_x
+        assert shape[0] == self.num_x
         assert shape[2] == self.num_ctrls
 
         if self._transfer_matrix is None:
@@ -342,7 +342,7 @@ class TransferFunction(ABC):
 
     def set_times(self, y_times: np.array) -> None:
         """
-        Generate the time_slot duration array 'tau' (here: x_times).
+        Generate the time_slot duration array 'transferred_time' (here: x_times).
 
         The time slices depend on the oversampling of the control variables
         and the boundary conditions. The times are for the intended use cases
@@ -371,14 +371,14 @@ class TransferFunction(ABC):
         self._y_times = y_times
 
         if self.bound_type is None:
-            self._num_x = self.oversampling * self._num_y
-            self._x_times = np.repeat(
+            self.num_x = self.oversampling * self._num_y
+            self.x_times = np.repeat(
                 self._y_times, self.oversampling) / self.oversampling
 
         elif self.bound_type[0] == 'n':
-            self._num_x = self.oversampling * self._num_y + 2 \
-                          * self.bound_type[1]
-            self._x_times = np.concatenate((
+            self.num_x = self.oversampling * self._num_y + 2 \
+                         * self.bound_type[1]
+            self.x_times = np.concatenate((
                 self._y_times[0] / self.oversampling
                 * np.ones(self.bound_type[1]),
                 np.repeat(
@@ -387,9 +387,9 @@ class TransferFunction(ABC):
                 * np.ones(self.bound_type[1])))
 
         elif self.bound_type[0] == 'x':
-            self._num_x = self.oversampling * (self._num_y
-                                               + 2 * self.bound_type[1])
-            self._x_times = np.concatenate((
+            self.num_x = self.oversampling * (self._num_y
+                                              + 2 * self.bound_type[1])
+            self.x_times = np.concatenate((
                 self._y_times[0] / self.oversampling
                 * np.ones(self.bound_type[1] * self.oversampling),
                 np.repeat(self._y_times / self.oversampling,
@@ -398,8 +398,8 @@ class TransferFunction(ABC):
                 * np.ones(self.bound_type[1] * self.oversampling)))
 
         elif self.bound_type[0] == 'right_n':
-            self._num_x = self.oversampling * self._num_y + self.bound_type[1]
-            self._x_times = np.concatenate((
+            self.num_x = self.oversampling * self._num_y + self.bound_type[1]
+            self.x_times = np.concatenate((
                 np.repeat(self._y_times / self.oversampling,
                           self.oversampling),
                 self._y_times[-1] / self.oversampling
@@ -411,7 +411,7 @@ class TransferFunction(ABC):
 
     def set_absolute_times(self, absolute_y_times: np.ndarray) -> None:
         """
-        Generate the time_slot duration array 'tau' (here: x_times)
+        Generate the time_slot duration array 'transferred_time' (here: x_times)
 
         This time slices depend on the oversampling of the control variables
         and the boundary conditions. The differences of the absolute times
@@ -450,8 +450,8 @@ class TransferFunction(ABC):
         n_padding_start, n_padding_end = self.num_padding_elements
         for y_per_control, x_per_control in zip(y.T, x.T):
             plt.figure()
-            plt.bar(np.cumsum(self._x_times) - .5 * self._x_times[0],
-                    x_per_control, self._x_times[0])
+            plt.bar(np.cumsum(self.x_times) - .5 * self.x_times[0],
+                    x_per_control, self.x_times[0])
             plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
                     + np.cumsum(self._y_times)[n_padding_start]
                     - self._y_times[n_padding_start],
@@ -867,7 +867,7 @@ class ConcatenateTF(TransferFunction):
 
         """
         self.tf1.set_times(y_times)
-        self.tf2.set_times(y_times=self.tf1._x_times)
+        self.tf2.set_times(y_times=self.tf1.x_times)
         return
 
     def plot_pulse(self, y: np.ndarray) -> None:
@@ -914,7 +914,7 @@ class ParallelTF(TransferFunction):
 
         # tf1 and tf2 should have identical times
         self._y_times = tf1._y_times
-        self._x_times = tf1._x_times
+        self._x_times = tf1.x_times
 
         if not tf1.bound_type == tf2.bound_type:
             raise ValueError("The parallized transfer functions must have the "
@@ -935,8 +935,8 @@ class ParallelTF(TransferFunction):
         self.tf2.set_times(y_times)
         self._num_y = self.tf1._num_y
         self._y_times = self.tf1._y_times
-        self._num_x = self.tf1._num_x
-        self._x_times = self.tf1._x_times
+        self._num_x = self.tf1.num_x
+        self._x_times = self.tf1.x_times
 
 
 class CustomTF(TransferFunction):
@@ -967,7 +967,7 @@ class CustomTF(TransferFunction):
             the bound_type and the transfer matrix.
 
 
-    TODO:
+    `Todo`
         * does it make sense so set the utimes explicitly? breakes the usual
             * workflow
 
@@ -1050,7 +1050,7 @@ class ExponentialTF(TransferFunction):
     The functionality is meant to model the finite rise time of voltage
     sources.
 
-    TODO:
+    `Todo`
         * add initial and final level. Currently fixed at 0 (or the offset)
 
     """
@@ -1084,7 +1084,7 @@ class ExponentialTF(TransferFunction):
 
     @deprecated
     def old_call(self, x: np.ndarray):
-        """TODO: only alive for testing"""
+        """ `TODO` only alive for testing"""
         start_value = 0
         stop_value = 0
 
@@ -1153,7 +1153,7 @@ class ExponentialTF(TransferFunction):
         Currently only equal time spacing is supported!"""
 
         num_padding_start, num_padding_end = self.num_padding_elements
-        dudx = np.zeros(shape=(self._num_x - num_padding_start, self._num_y))
+        dudx = np.zeros(shape=(self.num_x - num_padding_start, self._num_y))
 
         x_tau = self._y_times[0]
 
@@ -1281,7 +1281,7 @@ class GaussianTF(TransferFunction):
 
     The amplitudes time range is wider than the given times.
 
-    Todo:
+    `Todo`
         * reworked the comments but the code has not been refactored
 
     """
@@ -1340,7 +1340,8 @@ class GaussianTF(TransferFunction):
         # index l inserted for the cost functions
         try:
             # return np.einsum('ijk,ik->jk', self._transfer_matrix, gradient)
-            return np.einsum('ijk,...i->...j', self._transfer_matrix, deriv_by_transferred_par)
+            return np.einsum('ijk,...i->...j', self._transfer_matrix,
+                             deriv_by_transferred_par)
         except ValueError:
             print('error')
 
@@ -1348,7 +1349,7 @@ class GaussianTF(TransferFunction):
         """
         See base class.
 
-        Times/tau correspond to the timeslot before the interpolation.
+        Times/transferred_time correspond to the timeslot before the interpolation.
         """
         if not np.allclose(np.diff(times), times[1] - times[0]):
             raise Exception("Times must be equaly distributed")

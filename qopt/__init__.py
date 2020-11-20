@@ -18,3 +18,51 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
+"""Hardware adapted quantum simulation and optimal control """
+
+from . import amplitude_functions, analyser, cost_functions, data_container, \
+    energy_spectrum, matrix, noise, optimization_data, optimize, \
+    performance_statistics, simulator, solver_algorithms, transfer_function, \
+    util
+from .amplitude_functions import IdentityAmpFunc, UnaryAnalyticAmpFunc, \
+    CustomAmpFunc
+from .analyser import Analyser
+from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
+    OperationNoiseInfidelity, OperatorFilterFunctionInfidelity, LeakageError, \
+    state_fidelity, angle_axis_representation, entanglement_fidelity, \
+    entanglement_fidelity_super_operator
+from .data_container import DataContainer
+from .energy_spectrum import plot_energy_spectrum
+from .matrix import DenseOperator, convert_unitary_to_super_operator, \
+    closest_unitary
+from .noise import NTGColoredNoise, NTGQuasiStatic
+from .optimization_data import OptimizationResult, OptimizationSummary
+from .optimize import LeastSquaresOptimizer, ScalarMinimizingOptimizer
+from .performance_statistics import PerformanceStatistics
+from .simulator import Simulator
+from .solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo, \
+    SchroedingerSMCControlNoise, LindbladSolver, LindbladSControlNoise
+from .transfer_function import IdentityTF, OversamplingTF, LinearTF, \
+    ConcatenateTF, ParallelTF, CustomTF, ExponentialTF
+from .parallel import run_optimization_parallel
+
+__all__ = [
+    'IdentityAmpFunc', 'UnaryAnalyticAmpFunc', 'CustomAmpFunc', 'Analyser',
+    'OperatorMatrixNorm', 'OperationInfidelity', 'OperationNoiseInfidelity',
+    'OperatorFilterFunctionInfidelity', 'LeakageError', 'state_fidelity',
+    'angle_axis_representation', 'entanglement_fidelity',
+    'entanglement_fidelity_super_operator', 'DataContainer',
+    'plot_energy_spectrum', 'DenseOperator',
+    'convert_unitary_to_super_operator', 'closest_unitary', 'NTGColoredNoise',
+    'NTGQuasiStatic', 'OptimizationResult', 'OptimizationSummary',
+    'LeastSquaresOptimizer', 'ScalarMinimizingOptimizer',
+    'PerformanceStatistics', 'Simulator', 'SchroedingerSolver',
+    'SchroedingerSMonteCarlo', 'SchroedingerSMCControlNoise', 'LindbladSolver',
+    'LindbladSControlNoise', 'IdentityTF', 'OversamplingTF', 'LinearTF',
+    'ConcatenateTF', 'ParallelTF', 'CustomTF', 'ExponentialTF',
+    'run_optimization_parallel'
+]
+
+__version__ = '1.0.2'
+__license__ = 'GNU GPLv3+'
+__author__ = 'Julian Teske, Forschungszentrum Juelich'

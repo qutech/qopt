@@ -93,24 +93,13 @@ class DataContainer:
         2: cost function termination condition is satisfied.
         3: minimal step size termination condition is satisfied.
         4: Both 2 and 3 termination conditions are satisfied.
+        5: Wall time exceeded.
 
     optimization_stats : list
         Optimization statistics, which have been appended to the data.
 
     append_time_to_path : bool
         If True, the current time is appended to the file name.
-
-    Methods
-    -------
-    append_optim_result(optim_result: `OptimizationResult`)
-        Append the data from a single optimization run to the `DataContainer`.
-
-    to_pickle(filename: str)
-        Dump the class instance into the file.
-
-    from_pickle(filename: str)
-        Classmethod: Load a pickled `DataContainer`.
-
 
     """
     def __init__(self,

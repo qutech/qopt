@@ -92,10 +92,6 @@ class Simulator(object):
         If True, then the evaluation times of the cost functions and their
         gradients are stored.
 
-    cost_fktn_weights: list of float, optional
-        The cost functions are multiplied with these weights during the
-        optimisation.
-
     Attributes
     ----------
     solvers: list of `Solver`
@@ -126,8 +122,7 @@ class Simulator(object):
             times=None,
             num_times=None,
             record_performance_statistics: bool = True,
-            numeric_jacobian: bool = False,
-            cost_fktn_weights: Optional[Sequence[float]] = None
+            numeric_jacobian: bool = False
     ):
         self._num_ctrl = num_ctrl
         self._num_times = num_times
@@ -141,14 +136,6 @@ class Simulator(object):
                       if record_performance_statistics else None)
 
         self.numeric_jacobian = numeric_jacobian
-        self.cost_fktn_weights = cost_fktn_weights
-
-        if self.cost_fktn_weights is not None:
-            if len(self.cost_fktn_weights) == 0:
-                self.cost_fktn_weights = None
-            elif not len(self.cost_fktns) == len(self.cost_fktn_weights):
-                raise ValueError('A cost function weight must be specified for'
-                                 'each cost function or for none at all.')
 
     @property
     def pulse(self):
@@ -198,7 +185,7 @@ class Simulator(object):
 
         Returns
         -------
-        costs: numpy array
+        costs: numpy array, shape (n_fun)
             Array of costs (i.e. infidelities).
 
         costs_indices: list of str
@@ -218,8 +205,6 @@ class Simulator(object):
             for i, cost_fktn in enumerate(self.cost_fktns):
                 t_start = time.time()
                 cost = cost_fktn.costs()
-                if self.cost_fktn_weights is not None:
-                    cost *= self.cost_fktn_weights[i]
                 t_end = time.time()
                 self.stats.cost_func_eval_times[-1].append(t_end - t_start)
 
@@ -231,8 +216,6 @@ class Simulator(object):
         else:
             for i, cost_fktn in enumerate(self.cost_fktns):
                 cost = cost_fktn.costs()
-                if self.cost_fktn_weights is not None:
-                    cost *= self.cost_fktn_weights[i]
                 if hasattr(cost, "__len__"):
                     costs.append(cost)
                 else:
@@ -277,8 +260,6 @@ class Simulator(object):
             if record_evaluation_times:
                 t_start = time.time()
             jac_u = cost_fktn.grad()
-            if self.cost_fktn_weights is not None:
-                jac_u *= self.cost_fktn_weights[i]
 
             # if the cost function is scalar, an extra dimension is inserted
             if len(jac_u.shape) == 2:

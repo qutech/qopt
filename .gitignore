@@ -5,3 +5,5 @@ build/
 qsim.egg-info/
 dist/
 qopt.egg-info/
+quantum_computer.egg-info/
+qopt/examples/ff_benchmarking/__pycache__/

@@ -50,6 +50,9 @@ Classes
 
 Functions
 ---------
+:func:`state_fidelity`
+    The quantum state fidelity.
+
 :func:`angle_axis_representation`
     Calculates the representation of a 2x2 unitary matrix as rotation axis and
     angle.
@@ -95,7 +98,7 @@ from qopt.util import needs_refactoring, deprecated
 
 
 class CostFunction(ABC):
-    """
+    r"""
     Abstract base class of the fidelity computer.
 
     Attributes
@@ -105,14 +108,6 @@ class CostFunction(ABC):
 
     index: list of str
         Indices of the returned infidelities for distinction in the analysis.
-
-    Methods
-    -------
-    costs()
-        Evaluates the cost function.
-
-    grad()
-        Calculates the gradient or Jacobian of the cost function.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
@@ -328,14 +323,14 @@ class OperatorMatrixNorm(CostFunction):
             propagators_future.append(propagators_future[-1] * prop)
         propagators_future = propagators_future[::-1]
 
-        if isinstance(self.solver.tau, list):
-            tau = self.solver.tau[0]
-        elif isinstance(self.solver.tau, float):
-            tau = self.solver.tau
+        if isinstance(self.solver.transferred_time, list):
+            tau = self.solver.transferred_time[0]
+        elif isinstance(self.solver.transferred_time, float):
+            tau = self.solver.transferred_time
         else:
             raise NotImplementedError
 
-        num_t = len(self.solver.tau)
+        num_t = len(self.solver.transferred_time)
         num_ctrl = len(self.solver.h_ctrl)
         jacobian_complex_full = np.zeros(
             shape=[self.target.data.size, num_t,
@@ -381,7 +376,7 @@ def state_fidelity(
     computational_states: Optional[List[int]] = None,
     rescale_propagated_state: bool = False
 ) -> np.float64:
-    """
+    r"""
     Quantum state fidelity.
 
     The quantum state fidelity between two quantum states is calculated as
@@ -576,7 +571,7 @@ def derivative_entanglement_fidelity_with_du(
         The derivatives of the entanglement fidelity.
 
     """
-    target_unitary_dag = target.dag(copy_=True)
+    target_unitary_dag = target.dag(do_copy=True)
     if computational_states:
         trace = np.conj(
             ((forward_propagators[-1].truncate_to_subspace(
@@ -1030,7 +1025,7 @@ class OperationNoiseInfidelity(CostFunction):
             target = self.target
 
         n_traces = self.solver.noise_trace_generator.n_traces
-        num_t = len(self.solver.tau)
+        num_t = len(self.solver.transferred_time)
         num_ctrl = len(self.solver.h_ctrl)
         derivative = np.zeros((num_t, num_ctrl, n_traces, ))
         for i in range(n_traces):
@@ -1079,7 +1074,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         noise operators considered and should be equal to
         ``len(n_oper_identifiers)``.
 
-    omega: Union[Sequence[float], Dict[str, Union[int, str]]]
+    omega: Union[Sequence[float], Dict[str, Union[int, str]], None]
         The frequencies at which the integration is to be carried out. If
         *test_convergence* is ``True``, a dict with possible keys ('omega_IR',
         'omega_UV', 'spacing', 'n_min', 'n_max', 'n_points'), where all
@@ -1091,13 +1086,25 @@ class OperatorFilterFunctionInfidelity(CostFunction):
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  noise_power_spec_density: Union[Sequence[float], Callable],
-                 omega: Union[Sequence[float], Dict[str, Union[int, str]]],
+                 omega: Union[
+                     Sequence[float], Dict[str, Union[int, str]], None],
                  index: Optional[List[str]] = None):
         if index is None:
             index = ['Infidelity Filter Function', ]
         super().__init__(solver=solver, index=index)
         self.noise_power_spec_density = noise_power_spec_density
-        self.omega = omega
+        if omega is None:
+            if self.solver.pulse_sequence is None:
+                self.solver.create_pulse_sequence()
+
+            self.omega = filter_functions.util.get_sample_frequencies(
+                pulse=self.solver.pulse_sequence,
+                n_samples=200,
+                spacing='log',
+                symmetric=False
+            )
+        else:
+            self.omega = omega
 
     def costs(self) -> Union[float, np.ndarray]:
         """
@@ -1114,7 +1121,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             self.solver.create_pulse_sequence()
         infidelity = filter_functions.numeric.infidelity(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density,
+            S=self.noise_power_spec_density(self.omega),
             omega=self.omega)
         return infidelity
 
@@ -1133,11 +1140,12 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
         c_id = ['Control' + str(i) for i in range(len(self.solver.h_ctrl))]
 
-        derivative = filter_functions.numeric.infidelity_derivative(
-            self.solver.pulse_sequence,
-            self.noise_power_spec_density,
-            self.omega,
-            c_id=c_id
+        derivative = filter_functions.gradient.infidelity_derivative(
+            pulse=self.solver.pulse_sequence,
+            S=self.noise_power_spec_density(self.omega),
+            omega=self.omega,
+            c_id=c_id,
+            s_derivs=self.solver.filter_function_s_derivs_vals
         )
         # what comes from ff:
         # num_noise_contribution, num_t, num_ctrls_direction
@@ -1147,7 +1155,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
 
 class LeakageError(CostFunction):
-    """This class measures leakage as quantum operation error.
+    r"""This class measures leakage as quantum operation error.
 
     The resulting infidelity is measured by truncating the leakage states of
     the propagator U yielding the Propagator V on the computational basis. The
@@ -1195,7 +1203,7 @@ class LeakageError(CostFunction):
                                        dtype=np.float64)
 
         final = self.solver.forward_propagators[-1]
-        final_leak_dag = final.dag(copy_=True).truncate_to_subspace(
+        final_leak_dag = final.dag(do_copy=True).truncate_to_subspace(
             self.computational_states)
 
         for ctrl in range(num_ctrls):
@@ -1210,7 +1218,7 @@ class LeakageError(CostFunction):
 
 
 class IncoherentLeakageError(CostFunction):
-    """This class measures leakage as quantum operation error.
+    r"""This class measures leakage as quantum operation error.
 
     The resulting infidelity is measured by truncating the leakage states of
     the propagator U yielding the Propagator V on the computational basis. The
@@ -1302,7 +1310,7 @@ def derivative_entanglement_fidelity(
         The derivatives of the entanglement fidelity.
 
     """
-    target_unitary_dag = target_unitary.dag(copy_=True)
+    target_unitary_dag = target_unitary.dag(do_copy=True)
     trace = np.conj(((forward_propagators[-1] * target_unitary_dag).tr()))
     num_ctrls = len(control_hamiltonians)
     num_time_steps = len(delta_t)
@@ -1346,9 +1354,9 @@ def averge_gate_fidelity(unitary: matrix.OperatorMatrix,
 
     dim = unitary.shape[0]
     orthogonal_operators = default_set_orthorgonal(dim=dim)
-    temp = unitary.dag(copy_=True) * target_unitary
+    temp = unitary.dag(do_copy=True) * target_unitary
 
-    temp = [ort.dag(copy_=True) * temp.dag(copy_=True) * ort * temp
+    temp = [ort.dag(do_copy=True) * temp.dag(do_copy=True) * ort * temp
             for ort in orthogonal_operators]
 
     fidelity = temp[0]
@@ -1416,7 +1424,7 @@ def derivative_average_gate_fidelity(control_hamiltonians, propagators,
             bkwd_prop_target = propagators_future[t+1].dag() * target_unitary
             temp = 0
             for ort in orthogonal_operators:
-                lambda_ = bkwd_prop_target * ort.dag(copy_=True)
+                lambda_ = bkwd_prop_target * ort.dag(do_copy=True)
                 lambda_ *= bkwd_prop_target.dag()
                 rho = propagators_past[t+1] * ort
                 rho *= propagators_past[t+1].dag()

@@ -61,10 +61,9 @@ import numpy as np
 import copy
 from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
+from multiprocessing import Pool
 
-from filter_functions import pulse_sequence
-from filter_functions import plotting
-from filter_functions import basis
+from filter_functions import pulse_sequence, plotting, basis, numeric, gradient
 
 from qopt import noise, matrix, matrix as q_mat
 from qopt.transfer_function import TransferFunction, IdentityTF
@@ -73,44 +72,47 @@ from qopt.util import needs_refactoring
 
 
 class Solver(ABC):
-    """
+    r"""
     Abstract base class for Solvers.
 
     Parameters
     ----------
-    h_ctrl: List[ControlMatrix], len:  num_ctrl
+    h_ctrl: List[ControlMatrix], len  num_ctrl
         Control operators in the Hamiltonian as nested list of
         shape n_t, num_ctrl.
 
-    h_drift: List[ControlMatrix], len: num_t
-        Drift operators in the Hamiltonian.
+    h_drift: List[ControlMatrix], len num_t or 1
+        Drift operators in the Hamiltonian. You can either give a single element
+        or one for each transferred time step.
 
     initial_state : ControlMatrix
         Initial state of the system as state vector. Can also be set to the
         identity matrix. Then the forward propagation gives the total
         propagator of the system.
 
-    tau: array of float, shape: (num_t, )
+    tau: array of float, shape (num_t, )
         Durations of the time slices.
 
-    opt_pars: np.array, shape: (num_y, num_par), optional
+    opt_pars: np.array, shape (num_y, num_par), optional
         Raw optimization parameters.
 
-    ctrl_amps: np.array, shape: (num_t, num_ctrl), optional
+    ctrl_amps: np.array, shape (num_t, num_ctrl), optional
         The initial control amplitudes.
 
-    filter_function_h_n: List[List[np.array]] or List[List[Qobj]]
+    filter_function_h_n: List[List[np.array]] or List[List[Qobj]] or callable
         Nested list of noise Operators. Used in the filter function
-        formalism. filter_function_h_n should look something like this:
+        formalism. _filter_function_h_n should look something like this:
 
-            H = [[n_oper1, n_coeff1, n_oper_identifier1],
-                 [n_oper2, n_coeff2, n_oper_identifier2], ...]
+        >>> H = [[n_oper1, n_coeff1, n_oper_identifier1],
+        >>>      [n_oper2, n_coeff2, n_oper_identifier2], ...]
 
         The operators may be given either as NumPy arrays or QuTiP Qobjs
         and each coefficient array should have the same number of elements
         as *dt*, and should be given in units of :math:`\hbar`. If not every
-        sublist (read: operator) was given a identifier, they are automatically
+        sublist (read operator) was given a identifier, they are automatically
         filled up with 'A_i' where i is the position of the operator.
+        Alternatively the create_ff_h_n may be a function handle creating
+        such an object when called with the optimization parameters.
 
     filter_function_basis: Basis, shape (d**2, d, d), optional
         The operator basis in which to calculate. If a Generalized Gell-Mann
@@ -119,6 +121,12 @@ class Solver(ABC):
         However, when extending the pulse sequence to larger qubit registers,
         cached filter functions cannot be retained since the GGM basis does not
         factor into tensor products. In this case a Pauli basis is preferable.
+
+    filter_function_s_derivs: Callable numpy array to numpy array
+        This function calculates the derivatives of the noise susceptibility in
+        the filter function formalism. It receives the optimization parameters
+        as array of shape (num_opt, num_t) and returns the derivatives as array
+        of shape (num_noise_op, n_ctrl, num_t).
 
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
@@ -139,17 +147,16 @@ class Solver(ABC):
 
     paranoia_level: int
         The paranoia_level determines how many checks are conducted.
-        0: No tests
-        1: Some tests
-        2: Exhaustive tests, dimension checks
-
+        0 No tests
+        1 Some tests
+        2 Exhaustive tests, dimension checks
 
     Attributes
     ----------
-    h_ctrl: List[ControlMatrix], len: num_ctrl
+    h_ctrl : List[ControlMatrix], len num_ctrl
         Control operators in the Hamiltonian as list of length num_ctrl.
 
-    h_drift: List[ControlMatrix], len: num_t
+    h_drift : List[ControlMatrix], len num_t
         Drift operators in the Hamiltonian.
 
     initial_state : ControlMatrix
@@ -157,7 +164,7 @@ class Solver(ABC):
         identity matrix. Then the forward propagation gives the total
         propagator of the system.
 
-    tau: List[float]
+    transferred_time: List[float]
         Durations of the time slices.
 
     filter_function_h_n: List[List[np.array]] or List[List[Qobj]]
@@ -180,66 +187,56 @@ class Solver(ABC):
         The amplitude function connecting the transferred optimization
         parameters to the control amplitudes.
 
-    _prop: List[ControlMatrix], len: num_t
+    _prop: List[ControlMatrix], len num_t
         Propagators of the system.
 
-    _fwd_prop: List[ControlMatrix], len: num_t + 1
+    _fwd_prop: List[ControlMatrix], len num_t + 1
         Ordered product of the propagators. They describe the forward
         propagation of the systems state.
 
-    _reversed_prop: List[ControlMatrix], len: num_t + 1
+    _reversed_prop: List[ControlMatrix], len num_t + 1
         Ordered product of propagators in reversed order.
 
-    _derivative_prop: List[List[ControlMatrix]], shape: [[] * num_t] * num_ctrl
+    _derivative_prop: List[List[ControlMatrix]], shape [[] * num_t] * num_ctrl
         Frechet derivatives of the propagators by the control amplitudes.
 
     Methods
     -------
-    set_optimization_parameters(u, **kwargs):
-        Set the control amplitudes. The key word arguments may include the
-        key transferred parameters.
-
-    propagators: List[ControlMatrix], len: num_t
+    propagators: List[ControlMatrix], len num_t
         Returns the propagators of the system.
 
-    forward_propagators: List[ControlMatrix], len: num_t + 1
+    forward_propagators: List[ControlMatrix], len num_t + 1
         Returns the forward propagation of the initial state. The element
         forward_propagators[i] propagates a state by the first i time steps, if
         the initial state is the identity matrix.
 
     frechet_deriv_propagators: List[List[ControlMatrix]],
-                               shape: [[] * num_t] * num_ctrl
+        shape [[] * num_t] * num_ctrl
         Returns the frechet derivatives of the propagators by the control
         amplitudes.
 
-    reversed_propagators: List[ControlMatrix], len: num_t + 1
+    reversed_propagators: List[ControlMatrix], len num_t + 1
         Returns the reversed propagation of the initial state. The element
         reversed_propagators[i] propagates a state by the last i time steps, if
         the initial state is the identity matrix.
 
-    plot_bloch_sphere:
-        Uses a pulse sequence to plot the systems evolution on the blochs
-        sphere. For 2 dimensional systems only.
-
     _compute_propagation: abstract method
         Computes the propagators.
 
-    _compute_forward_propagation:
+    _compute_forward_propagation
         Compute the forward propagation of the initial state / system.
 
-    _compute_reversed_propagation:
+    _compute_reversed_propagation
         Compute the reversed propagation of the initial state / system.
 
     _compute_propagation_derivatives: abstract method
         Compute the derivatives of the propagators by the control amplitudes.
 
-    create_pulse_sequence(new_amps):
-        filter_functions.pulse_sequence.PulseSequence
+    create_pulse_sequence(new_amps): PulseSequence
         Creates a pulse sequence instance corresponding to the current control
         amplitudes.
 
-
-    TODO:
+    `Todo`
         * Write parser
             * setter for new hamiltonians
             * make hamiltonians private
@@ -249,7 +246,7 @@ class Solver(ABC):
             * the operator is already multiplied with the amplitude, which is
             * not coherent with the pulse sequence interface. Alternatively
             * amplitude=1?
-        * tau should be taken from the transfer function
+        * transferred_time should be taken from the transfer function
 
     """
 
@@ -261,8 +258,11 @@ class Solver(ABC):
             initial_state: q_mat.OperatorMatrix = None,
             opt_pars: Optional[np.array] = None,
             ctrl_amps: Optional[np.array] = None,
-            filter_function_h_n: Union[List[List], np.array, None] = None,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
             transfer_function: Optional[TransferFunction] = None,
@@ -270,7 +270,6 @@ class Solver(ABC):
             paranoia_level: int = 2
     ):
 
-        self.h_drift = h_drift
         self.h_ctrl = h_ctrl
         self._ctrl_amps = ctrl_amps
         self._opt_pars = opt_pars
@@ -280,7 +279,6 @@ class Solver(ABC):
             self.initial_state = type(self.h_ctrl[0])(np.eye(dim))
         else:
             self.initial_state = initial_state
-        self.tau = tau
 
         if exponential_method is None:
             self.exponential_method = 'Frechet'
@@ -295,18 +293,27 @@ class Solver(ABC):
         self.pulse_sequence = None
 
         if filter_function_h_n is None:
-            self.filter_function_h_n = []
+            self._filter_function_h_n = []
         else:
-            self.filter_function_h_n = filter_function_h_n
+            self._filter_function_h_n = filter_function_h_n
         self.filter_function_basis = filter_function_basis
+        self.filter_function_s_derivs = filter_function_s_derivs
 
         self._is_skew_hermitian = is_skew_hermitian
 
         if transfer_function is None:
             self.transfer_function = IdentityTF(num_ctrls=len(h_ctrl))
-            self.transfer_function.set_times(tau)
         else:
             self.transfer_function = transfer_function
+        self.transfer_function.set_times(tau)
+        self.transferred_time = self.transfer_function.x_times
+
+        if type(h_drift) in [matrix.DenseOperator, matrix.SparseOperator]:
+            self.h_drift = [h_drift, ] * self.transfer_function.num_x
+        elif len(h_drift) == 1:
+            self.h_drift = h_drift * self.transfer_function.num_x
+        else:
+            self.h_drift = h_drift
 
         if amplitude_function is None:
             self.amplitude_function = IdentityAmpFunc()
@@ -324,11 +331,11 @@ class Solver(ABC):
         All computation flags are set to false.
 
         The new control amplitudes u are calculated:
-        u: np.array, shape: (num_t, num_ctrl)
+        u: np.array, shape (num_t, num_ctrl)
 
         Parameters
         ----------
-        y: np.array, shape: (num_x, num_ctrl)
+        y: np.array, shape (num_x, num_ctrl)
             Raw optimization parameters.
 
         """
@@ -354,7 +361,7 @@ class Solver(ABC):
                              'computer must have two dimensions! '
                              '(time, control operator)')
 
-        if u.shape[0] != len(self.tau):
+        if u.shape[0] != len(self.transferred_time):
             raise ValueError('The new control amplitudes do not have the '
                              'correct number of entries on the time axis!')
 
@@ -387,17 +394,17 @@ class Solver(ABC):
         elif paranoia_level >= 1:
             # check whether the hamiltonian is correct for the number of time
             # steps
-            if isinstance(self.tau, List):
-                self.tau = np.asarray(self.tau)
-            if len(self.tau.shape) > 1:
+            if isinstance(self.transferred_time, List):
+                self.transferred_time = np.asarray(self.transferred_time)
+            if len(self.transferred_time.shape) > 1:
                 raise ValueError("Tau must be a one dimensional numpy array or"
                                  "a list.")
-            n_time_steps = self.tau.shape[0]
+            n_time_steps = self.transferred_time.shape[0]
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
                 raise ValueError("The drift hamiltonian must have exactly one "
-                                 "entry for each time step or no entry at "
-                                 "all.")
+                                 "entry for each transferred time step or no "
+                                 "entry at all.")
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
@@ -420,7 +427,7 @@ class Solver(ABC):
 
         Returns
         -------
-        propagators: List[ControlMatrix], len: num_t
+        propagators: List[ControlMatrix], len num_t
             Propagators of the system.
 
         """
@@ -439,7 +446,7 @@ class Solver(ABC):
 
         Returns
         -------
-        forward_propagation: List[ControlMatrix], len: num_t + 1
+        forward_propagation: List[ControlMatrix], len num_t + 1
             Propagation of the initial state of the system. fwd[0] gives the
             initial state itself.
 
@@ -456,7 +463,7 @@ class Solver(ABC):
         Returns
         -------
         derivative_prop: List[List[ControlMatrix]],
-                         shape: [[] * num_t] * num_ctrl
+                         shape [[] * num_t] * num_ctrl
             Frechet derivatives of the propagators by the control amplitudes
 
         """
@@ -475,7 +482,7 @@ class Solver(ABC):
 
         Returns
         -------
-        reversed_propagation: List[ControlMatrix], len: num_t + 1
+        reversed_propagation: List[ControlMatrix], len num_t + 1
             Propagation of the initial state of the system. reversed[0] gives
             the initial state itself.
 
@@ -483,6 +490,44 @@ class Solver(ABC):
         if self._reversed_prop is None:
             self._compute_reversed_propagation()
         return self._reversed_prop
+
+    @property
+    def filter_function_s_derivs_vals(self) -> Optional[np.ndarray]:
+        """
+        Calculates the derivatives of the noise susceptibilities from the filter
+        function formalism.
+
+        Returns
+        -------
+        s_derivs: numpy array of shape (num_noise_op, n_ctrl, num_t)
+            Derivatives of the noise susceptibilities by the control amplitudes.
+
+        """
+        if self.filter_function_s_derivs is None:
+            return None
+        else:
+            return self.filter_function_s_derivs(self._opt_pars)
+
+    @property
+    def create_ff_h_n(self) -> list:
+        """Creates the noise hamiltonian of the filter function formalism.
+
+        Returns
+        -------
+        create_ff_h_n: nested list
+            Noise Hamiltonian of the filter function formalism.
+
+        """
+        if type(self._filter_function_h_n) == list:
+            h_n = self._filter_function_h_n
+        else:
+            h_n = self._filter_function_h_n(self._opt_pars)
+
+        if not h_n:
+            h_n = [[np.zeros(self.h_ctrl[0].shape),
+                    np.zeros((len(self.transferred_time),))]]
+
+        return h_n
 
     @abstractmethod
     def _compute_propagation(self) -> None:
@@ -545,7 +590,7 @@ class Solver(ABC):
 
         Parameters
         ----------
-        new_amps: np.array, shape: (num_t, num_ctrl)
+        new_amps: np.array, shape (num_t, num_ctrl), optional
             New control amplitudes can be set before the pulse sequence is
             initialized.
 
@@ -562,22 +607,20 @@ class Solver(ABC):
         """
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
-        h_n = self.filter_function_h_n
-        if not h_n:
-            h_n = [[np.zeros(self.h_ctrl[0].shape),
-                    np.zeros((len(self.tau), ))]]
+
+        h_n = self.create_ff_h_n
         h_c = []
         for drift_operator in [self.h_drift[0], ]:
             if type(drift_operator) == matrix.DenseOperator:
                 drift_operator = drift_operator.data
-            h_c += [[drift_operator, len(self.tau) * [1], 'Drift'], ]
+            h_c += [[drift_operator, len(self.transferred_time) * [1], 'Drift'], ]
         for i, control_operator in enumerate(self.h_ctrl):
             h_c += [
                 [control_operator.data,
                  self._ctrl_amps[:, i],
                  'Control' + str(i)], ]
 
-        dt = self.tau
+        dt = self.transferred_time
 
         if ff_basis is not None:
             self.pulse_sequence = pulse_sequence.PulseSequence(
@@ -591,7 +634,8 @@ class Solver(ABC):
 
         return self.pulse_sequence
 
-    def plot_bloch_sphere(self, return_Bloch: bool=False) -> None:
+    def plot_bloch_sphere(
+            self, new_amps=None, return_Bloch: bool=False) -> None:
         """
         Uses the pulse sequence to plot the systems evolution on the bloch
         sphere.
@@ -600,6 +644,10 @@ class Solver(ABC):
 
         Parameters
         ----------
+        new_amps: np.array, shape (num_t, num_ctrl), optional
+            New control amplitudes can be set before the pulse sequence is
+            initialized.
+
         return_Bloch: bool
             If True, then qutips Bloch object is returned.
 
@@ -610,7 +658,8 @@ class Solver(ABC):
 
         """
         if self.pulse_sequence is None:
-            self.create_pulse_sequence()
+            self.create_pulse_sequence(new_amps=new_amps)
+
         return plotting.plot_bloch_vector_evolution(self.pulse_sequence,
                                                     n_samples=500,
                                                     return_Bloch=return_Bloch)
@@ -640,7 +689,7 @@ class SchroedingerSolver(Solver):
 
     Attributes
     ----------
-    _dyn_gen: List[ControlMatrix], len: num_t
+    _dyn_gen: List[ControlMatrix], len num_t
         The generators of the systems dynamics
 
     calculate_propagator_derivatives: bool
@@ -657,18 +706,18 @@ class SchroedingerSolver(Solver):
     Methods
     -------
     _compute_derivative_directions: List[List[q_mat.ControlMatrix]],
-                                    shape: [[] * num_ctrl] * num_t
+    shape [[] * num_ctrl] * num_t
         Computes the directions of change with respect to the control
         parameters.
 
-    _compute_dyn_gen: List[ControlMatrix], len: num_t
+    _compute_dyn_gen: List[ControlMatrix], len num_t
         Computes the dynamics generators.
 
-    Todo:
+    `Todo`
         * raise a warning if the approximation method although the gradient
-        is always calculated.
+            is always calculated.
         * raise a warning if the grape approximation is chosen but its
-        requirement of small time steps is not met.
+            requirement of small time steps is not met.
 
     """
 
@@ -679,8 +728,11 @@ class SchroedingerSolver(Solver):
                  initial_state: q_mat.OperatorMatrix = None,
                  ctrl_amps: Optional[np.array] = None,
                  calculate_propagator_derivatives: bool = True,
-                 filter_function_h_n: Optional[List] = None,
+                 filter_function_h_n: Union[
+                     Callable, List[List], None] = None,
                  filter_function_basis: Optional[basis.Basis] = None,
+                 filter_function_s_derivs: Optional[
+                    Callable[[np.ndarray], np.ndarray]] = None,
                  exponential_method: Optional[str] = None,
                  frechet_deriv_approx_method: Optional[str] = None,
                  is_skew_hermitian: bool = True,
@@ -691,6 +743,7 @@ class SchroedingerSolver(Solver):
             tau=tau, ctrl_amps=ctrl_amps,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             is_skew_hermitian=is_skew_hermitian,
             transfer_function=transfer_function,
@@ -716,7 +769,7 @@ class SchroedingerSolver(Solver):
 
         Returns
         -------
-        dyn_gen: List[ControlMatrix], len: num_t
+        dyn_gen: List[ControlMatrix], len num_t
             This is basically the total Hamiltonian.
 
         """
@@ -738,7 +791,7 @@ class SchroedingerSolver(Solver):
         """
         # The list is multiplied (copied by reference) because the elements
         # will not be manipulated in place. (only as copy)
-        return [[operator * -1j for operator in self.h_ctrl], ] * len(self.tau)
+        return [[operator * -1j for operator in self.h_ctrl], ] * len(self.transferred_time)
 
     def _compute_propagation(
             self, calculate_propagator_derivatives: Optional[bool] = None) \
@@ -754,23 +807,24 @@ class SchroedingerSolver(Solver):
                 self.calculate_propagator_derivatives
 
         # initialize the attributes
-        self._prop = [None for _ in range(len(self.tau))]
+        self._prop = [None for _ in range(len(self.transferred_time))]
 
         if calculate_propagator_derivatives:
             derivative_directions = self._compute_derivative_directions()
-            self._derivative_prop = [[None for _ in range(len(self.tau))]
-                                     for _2 in range(len(self.h_ctrl))]
-            for t in range(len(self.tau)):
+            self._derivative_prop = [
+                [None for _ in range(len(self.transferred_time))]
+                for _2 in range(len(self.h_ctrl))]
+            for t in range(len(self.transferred_time)):
                 for ctrl in range(len(self.h_ctrl)):
                     self._prop[t], self._derivative_prop[ctrl][t] \
                         = self._dyn_gen[t].dexp(
-                        derivative_directions[t][ctrl], self.tau[t],
+                        derivative_directions[t][ctrl], self.transferred_time[t],
                         compute_expm=True, method=self.exponential_method,
                         is_skew_hermitian=self._is_skew_hermitian)
         else:
-            for t in range(len(self.tau)):
+            for t in range(len(self.transferred_time)):
                 self._prop[t] = self._dyn_gen[t].exp(
-                    tau=self.tau[t], method=self.exponential_method,
+                    tau=self.transferred_time[t], method=self.exponential_method,
                     is_skew_hermitian=self._is_skew_hermitian)
 
     def _compute_propagation_derivatives(self) -> None:
@@ -788,12 +842,12 @@ class SchroedingerSolver(Solver):
                 self._compute_propagation(
                     calculate_propagator_derivatives=False)
             self._derivative_prop = [[None for _ in range(len(self.h_ctrl))]
-                                     for _2 in range(len(self.tau))]
+                                     for _2 in range(len(self.transferred_time))]
             derivative_directions = self._compute_derivative_directions()
-            for t in range(len(self.tau)):
+            for t in range(len(self.transferred_time)):
                 for ctrl in range(len(self.h_ctrl)):
                     self._derivative_prop[t][ctrl] = \
-                        self.tau[t] * derivative_directions[t][ctrl] \
+                        self.transferred_time[t] * derivative_directions[t][ctrl] \
                         * self._prop[t]
         else:
             raise ValueError('Unknown gradient derivative approximation '
@@ -801,8 +855,40 @@ class SchroedingerSolver(Solver):
                              + str(self.frechet_deriv_approx_method))
 
 
-class SchroedingerSMonteCarlo(SchroedingerSolver):
+def _compute_matrix_exponentials(input_dict):
+    """Computes the propagator of the Schroedinger equation by evaluation of
+    a matrix exponential.
+
+    Parameters
+    ----------
+    input_dict: dict
+        Holds the parameters in a single dict, because the function
+        multiprocessing.Pool.map requires a single input argument. The dict
+        has the fields time, matrices, method and is_skew_hermitian. See also
+        _compute_propagator.
+
+    Returns
+    -------
+    exponentials: list of ControlMatrix
+        A list of the propagators.
+
     """
+    time = input_dict['time']
+    matrices = input_dict['matrices']
+    method = input_dict['method']
+    is_skew_hermitian = input_dict['is_skew_hermitian']
+
+    exponentials = [None, ] * len(time)
+    for i, m, t in zip(range(len(matrices)), matrices, time):
+        exponentials[i] = m.exp(
+            tau=t,
+            method=method,
+            is_skew_hermitian=is_skew_hermitian)
+    return exponentials
+
+
+class SchroedingerSMonteCarlo(SchroedingerSolver):
+    r"""
     Solves Schroedinger's equation for explicit noise realisations as Monte
     Carlo experiment.
 
@@ -814,11 +900,17 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
     Parameters
     ----------
-    h_noise: List[ControlMatrix], len: num_noise_operators
+    h_noise: List[ControlMatrix], len num_noise_operators
         List of noise operators occurring in the Hamiltonian.
 
     noise_trace_generator: noise.NoiseTraceGenerator
         Noise trace generator object.
+
+    processes: int, optional
+        If an integer is given, then the propagation is calculated in
+        this number of parallel processes. If 1 then no parallel
+        computing is applied. If None then cpu_count() is called to use
+        all cores available. Defaults to 1.
 
     noise_amplitude_function: Callable[[noise_samples: np.array,
         optimization_parameters: np.array,
@@ -836,53 +928,53 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
     Attributes
     ----------
-    h_noise: List[ControlMatrix], len: num_noise_operators
+    h_noise: List[ControlMatrix], len num_noise_operators
         List of noise operators occurring in the Hamiltonian.
 
     noise_trace_generator: noise.NoiseTraceGenerator
         Noise trace generator object.
 
     _dyn_gen_noise: List[List[ControlMatrix]],
-                    shape: [[] * num_t] * num_noise_traces
+        shape [[] * num_t] * num_noise_traces
         Dynamics generators for the individual noise traces.
 
     _prop_noise: List[List[ControlMatrix]],
-                 shape: [[] * num_t] * num_noise_traces
+        shape [[] * num_t] * num_noise_traces
         Propagators for the individual noise traces.
 
     _fwd_prop_noise: List[List[ControlMatrix]],
-                     shape: [[] * (num_t + 1)] * num_noise_traces
+        shape [[] * (num_t + 1)] * num_noise_traces
         Cumulation of the propagators for the individual noise traces. They
         describe the forward propagation of the systems state.
 
     _reversed_prop_noise: List[List[ControlMatrix]],
-                          shape: [[] * (num_t + 1)] * num_noise_traces
+        shape [[] * (num_t + 1)] * num_noise_traces
         Cumulation of propagators in reversed order for the individual noise
         traces.
 
     _derivative_prop_noise: List[List[List[ControlMatrix]]],
-                            shape: [[[] * num_t] * num_ctrl] * num_noise_traces
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
         Frechet derivatives of the propagators by the control amplitudes for
         the individual noise traces.
 
     Methods
     -------
     propagators_noise: List[List[ControlMatrix]],
-                 shape: [[] * num_t] * num_noise_traces
+        shape [[] * num_t] * num_noise_traces
         Propagators for the individual noise traces.
 
     forward_propagators_noise: List[List[ControlMatrix]],
-                     shape: [[] * (num_t + 1)] * num_noise_traces
+        shape [[] * (num_t + 1)] * num_noise_traces
         Cumulation of the propagators for the individual noise traces. They
         describe the forward propagation of the systems state.
 
     reversed_propagators_noise: List[List[ControlMatrix]],
-                          shape: [[] * (num_t + 1)] * num_noise_traces
+        shape [[] * (num_t + 1)] * num_noise_traces
         Cumulation of propagators in reversed order for the individual noise
         traces.
 
     frechet_deriv_propagators_noise: List[List[List[ControlMatrix]]],
-                            shape: [[[] * num_t] * num_ctrl] * num_noise_traces
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
         Frechet derivatives of the propagators by the control amplitudes for
         the individual noise traces.
 
@@ -890,15 +982,19 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     def __init__(
             self, h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
-            tau: List[float],
+            tau: np.array,
             h_noise: List[q_mat.OperatorMatrix],
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
+            initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
-            filter_function_h_n: Union[List[List], np.array, None] = None,
+            processes: Optional[int] = 1,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
@@ -914,6 +1010,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             tau=tau, ctrl_amps=ctrl_amps,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             calculate_propagator_derivatives=calculate_propagator_derivatives,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
@@ -924,6 +1021,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         self.h_noise = h_noise
         self.noise_trace_generator = noise_trace_generator
         self.noise_amplitude_function = noise_amplitude_function
+        self.processes = processes
 
         self._dyn_gen_noise = None
         self._prop_noise = None
@@ -950,7 +1048,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Returns
         -------
         propagators_noise: List[List[ControlMatrix]],
-                           shape: [[] * num_t] * num_noise_traces
+        shape [[] * num_t] * num_noise_traces
             Propagators of the system for each noise trace.
 
         """
@@ -971,7 +1069,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Returns
         -------
         forward_propagation:List[List[ControlMatrix]],
-                     shape: [[] * (num_t + 1)] * num_noise_traces
+        shape [[] * (num_t + 1)] * num_noise_traces
             Propagation of the initial state of the system. fwd[0] gives the
             initial state itself.
 
@@ -990,7 +1088,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Returns
         -------
         derivative_prop_noise: List[List[List[ControlMatrix]]],
-                            shape: [[[] * num_t] * num_ctrl] * num_noise_traces
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
             Frechet derivatives of the propagators by the control amplitudes.
 
         """
@@ -1011,7 +1109,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Returns
         -------
         reversed_propagation_noise: List[List[ControlMatrix]],
-                shape: [[] * (num_t + 1)] * num_noise_traces
+        shape [[] * (num_t + 1)] * num_noise_traces
             Propagation of the initial state of the system. reversed[k][0]
             gives the initial state itself.
 
@@ -1028,7 +1126,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Returns
         -------
         dyn_gen_noise: List[List[q_mat.ControlMatrix]],
-                       shape: [[] * num_t] * num_noise_traces
+        shape [[] * num_t] * num_noise_traces
             Dynamics generators for each noise trace.
 
         """
@@ -1061,28 +1159,25 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         return self._dyn_gen_noise
 
     def _compute_propagation(
-            self, calculate_propagator_derivatives: Optional[bool] = None) \
-            -> None:
+            self, calculate_propagator_derivatives: Optional[bool] = None
+    ) -> None:
         """
         Computes the propagators for the perturbed Schroedinger equation and
         the derivatives on demand.
 
         Parameters
         ----------
-        calculate_propagator_derivatives: bool
+        calculate_propagator_derivatives: bool, optional
             Calculate the derivatives of the propagators with respect to the
             control amplitudes if true.
 
         """
-        # call the parent method for the noiseless propagators
-        super()._compute_propagation(
-            calculate_propagator_derivatives=calculate_propagator_derivatives)
 
         if self._dyn_gen_noise is None:
             self._dyn_gen_noise = self._compute_dyn_gen_noise()
 
         n_noise_traces = self.noise_trace_generator.n_traces
-        num_t = len(self.tau)
+        num_t = len(self.transferred_time)
         num_ctrl = len(self.h_ctrl)
 
         self._prop_noise = [[None for _ in range(num_t)]
@@ -1092,6 +1187,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             calculate_propagator_derivatives = \
                 self.calculate_propagator_derivatives
 
+        # parallelization of following code probably unnecessary
         if calculate_propagator_derivatives:
             self._derivative_prop_noise = \
                 [[[None for _ in range(num_t)]
@@ -1099,23 +1195,53 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                  for _3 in range(n_noise_traces)]
             derivative_directions = self._compute_derivative_directions()
 
-            for k in range(n_noise_traces):
-                for t in range(num_t):
-                    for ctrl in range(len(self.h_ctrl)):
-                        self._prop_noise[k][t], \
-                            self._derivative_prop_noise[k][ctrl][t] \
-                            = self._dyn_gen_noise[k][t].dexp(
-                            derivative_directions[t][ctrl],
-                            self.tau[t],
-                            compute_expm=True,
+        # call the parent method for the noiseless propagators
+        super()._compute_propagation(
+            calculate_propagator_derivatives=calculate_propagator_derivatives)
+
+        if self.processes == 1:
+            if calculate_propagator_derivatives:
+                for k in range(n_noise_traces):
+                    for t in range(num_t):
+                        for ctrl in range(len(self.h_ctrl)):
+                            self._prop_noise[k][t], \
+                                self._derivative_prop_noise[k][ctrl][t] \
+                                = self._dyn_gen_noise[k][t].dexp(
+                                derivative_directions[t][ctrl],
+                                self.transferred_time[t],
+                                compute_expm=True,
+                                method=self.exponential_method,
+                                is_skew_hermitian=self._is_skew_hermitian)
+            else:
+                for k in range(n_noise_traces):
+                    for t in range(num_t):
+                        self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
+                            tau=self.transferred_time[t],
                             method=self.exponential_method,
                             is_skew_hermitian=self._is_skew_hermitian)
+
+        elif (type(self.processes) == int and self.processes > 0) \
+                or self.processes is None:
+
+            if calculate_propagator_derivatives:
+                raise NotImplementedError
+            else:
+                input_dicts = []
+                for k in range(n_noise_traces):
+                    input_dicts.append(dict())
+                    input_dicts[-1]['time'] = self.transferred_time
+                    input_dicts[-1]['matrices'] = self._dyn_gen_noise[k]
+                    input_dicts[-1]['method'] = self.exponential_method
+                    input_dicts[-1][
+                        'is_skew_hermitian'] = self._is_skew_hermitian
+
+                with Pool(processes=self.processes) as pool:
+                    self._prop_noise = pool.map(
+                        _compute_matrix_exponentials, input_dicts)
+
         else:
-            for k in range(n_noise_traces):
-                for t in range(num_t):
-                    self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
-                        tau=self.tau[t], method=self.exponential_method,
-                        is_skew_hermitian=self._is_skew_hermitian)
+            raise ValueError('Invalid number of processes for parallel '
+                             'computation!')
 
     def _compute_forward_propagation(self) -> None:
         """Computes the forward propagators. """
@@ -1166,7 +1292,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                     calculate_propagator_derivatives=False)
 
             n_noise_traces = self.noise_trace_generator.n_traces
-            num_t = len(self.tau)
+            num_t = len(self.transferred_time)
             num_ctrl = len(self.h_ctrl)
 
             self._derivative_prop_noise = [
@@ -1177,10 +1303,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             derivative_directions = self._compute_derivative_directions()
 
             for k in range(n_noise_traces):
-                for t in range(len(self.tau)):
+                for t in range(len(self.transferred_time)):
                     for ctrl in range(num_ctrl):
                         self._derivative_prop_noise[k][ctrl][t] = \
-                            self.tau[t] * derivative_directions[t][ctrl] \
+                            self.transferred_time[t] * derivative_directions[t][ctrl] \
                             * self._prop_noise[k][t]
         else:
             raise ValueError('Unknown gradient derivative approximation '
@@ -1206,14 +1332,18 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             self,
             h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
-            tau: List[float],
+            tau: np.array,
             noise_trace_generator:
             Optional[noise.NoiseTraceGenerator],
+            initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
-            filter_function_h_n: Union[List[List], np.array, None] = None,
+            processes: Optional[int] = 1,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
@@ -1258,8 +1388,10 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             noise_trace_generator=noise_trace_generator,
             ctrl_amps=ctrl_amps,
             calculate_propagator_derivatives=calculate_propagator_derivatives,
+            processes=processes,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
             is_skew_hermitian=is_skew_hermitian,
@@ -1270,33 +1402,34 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
 
 
 class LindbladSolver(SchroedingerSolver):
-    """
+    r"""
     Solves a master equation for an open quantum system in the Markov
     approximation using the Lindblad super operator formalism.
 
     The master equation to be solved is
 
-    .. :math:
+    .. math::
 
-    d \rho / dt = i [\rho, H] + \sum_k (L_k \rho L_k^\dag
-                  - .5 L_k^\dag L_k \rho - .5 \rho L_k^\dag L_k)
+        d \rho / dt = i [\rho, H] + \sum_k (L_k \rho L_k^\dagger
+        - .5 L_k^\dagger L_k \rho - .5 \rho L_k^\dagger L_k)
+
 
     with the Lindblad operators L_k. The solution is calculated as
 
-    .. :math:
+    .. math::
 
-    \rho(t) = exp[(-i \mathcal{H} + \mathcal{G})t] \rho(0)
+        \rho(t) = exp[(-i \mathcal{H} + \mathcal{G})t] \rho(0)
 
     with the dissipative super operator
 
-    .. :math:
+    .. math::
 
-    \mathcal{G} = \sum_k D(L_k)
+        \mathcal{G} = \sum_k D(L_k)
 
-    .. :math:
+    .. math::
 
-    D(L) = L^\ast \otimes L - .5 I \otimes (L^\dag L)
-           - .5 (L^T L^\ast) \otimes I
+        D(L) = L^\ast \otimes L - .5 I \otimes (L^\dagger L)
+               - .5 (L^T L^\ast) \otimes I
 
     The dissipation super operator can be given in three different ways.
 
@@ -1317,58 +1450,87 @@ class LindbladSolver(SchroedingerSolver):
 
     Parameters
     ----------
-    initial_diss_super_op: List[ControlMatrix], len: num_l
+    initial_diss_super_op: List[ControlMatrix], len num_l
         Initial dissipation super operator; num_l is the number of
         Lindbladians. Set if you want to use (1.) (See documentation above!).
         The control matrices are expected to be of shape (dim, dim) where dim
         is the dimension of the system.
 
-    lindblad_operators: List[ControlMatrix], len: num_l
+    lindblad_operators: List[ControlMatrix], len num_l
         Lindblad operators; num_l is the number of Lindbladians. Set if you
         want to use (2.) (See documentation above!). The Lindblad operators are
         assumend to be of shape (dim, dim) where dim is the dimension of the
         system.
 
-    prefactor_function: Callable[[np.array], np.array]
+    prefactor_function: Callable[[np.array, np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns prefactors as numpy array
-        of shape (num_t, num_l). The prefactors a_k are used as weights in the
-        sum of the total dissipation operator.
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns prefactors as numpy
+        array of shape (num_t, num_l). The prefactors a_k are used as weights in
+        the sum of the total dissipation operator.
+
+        .. math::
+
             \mathcal{G} = \sum_k a_k * D(L_k)
+
         If the Lindblad operator is for example given by a complex number b_k
         times a constant (in time) matrix C_k.
+
+        .. math::
+
             L_k = b_k * C_k
+
         Then the prefactor is the squared absolute value of this number:
+
+        .. math::
+
             a_k = |b_k|^2
+
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    prefactor_derivative_function: Callable[[np.array], np.array]
+    prefactor_derivative_function: Callable[[np.array, np.array], np.array]
         Receives the control amplitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns the derivatives of the
-        prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the derivatives of
+        the prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
         derivatives d_k are used as weights in the sum of the derivative of the
         total dissipation operator.
+
+        .. math::
+
             d \mathcal{G} / d u_k = \sum_k d_k * D(L_k)
+
         If the Lindblad operator is for example given by a complex number b_k
         times a constant (in time) matrix C_k. And this number depends on the
         control amplitudes u_k
+
+        .. math::
+
             L_k = b_k (u_k) * C_k
+
         Then the derivative of the prefactor is the derivative of the squared
         absolute value of this number:
+
+        .. math::
+
             d_k = d |b_k|^2 / d u_k
+
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
-    super_operator_function: Callable[[np.array], List[ControlMatrix]]
+    super_operator_function: Callable[[np.array, np.array], List[ControlMatrix]]
         Receives the control amlitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns the total dissipation
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the total dissipation
         operators as list of length num_t. Set if you want to use method (3.).
         (See class documentation.)
 
-    super_operator_derivative_function: Callable[[np.array],
-                                                 List[List[ControlMatrix]]]
+    super_operator_derivative_function: Callable[[np.array, np.array],
+        List[List[ControlMatrix]]]
         Receives the control amlitudes u (as numpy array of shape
-        (num_t, num_ctrl)) and returns the derivatives of the total dissipation
-        operators as nested list of shape [[] * num_ctrl] * num_t. Set if you
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the derivatives of
+        the total dissipation operators as nested list of
+        shape [[] * num_ctrl] * num_t. Set if you
         want to use method (3.). (See class documentation.)
 
     is_skew_hermitian: bool
@@ -1377,19 +1539,19 @@ class LindbladSolver(SchroedingerSolver):
 
     Attributes
     ----------
-    _diss_sup_op: List[ControlMatrix], len: num_t
+    _diss_sup_op: List[ControlMatrix], len num_t
         Total dissipaton super operator.
 
     _diss_sup_op_deriv: List[List[ControlMatrix]],
-                        shape: [[] * num_ctrl] * num_t
+        shape [[] * num_ctrl] * num_t
         Derivative of the total dissipation operator with respect to the
         control amplitudes.
 
-    _initial_diss_super_op: List[ControlMatrix], len: num_l
+    _initial_diss_super_op: List[ControlMatrix], len num_l
         Initial dissipation super operator; num_l is the number of
         Lindbladians.
 
-    _lindblad_operatorsList[ControlMatrix], len: num_l
+    _lindblad_operatorsList[ControlMatrix], len num_l
         Lindblad operators; num_l is the number of Lindbladians.
 
     _prefactor_function: Callable[[np.array], np.array]
@@ -1397,12 +1559,24 @@ class LindbladSolver(SchroedingerSolver):
         (num_t, num_ctrl)) and returns prefactors as numpy array
         of shape (num_t, num_l). The prefactors a_k are used as weights in the
         sum of the total dissipation operator.
+
+        .. math::
+
             \mathcal{G} = \sum_k a_k * D(L_k)
+
         If the Lindblad operator is for example given by a complex number b_k
         times a constant (in time) matrix C_k.
+
+        .. math::
+
             L_k = b_k * C_k
+
         Then the prefactor is the squared absolute value of this number:
+
+        .. math::
+
             a_k = |b_k|^2
+
         Set if you want to use method (1.) or (2.). (See class documentation.)
 
     _prefactor_deriv_function: Callable[[np.array], np.array]
@@ -1411,22 +1585,33 @@ class LindbladSolver(SchroedingerSolver):
         prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
         derivatives d_k are used as weights in the sum of the derivative of the
         total dissipation operator.
+
+        .. math::
+
             d \mathcal{G} / d u_k = \sum_k d_k * D(L_k)
+
         If the Lindblad operator is for example given by a complex number b_k
         times a constant (in time) matrix C_k. And this number depends on the
         control amplitudes u_k
+
+        .. math::
+
             L_k = b_k (u_k) * C_k
+
         Then the derivative of the prefactor is the derivative of the squared
         absolute value of this number:
+
+        .. math::
+
             d_k = d |b_k|^2 / d u_k
 
     _sup_op_func: Callable[[np.array], List[ControlMatrix]]
-        Receives the control amlitudes u (as numpy array of shape
+        Receives the control amplitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the total dissipation
         operators as list of length num_t.
 
     _sup_op_deriv_func: Callable[[np.array], List[List[ControlMatrix]]]
-        Receives the control amlitudes u (as numpy array of shape
+        Receives the control amplitudes u (as numpy array of shape
         (num_t, num_ctrl)) and returns the derivatives of the total dissipation
         operators as nested list of shape [[] * num_ctrl] * num_t.
 
@@ -1441,42 +1626,52 @@ class LindbladSolver(SchroedingerSolver):
         Calculates the derivatives of the total dissipation super operators
         with respect to the control amplitudes.
 
-    Todo:
+    `Todo`
         * Write parser
+
     """
 
     def __init__(
             self,
             h_drift: List[q_mat.OperatorMatrix],
             h_ctrl: List[q_mat.OperatorMatrix],
-            initial_state: q_mat.OperatorMatrix,
-            tau: List[float],
+            tau: np.array,
+            initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_unitary_derivatives: bool = False,
-            filter_function_h_n:
-            Union[List[List], np.array, None] = None,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
             initial_diss_super_op: List[q_mat.OperatorMatrix] = None,
             lindblad_operators: List[q_mat.OperatorMatrix] = None,
-            prefactor_function: Callable[[np.array], np.array] = None,
+            prefactor_function: Callable[[np.array, np.array], np.array] = None,
             prefactor_derivative_function:
-            Callable[[np.array], np.array] = None,
+            Callable[[np.array, np.array], np.array] = None,
             super_operator_function:
-            Callable[[np.array], List[q_mat.OperatorMatrix]] = None,
+            Callable[[np.array, np.array], List[q_mat.OperatorMatrix]] = None,
             super_operator_derivative_function:
-            Callable[[np.array], List[List[q_mat.OperatorMatrix]]] = None,
+            Callable[[np.array, np.array],
+                     List[List[q_mat.OperatorMatrix]]] = None,
             is_skew_hermitian: bool = False,
             transfer_function: Optional[TransferFunction] = None,
             amplitude_function: Optional[AmplitudeFunction] = None) \
             -> None:
+
+        if initial_state is None:
+            dim = h_ctrl[0].shape[0]
+            initial_state = type(h_ctrl[0])(np.eye(dim ** 2))
+
         super().__init__(
             h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
             tau=tau, ctrl_amps=ctrl_amps,
             calculate_propagator_derivatives=calculate_unitary_derivatives,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
             exponential_method=exponential_method,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
             is_skew_hermitian=is_skew_hermitian,
@@ -1505,13 +1700,13 @@ class LindbladSolver(SchroedingerSolver):
                 self._diss_sup_op_deriv = None
 
     def _calc_diss_sup_op(self) -> List[q_mat.OperatorMatrix]:
-        """
+        r"""
         Calculates the dissipative super operator as described in the class
         doc string.
 
         Returns
         -------
-        diss_sup_op: List[ControlMatrix], len: num_l
+        diss_sup_op: List[ControlMatrix], len num_l
             Dissipation super operator; Where num_l is the number of Lindblad
             terms.
 
@@ -1529,18 +1724,19 @@ class LindbladSolver(SchroedingerSolver):
 
                 for lindblad in self._lindblad_operators:
                     const_diss_sup_op.append(
-                        (lindblad.conj(copy_=True)).kron(lindblad))
+                        (lindblad.conj(do_copy=True)).kron(lindblad))
                     const_diss_sup_op[-1] -= .5 * identity.kron(
-                        lindblad.dag(copy_=True) * lindblad)
+                        lindblad.dag(do_copy=True) * lindblad)
                     const_diss_sup_op[-1] -= .5 * (
-                        lindblad.transpose(copy_=True)
-                        * lindblad.conj(copy_=True)).kron(identity)
+                        lindblad.transpose(do_copy=True)
+                        * lindblad.conj(do_copy=True)).kron(identity)
 
             # Add the time dependence
             if self._prefactor_function is not None:
                 self._diss_sup_op = []
                 prefactors = self._prefactor_function(
-                    copy.deepcopy(self._ctrl_amps))
+                    copy.deepcopy(self._ctrl_amps),
+                    copy.deepcopy(self.transferred_parameters))
                 for factor_at_time_t in prefactors:
                     self._diss_sup_op.append(
                         const_diss_sup_op[0] * factor_at_time_t[0])
@@ -1552,16 +1748,16 @@ class LindbladSolver(SchroedingerSolver):
                 self._diss_sup_op = [const_diss_sup_op[0], ]
                 for sup_op in const_diss_sup_op[1:]:
                     self._diss_sup_op[0] += sup_op
-                self._diss_sup_op *= len(self.tau)
+                self._diss_sup_op *= len(self.transferred_time)
         else:
             self._diss_sup_op = self._sup_op_func(
-                self._ctrl_amps,
-                self.transferred_parameters)
+                copy.deepcopy(self._ctrl_amps),
+                copy.deepcopy(self.transferred_parameters))
         return self._diss_sup_op
 
     def _calc_diss_sup_op_deriv(self) \
             -> Optional[List[List[q_mat.OperatorMatrix]]]:
-        """
+        r"""
         Calculates the derivatives of the dissipation super operator with
         respect to the control amplitudes.
 
@@ -1594,8 +1790,8 @@ class LindbladSolver(SchroedingerSolver):
         if self._sup_op_deriv_func is not None:
             self._diss_sup_op_deriv = \
                 self._sup_op_deriv_func(
-                    self._ctrl_amps,
-                    self.transferred_parameters)
+                    copy.deepcopy(self._ctrl_amps),
+                    copy.deepcopy(self.transferred_parameters))
             return self._diss_sup_op_deriv
 
         elif self._prefactor_deriv_function is not None:
@@ -1610,15 +1806,17 @@ class LindbladSolver(SchroedingerSolver):
 
                 for lindblad in self._lindblad_operators:
                     const_diss_sup_op.append(
-                        (lindblad.conj(copy_=True)).kron(lindblad))
+                        (lindblad.conj(do_copy=True)).kron(lindblad))
                     const_diss_sup_op[-1] -= .5 * identity.kron(
-                        lindblad.dag(copy_=True) * lindblad)
+                        lindblad.dag(do_copy=True) * lindblad)
                     const_diss_sup_op[-1] -= .5 * (
-                        lindblad.transpose(copy_=True)
-                        * lindblad.conj(copy_=True)).kron(identity)
+                        lindblad.transpose(do_copy=True)
+                        * lindblad.conj(do_copy=True)).kron(identity)
 
             prefactor_derivatives = \
-                self._prefactor_deriv_function(self._ctrl_amps)
+                self._prefactor_deriv_function(
+                copy.deepcopy(self._ctrl_amps),
+                copy.deepcopy(self.transferred_parameters))
             # prefactor_derivatives: shape (num_t, num_ctrl, num_l)
             diss_sup_op_deriv = []
             for factor_per_ctrl_lind in prefactor_derivatives:
@@ -1639,15 +1837,18 @@ class LindbladSolver(SchroedingerSolver):
 
     def _compute_derivative_directions(
             self) -> List[List[q_mat.OperatorMatrix]]:
-        """
+        r"""
         Computes the derivative directions of the total dynamics generator.
 
         Returns
         -------
         deriv_directions: List[List[q_mat.ControlMatrix]],
-                          shape: [[] * num_ctrl] * num_t
+                          shape [[] * num_ctrl] * num_t
             Derivative directions given by
-            -1j * (I \otimes H_k - H_k \otimes I) + d \mathcal{G} / d u_k
+
+            .. math::
+
+                -1j * (I \otimes H_k - H_k \otimes I) + d \mathcal{G} / d u_k
 
         """
         # derivative of the coherent part
@@ -1656,7 +1857,7 @@ class LindbladSolver(SchroedingerSolver):
         h_ctrl_sup_op = []
         for ctrl_op in self.h_ctrl:
             h_ctrl_sup_op.append(identity_times_i.kron(ctrl_op))
-            h_ctrl_sup_op[-1] -= (ctrl_op.transpose(copy_=True)).kron(
+            h_ctrl_sup_op[-1] -= (ctrl_op.transpose(do_copy=True)).kron(
                 identity_times_i)
 
         # add derivative of the dissipation part
@@ -1670,12 +1871,12 @@ class LindbladSolver(SchroedingerSolver):
                         in zip(diss_sup_op_deriv_at_t, h_ctrl_sup_op):
                     dh_by_ctrl[-1].append(diss_sup_op_deriv + ctrl_sup_op)
         else:
-            dh_by_ctrl = [h_ctrl_sup_op, ] * len(self.tau)
+            dh_by_ctrl = [h_ctrl_sup_op, ] * len(self.transferred_time)
 
         return dh_by_ctrl
 
     def _parse_dissipative_super_operator(self) -> None:
-        """
+        r"""
         check the dissipative super operator for dimensional consistency
         (maybe even physical properties)
         - not implemented yet -
@@ -1683,18 +1884,20 @@ class LindbladSolver(SchroedingerSolver):
         pass
 
     def _compute_dyn_gen(self) -> List[q_mat.OperatorMatrix]:
-        """
+        r"""
         Computes the dynamics generator for the Lindblad master equation.
 
         The Hamiltonian is translated into the master equation formalism as
 
-        \mathcal{H} = I \otimes H - H^\ast \otimes I
+        .. math::
+
+            \mathcal{H} = I \otimes H - H^\ast \otimes I
 
         Then the dissipation super operator is added.
 
         Returns
         -------
-        dyn_gen: List[ControlMatrix], len: num_t
+        dyn_gen: List[ControlMatrix], len num_t
             Dynamics generators for the master equation.
 
         Raises
@@ -1718,7 +1921,7 @@ class LindbladSolver(SchroedingerSolver):
             sup_op_dyn_gen.append(identiy_operator.kron(dyn_gen))
             # the cancelling minus sign accounts for the -i factor, which is
             # also conjugated (included in the dyn gen)
-            sup_op_dyn_gen[-1] += dyn_gen.conj(copy_=True).kron(
+            sup_op_dyn_gen[-1] += dyn_gen.conj(do_copy=True).kron(
                 identiy_operator)
             sup_op_dyn_gen[-1] += diss_sup_op
 
@@ -1806,12 +2009,12 @@ class LindbladSControlNoise(LindbladSolver):
                         np.eye(dim), self.h_ctrl[t][ctrl]) - np.kron(
                         self.h_ctrl[t][ctrl], np.eye(dim))
                     self._prop[t], self._dU[t, ctrl] = self._dyn_gen[t].dexp(
-                        direction=direction, tau=self.tau[t],
+                        direction=direction, tau=self.transferred_time[t],
                         compute_expm=True, method=self.exponential_method)
 
             else:
                 self._prop[t] = self._dyn_gen[t].exp(
-                    tau=self.tau[t], method=self.exponential_method)
+                    tau=self.transferred_time[t], method=self.exponential_method)
 
             self._fwd.append(self._prop[t] * self._fwd[t])
 
