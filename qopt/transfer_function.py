@@ -691,7 +691,7 @@ class ParallelTF(TransferFunction):
 
         # tf1 and tf2 should have identical times
         self._y_times = tf1._y_times
-        self._x_times = tf1.x_times
+        self.x_times = tf1.x_times
 
         if not tf1.bound_type == tf2.bound_type:
             raise ValueError("The parallized transfer functions must have the "
@@ -712,8 +712,8 @@ class ParallelTF(TransferFunction):
         self.tf2.set_times(y_times)
         self._num_y = self.tf1._num_y
         self._y_times = self.tf1._y_times
-        self._num_x = self.tf1.num_x
-        self._x_times = self.tf1.x_times
+        self.num_x = self.tf1.num_x
+        self.x_times = self.tf1.x_times
 
 
 class CustomTF(TransferFunction):
@@ -764,7 +764,7 @@ class CustomTF(TransferFunction):
         )
         self._transfer_matrix = transfer_function
         self._num_y = transfer_function.shape[1]
-        self._num_x = transfer_function.shape[0]
+        self.num_x = transfer_function.shape[0]
         self.x_times = x_times
         self.bound_type = bound_type
         self.oversampling = oversampling
@@ -780,19 +780,19 @@ class CustomTF(TransferFunction):
             # construct the oversampling
             if self.bound_type is None:
                 # assume no padding
-                self.oversampling = self._num_x // self._num_y
-                if self._num_x % self._num_y:
+                self.oversampling = self.num_x // self._num_y
+                if self.num_x % self._num_y:
                     raise ValueError('Dimensions of transfer matrix '
                                      'impossible if no padding is used.'
                                      'State the boundary_type!')
             elif self.bound_type[0] == 'n':
-                self.oversampling = (self._num_x - 2
+                self.oversampling = (self.num_x - 2
                                      * self.bound_type[1]) / self._num_y
             elif self.bound_type[0] == 'x':
-                self.oversampling = self._num_x / (2 * self.bound_type[1]
+                self.oversampling = self.num_x / (2 * self.bound_type[1]
                                                    + self._num_y)
             elif self.bound_type[0] == 'right_n':
-                self.oversampling = (self._num_x - self.bound_type[
+                self.oversampling = (self.num_x - self.bound_type[
                     1]) / self._num_y
             else:
                 raise ValueError('Unknown boundary type:'
@@ -1210,7 +1210,7 @@ class EfficientOversamplingTF(TransferFunction):
 
         shape = deriv_by_transferred_par.shape
         assert len(shape) == 3
-        assert shape[0] == self._num_x
+        assert shape[0] == self.num_x
         assert shape[2] == self.num_ctrls
 
         # delete the padding elements
@@ -1347,7 +1347,7 @@ class GaussianConvolution(TransferFunction):
 
         shape = deriv_by_transferred_par.shape
         assert len(shape) == 3
-        assert shape[0] == self._num_x
+        assert shape[0] == self.num_x
         assert shape[2] == self.num_ctrls
         assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
 

@@ -93,7 +93,7 @@ class ExponentialTFOld(transfer_function.TransferFunction):
 
         return y
 
-    def set_x_times(self, x_times, oversampling=None):
+    def setx_times(self, x_times, oversampling=None):
         if oversampling is None:
             oversampling = self.oversampling
         self.oversampling = oversampling
@@ -487,7 +487,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         ef_ov_tf.set_times(.5 * np.ones(3))
         np.testing.assert_array_almost_equal(
-            ef_ov_tf._x_times,
+            ef_ov_tf.x_times,
             .25 * np.ones(10)
         )
         x0 = np.asarray([[1, 2, 3]], dtype=np.float64).T
