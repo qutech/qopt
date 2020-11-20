@@ -36,8 +36,11 @@ matrices and those who are not. In principle every transfer function can be
 expressed as a matrix multiplication because it is linear by definition,
 but the transfer function will have n_time ** 2 entries which might be huge
 number if you consider a control pulse with a large number n_time of time
-steps.
+steps. Therefore it is advantageous to use the matrix based transfer functions
+for small pulses with a lot of correlations.
 
+The matrix based transfer function have their own classes for concatenation
+and parallel application.
 
 Optimal control methods for rapidly time-varying Hamiltonians, 2011
 Motzoi, F. and Gambetta, J. M. and Merkel, S. T. and Wilhelm, F. K.
@@ -51,17 +54,35 @@ Classes
 :class:`IdentityTF`
     Optimization variables are the amplitudes of the control fields.
 
+:class:`OversamplingTF`
+    Oversamples the pulse and adds boundary conditions.
+
+:class:`GaussianConvolution`
+    Applies a Gaussian convolution.
+
 :class:`ConcatenateTF`
     Concatenation of two transfer functions.
 
 :class:`ParallelTF`
     Using to transfer functions for two sets of parameters in paralell.
 
-:class:`CustomTF`
+:class:`MatrixTF`
+    Abstract base class for transfer functions as matrices.
+
+:class:`OversamplingMTF`
+    Matrix version of OversamplingTF.
+
+:class:`CustomMTF`
     Transfer function which receives an explicitly constructed constant
     transfer matrix.
 
-:class:`ExponentialTF`
+:class:`ConcatenateMTF`
+    Matrix version of ConcatenateTF.
+
+:class:`ParallelMTF`
+    Matrix version of ParallelTF.
+
+:class:`ExponentialMTF`
     The amplitudes are smoothed by exponential saturation functions.
 
 Functions
@@ -206,16 +227,9 @@ class TransferFunction(ABC):
         For the raw optimisation variables (y), plot the resulting pulse.
 
     `Todo`
-        * make the x_times public
         * bound type seems to be buggy. test with exp_transfer
         * parse bound_type to raise exception only in one function.
         * add exception to the docstring
-        * _x_max, _x_min only useful for deprecated functions
-        * combinator transfer function that allows multiple controls with
-            * distinct transfer functions
-        * use the name attribute?
-        * refactor the use of the offset. maybe make it an array of the
-            * shape of u
 
     """
 
@@ -241,6 +255,7 @@ class TransferFunction(ABC):
         self.num_x = 0
         self.x_times = None
 
+    @abstractmethod
     def __call__(self, y: np.array) -> np.array:
         """Calculate the transferred optimization parameters (x).
 
@@ -261,32 +276,7 @@ class TransferFunction(ABC):
             transferred optimization parameters.
 
         """
-        shape = y.shape
-        assert len(shape) == 2
-        assert shape[0] == self._num_y
-        assert shape[1] == self.num_ctrls
-
-        if self._transfer_matrix is None:
-            self._calculate_transfer_matrix()
-        x = np.einsum('ijk,jk->ik', self._transfer_matrix, y)
-        if self.offset is not None:
-            x += self.offset
-        return x
-
-    @property
-    def transfer_matrix(self) -> np.array:
-        """
-        If necessary, calculates the transfer matrix. Then returns it.
-
-        Returns
-        -------
-        T: ndarray, shape (num_u, num_x, num_ctrl)
-            Transfer matrix (the linearization of the control amplitudes).
-
-        """
-        if self._transfer_matrix is None:
-            self._calculate_transfer_matrix()
-        return copy.deepcopy(self._transfer_matrix)
+        pass
 
     @property
     def num_padding_elements(self) -> (int, int):
@@ -312,6 +302,7 @@ class TransferFunction(ABC):
         else:
             raise ValueError('Unknown bound type ' + str(self.bound_type[0]))
 
+    @abstractmethod
     def gradient_chain_rule(
             self, deriv_by_transferred_par: np.array) -> np.array:
         """
@@ -332,24 +323,12 @@ class TransferFunction(ABC):
             The derivatives by the optimization parameters at num_y time steps.
 
         """
-
-        shape = deriv_by_transferred_par.shape
-        assert len(shape) == 3
-        assert shape[0] == self.num_x
-        assert shape[2] == self.num_ctrls
-
-        if self._transfer_matrix is None:
-            self._calculate_transfer_matrix()
-
-        # T: shape (num_x, num_y, num_par)
-        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
-        return np.einsum('ijk,ifk->jfk',
-                         self._transfer_matrix,
-                         deriv_by_transferred_par)
+        pass
 
     def set_times(self, y_times: np.array) -> None:
         """
-        Generate the time_slot duration array 'transferred_time' (here: x_times).
+        Generate the time_slot duration array 'transferred_time'
+        (here: x_times).
 
         The time slices depend on the oversampling of the control variables
         and the boundary conditions. The times are for the intended use cases
@@ -418,7 +397,8 @@ class TransferFunction(ABC):
 
     def set_absolute_times(self, absolute_y_times: np.ndarray) -> None:
         """
-        Generate the time_slot duration array 'transferred_time' (here: x_times)
+        Generate the time_slot duration array 'transferred_time'
+        (here: x_times)
 
         This time slices depend on the oversampling of the control variables
         and the boundary conditions. The differences of the absolute times
@@ -443,6 +423,7 @@ class TransferFunction(ABC):
 
     def plot_pulse(self, y: np.array) -> None:
         """
+
         Plot the control amplitudes corresponding to the given optimisation
         variables.
 
@@ -466,11 +447,6 @@ class TransferFunction(ABC):
                     fill=False)
         plt.show()
 
-    @abstractmethod
-    def _calculate_transfer_matrix(self):
-        """Create the transfer matrix. """
-        pass
-
 
 class IdentityTF(TransferFunction):
     """Numerically efficient identity transfer function which does not change
@@ -489,12 +465,6 @@ class IdentityTF(TransferFunction):
         )
         self.name = 'Identity'
 
-    def _calculate_transfer_matrix(self) -> None:
-        """Required for base class.
-
-        """
-        return
-
     def __call__(self, y: np.array) -> np.array:
         """See base class. """
         return y
@@ -506,80 +476,233 @@ class IdentityTF(TransferFunction):
 
 
 class OversamplingTF(TransferFunction):
-    """Oversamples and applies boundary conditions.
+    """ Handles oversampling and boundaries without transfer matrix.
+
+    This function is destined to be used for the oversampling and the boundary
+    functions for all transfer functions which do not compute a transfer matrix.
+
+    See Also
+    --------
+    Base Class
 
     """
-    def __init__(
-            self,
-            oversampling: int = 1,
-            bound_type: Tuple = None,
-            num_ctrls: int = 1,
-            offset: float = 0):
-        super().__init__(
-            bound_type=bound_type,
-            oversampling=oversampling,
-            num_ctrls=num_ctrls,
-            offset=offset
-        )
-        self.name = "Oversampling"
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
 
-    def _calculate_transfer_matrix(self) -> None:
-        """See base class. """
-        # identity for each oversampling segment
-        transfer_matrix = np.eye(self._num_y)
-        transfer_matrix = np.repeat(transfer_matrix, self.oversampling, axis=0)
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Oversampling and boundary conditions applied without generating a
+        transfer function.
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        # oversample pulse by repetition
+        u = np.repeat(y, self.oversampling, axis=0)
 
         # add the padding elements
         padding_start, padding_end = self.num_padding_elements
-        transfer_matrix = np.concatenate(
-            (np.zeros((padding_start, self._num_y)),
-             transfer_matrix,
-             np.zeros((padding_end, self._num_y))), axis=0)
 
-        # add control axis
-        transfer_matrix = np.expand_dims(transfer_matrix, axis=2)
-        transfer_matrix = np.repeat(transfer_matrix, self.num_ctrls, axis=2)
+        u = np.concatenate(
+            (np.zeros((padding_start, self.num_ctrls)),
+             u,
+             np.zeros((padding_end, self.num_ctrls))), axis=0)
 
-        self._transfer_matrix = transfer_matrix
+        return u
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """
+        See base class.
+
+        Processing without transfer matrix.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+
+        # delete the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        cropped_derivs = deriv_by_transferred_par[
+                         padding_start:-padding_end, :, :]
+
+        cropped_derivs = np.expand_dims(cropped_derivs, axis=1)
+        cropped_derivs = np.reshape(
+            cropped_derivs, (
+                self._num_y,
+                self.oversampling,
+                cropped_derivs.shape[2],
+                cropped_derivs.shape[3]
+            )
+        )
+        deriv_by_opt_par = np.sum(cropped_derivs, axis=1)
+        return deriv_by_opt_par
 
 
-class LinearTF(OversamplingTF):
-    """
-    A linear transfer function.
+class GaussianConvolution(TransferFunction):
+    """ A gaussian convolution is applied as filter function.
+
+    For oversampling and boundaries use this TransferFunction in combination
+    with EfficientOversamplingTF and ConcatenateTF.
+    The implementation makes use of the gaussian filter function in the
+    scipy.ndimage package.
 
     Parameters
-    -----------
-    linear_factor: float
-        The factor by which the optimization parameters are multiplied to
-        calculate the control amplitudes.
+    ----------
+    sigma: float or sequence of float
+        standard deviation for Gaussian kernel
+
+    order: int, optional
+        An order of 0 corresponds to convolution with a Gaussian kernel. A
+        positive order corresponds to convolution with that derivative of a
+        Gaussian.
+
+    mode: {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}, optional
+        The mode parameter determines how the input array is extended beyond its
+        boundaries. Default is ‘reflect’. Behavior for each valid value is as
+        follows:
+
+        ‘reflect’ (d c b a | a b c d | d c b a)
+        The input is extended by reflecting about the edge of the last pixel.
+
+        ‘constant’ (k k k k | a b c d | k k k k)
+        The input is extended by filling all values beyond the edge with the
+        same constant value, defined by the cval parameter.
+
+        ‘nearest’ (a a a a | a b c d | d d d d)
+        The input is extended by replicating the last pixel.
+
+        ‘mirror’ (d c b | a b c d | c b a)
+        The input is extended by reflecting about the center of the last pixel.
+
+        ‘wrap’ (a b c d | a b c d | a b c d)
+        The input is extended by wrapping around to the opposite edge
+
+        Default is 'nearest'.
+
+    truncate: float, optinal
+        Truncate the filter at this many standard deviations. Default is 4.0.
 
     """
-    def __init__(
-            self,
-            oversampling: int = 1,
-            bound_type: Tuple = None,
-            num_ctrls: int = 1,
-            offset: Optional[float] = None,
-            linear_factor: float = 1
-    ):
-        super().__init__(
-            bound_type=bound_type,
-            oversampling=oversampling,
-            num_ctrls=num_ctrls,
-            offset=offset
+    def __init__(self,
+                 sigma: Union[float, Sequence[float]],
+                 num_ctrls=1,
+                 order: int = 0,
+                 mode: str = 'nearest',
+                 truncate: float = 4.):
+        super().__init__(num_ctrls=num_ctrls)
+        self.sigma = sigma
+        self.order = order
+        self.mode = mode
+        self.truncate = truncate
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        shape = y.shape
+        assert len(shape) == 2
+        assert shape[0] == self._num_y
+        assert shape[1] == self.num_ctrls
+        assert y.dtype in [np.float64, np.float32]
+
+        return scipy.ndimage.gaussian_filter1d(
+            y, self.sigma, axis=0, order=self.order, mode=self.mode,
+            truncate=self.truncate
         )
-        self.linear_factor = linear_factor
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """ See base class.
+
+        The application of the chain rule is another Gaussian filter.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+        assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
+
+        return scipy.ndimage.gaussian_filter1d(
+            deriv_by_transferred_par, self.sigma, axis=0, order=self.order,
+            mode=self.mode, truncate=self.truncate
+        )
+
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
 
     def _calculate_transfer_matrix(self):
-        """See base class. """
-        # The parent class creates the identity.
-        super()._calculate_transfer_matrix()
-        self._transfer_matrix *= self.linear_factor
+        """Overrides the base class method. """
+        raise NotImplementedError
 
 
 class ConcatenateTF(TransferFunction):
     """
-    Concatenates two transfer functions.
+    Concatenates transfer functions.
 
     This class can be used if there are two transfer functions which are to be
     applied one after another. For example if first the pulse generation and
@@ -588,11 +711,11 @@ class ConcatenateTF(TransferFunction):
     Parameters
     ----------
     tf1: TransferFunction
-        First transfer function. This function operates directly on the
+        First matrix transfer function. This function operates directly on the
         optimization variables.
 
     tf2: TransferFunction
-        Second transfer function. This function operates on the
+        Second matrix transfer function. This function operates on the
         output of the first transfer function.
 
     """
@@ -616,13 +739,6 @@ class ConcatenateTF(TransferFunction):
         """Calls the concatenated transfer functions in sequence."""
         return self.tf2(self.tf1(y))
 
-    @property
-    def transfer_matrix(self):
-        """The total transfer matrix is the product of the individual ones."""
-        return np.einsum('ijk,jlk->ilk',
-                         self.tf2.transfer_matrix,
-                         self.tf1.transfer_matrix)
-
     def gradient_chain_rule(
             self, deriv_by_transferred_par: np.ndarray) -> np.ndarray:
         """Applies the concatenation formula for both transfer functions."""
@@ -630,6 +746,10 @@ class ConcatenateTF(TransferFunction):
             deriv_by_transferred_par=deriv_by_transferred_par)
         return self.tf1.gradient_chain_rule(
             deriv_by_transferred_par=intermediate_gradient)
+
+    def plot_pulse(self, y: np.ndarray) -> None:
+        """Calls the plot_pulse routine of the second transfer function."""
+        self.tf2.plot_pulse(self.tf1(y))
 
     def set_times(self, y_times: np.ndarray) -> None:
         """
@@ -646,15 +766,6 @@ class ConcatenateTF(TransferFunction):
         self.tf1.set_times(y_times)
         self.tf2.set_times(y_times=self.tf1.x_times)
         return
-
-    def plot_pulse(self, y: np.ndarray) -> None:
-        """Calls the plot_pulse routine of the second transfer function."""
-        self.tf2.plot_pulse(self.tf1(y))
-
-    def _calculate_transfer_matrix(self):
-        """See base class. """
-        self.tf1._calculate_transfer_matrix()
-        self.tf2._calculate_transfer_matrix()
 
 
 class ParallelTF(TransferFunction):
@@ -701,6 +812,263 @@ class ParallelTF(TransferFunction):
             raise ValueError("The parallized transfer functions must have the "
                              "same oversampling.")
 
+    def __call__(self, y: np.array) -> np.array:
+        """See base class.
+
+        The transfer functions are evaluated separatly and the results are
+        concatenated.
+
+        """
+        return np.concatenate(
+            (self.tf1(y[:, :self.tf1.num_ctrls]),
+             self.tf2(y[:, self.tf1.num_ctrls:])),
+            axis=1)
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """ See base class.
+
+        The gradients are calculated separatly and then concatenated.
+
+        """
+        grad_1 = self.tf1.gradient_chain_rule(
+            deriv_by_transferred_par[:, :, :self.tf1.num_ctrls])
+        grad_2 = self.tf2.gradient_chain_rule(
+            deriv_by_transferred_par[:, :, self.tf1.num_ctrls:])
+        return np.concatenate((grad_1, grad_2), axis=2)
+
+    def set_times(self, y_times: np.ndarray):
+        """See base class. """
+        self.tf1.set_times(y_times)
+        self.tf2.set_times(y_times)
+        self._num_y = self.tf1._num_y
+        self._y_times = self.tf1._y_times
+        self.num_x = self.tf1.num_x
+        self.x_times = self.tf1.x_times
+
+
+class MatrixTF(TransferFunction):
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        shape = y.shape
+        assert len(shape) == 2
+        assert shape[0] == self._num_y
+        assert shape[1] == self.num_ctrls
+
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        x = np.einsum('ijk,jk->ik', self._transfer_matrix, y)
+        if self.offset is not None:
+            x += self.offset
+        return x
+
+    @property
+    def transfer_matrix(self) -> np.array:
+        """
+        If necessary, calculates the transfer matrix. Then returns it.
+
+        Returns
+        -------
+        T: ndarray, shape (num_u, num_x, num_ctrl)
+            Transfer matrix (the linearization of the control amplitudes).
+
+        """
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        return copy.deepcopy(self._transfer_matrix)
+
+    @abstractmethod
+    def _calculate_transfer_matrix(self):
+        """Create the transfer matrix. """
+        pass
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """ See base class.
+
+        """
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+
+        # T: shape (num_x, num_y, num_par)
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        return np.einsum('ijk,ifk->jfk',
+                         self._transfer_matrix,
+                         deriv_by_transferred_par)
+
+
+class OversamplingMTF(MatrixTF):
+    """Oversamples and applies boundary conditions.
+
+    """
+    def __init__(
+            self,
+            oversampling: int = 1,
+            bound_type: Tuple = None,
+            num_ctrls: int = 1,
+            offset: float = 0):
+        super().__init__(
+            bound_type=bound_type,
+            oversampling=oversampling,
+            num_ctrls=num_ctrls,
+            offset=offset
+        )
+        self.name = "Oversampling"
+
+    def _calculate_transfer_matrix(self) -> None:
+        """See base class. """
+        # identity for each oversampling segment
+        transfer_matrix = np.eye(self._num_y)
+        transfer_matrix = np.repeat(transfer_matrix, self.oversampling, axis=0)
+
+        # add the padding elements
+        padding_start, padding_end = self.num_padding_elements
+        transfer_matrix = np.concatenate(
+            (np.zeros((padding_start, self._num_y)),
+             transfer_matrix,
+             np.zeros((padding_end, self._num_y))), axis=0)
+
+        # add control axis
+        transfer_matrix = np.expand_dims(transfer_matrix, axis=2)
+        transfer_matrix = np.repeat(transfer_matrix, self.num_ctrls, axis=2)
+
+        self._transfer_matrix = transfer_matrix
+
+
+class ConcatenateMTF(MatrixTF):
+    """
+    Concatenates two matrix transfer functions.
+
+    Matrix version of ConcatenateTF.
+
+    Parameters
+    ----------
+    tf1: MatrixTF
+        First matrix transfer function. This function operates directly on the
+        optimization variables.
+
+    tf2: MatrixTF
+        Second matrix transfer function. This function operates on the
+        output of the first transfer function.
+
+    """
+    def __init__(self, tf1: MatrixTF, tf2: MatrixTF):
+        offset = 0
+        for of in [tf1.offset, tf2.offset]:
+            if of is not None:
+                offset += of
+        super().__init__(
+            num_ctrls=tf1.num_ctrls,
+            offset=offset,
+            oversampling=tf1.oversampling * tf2.oversampling
+        )
+        self.tf1 = tf1
+        self.tf2 = tf2
+        self._num_y = tf1._num_y
+        self._y_times = tf1._y_times
+        self.x_times = tf2._y_times
+
+    @property
+    def transfer_matrix(self):
+        """The total transfer matrix is the product of the individual ones."""
+        return np.einsum('ijk,jlk->ilk',
+                         self.tf2.transfer_matrix,
+                         self.tf1.transfer_matrix)
+
+    def set_times(self, y_times: np.ndarray) -> None:
+        """
+        Sets x_times on the first transfer function and sets the resulting
+        x_times on the second transfer function.
+
+        Parameters
+        ----------
+            y_times: Optional[np.array, list]
+                Time durations of the constant control steps of the raw
+                optimization parameters.
+
+        """
+        self.tf1.set_times(y_times)
+        self.tf2.set_times(y_times=self.tf1.x_times)
+        return
+
+    def plot_pulse(self, y: np.ndarray) -> None:
+        """Calls the plot_pulse routine of the second transfer function."""
+        self.tf2.plot_pulse(self.tf1(y))
+
+    def _calculate_transfer_matrix(self):
+        """See base class. """
+        self.tf1._calculate_transfer_matrix()
+        self.tf2._calculate_transfer_matrix()
+
+
+class ParallelMTF(MatrixTF):
+    """
+    This transfer function will parallelize two transfer functions, such that
+    they are applied to different control terms. Thus adding in the third
+    dimension of the transfer matrix.
+
+    Parameters
+    ----------
+    tf1: MatrixTF
+        First transfer function. This function operates on the first
+        tf1.num_ctrls control pulses.
+
+    tf2: MatrixTF
+        Second transfer function. This function operates on the
+        next tf2._num_ctrls number of control pulses.
+
+    """
+
+    def __init__(self, tf1: MatrixTF, tf2: MatrixTF):
+        super().__init__(
+            num_ctrls=tf1.num_ctrls + tf2.num_ctrls,
+            oversampling=tf1.oversampling,
+            offset=None
+        )
+        self.bound_type = tf1.bound_type
+
+        self.tf1 = tf1
+        self.tf2 = tf2
+
+        assert tf1._num_y == tf2._num_y
+        self._num_y = tf1._num_y
+
+        # tf1 and tf2 should have identical times
+        self._y_times = tf1._y_times
+        self.x_times = tf1.x_times
+
+        if not tf1.bound_type == tf2.bound_type:
+            raise ValueError("The parallized transfer functions must have the "
+                             "same bound_types.")
+
+        if not tf1.oversampling == tf2.oversampling:
+            raise ValueError("The parallized transfer functions must have the "
+                             "same oversampling.")
+
     def _calculate_transfer_matrix(self):
         """See base class. """
         self._transfer_matrix = np.concatenate(
@@ -716,7 +1084,7 @@ class ParallelTF(TransferFunction):
         self.x_times = self.tf1.x_times
 
 
-class CustomTF(TransferFunction):
+class CustomMTF(MatrixTF):
     """
     This class implements a linear transfer function.
 
@@ -725,7 +1093,7 @@ class CustomTF(TransferFunction):
 
     Parameters
     ----------
-        transfer_function: np.array, shape (num_x, num_y, num_par)
+        transfer_matrix: np.array, shape (num_x, num_y, num_par)
             Constant transfer function.
 
         offset: float
@@ -750,7 +1118,7 @@ class CustomTF(TransferFunction):
 
     """
     def __init__(self,
-                 transfer_function: np.array,
+                 transfer_matrix: np.array,
                  x_times: Optional[np.array] = None,
                  bound_type: Optional[Tuple] = None,
                  oversampling: int = 1,
@@ -762,9 +1130,9 @@ class CustomTF(TransferFunction):
             offset=offset,
             num_ctrls=num_ctrls
         )
-        self._transfer_matrix = transfer_function
-        self._num_y = transfer_function.shape[1]
-        self.num_x = transfer_function.shape[0]
+        self._transfer_matrix = transfer_matrix
+        self._num_y = transfer_matrix.shape[1]
+        self.num_x = transfer_matrix.shape[0]
         self.x_times = x_times
         self.bound_type = bound_type
         self.oversampling = oversampling
@@ -797,7 +1165,7 @@ class CustomTF(TransferFunction):
             else:
                 raise ValueError('Unknown boundary type:'
                                  + str(self.bound_type[0]))
-
+            self.oversampling = int(self.oversampling)
             super().set_times(y_times)
         else:
             y_times = np.squeeze(y_times)
@@ -805,6 +1173,7 @@ class CustomTF(TransferFunction):
             if len(y_times) != self._num_y:
                 raise ValueError('Trying to set x_times, which do not fit the'
                                  'dimension of the transfer function.')
+
 
     def _calculate_transfer_matrix(self):
         """See base class. """
@@ -819,7 +1188,7 @@ def exp_saturation(t: float, t_rise: float, val_1: float, val_2: float) -> int:
     return val_1 + (val_2 - val_1) * (1 - np.exp(-(t / t_rise)))
 
 
-class ExponentialTF(TransferFunction):
+class ExponentialMTF(MatrixTF):
     """
     This transfer function model smooths the control amplitudes by exponential
     saturation.
@@ -1034,7 +1403,7 @@ class ExponentialTF(TransferFunction):
         return x
 
 
-class GaussianTF(TransferFunction):
+class GaussianMTF(MatrixTF):
     """
     Represent square function filtered through a gaussian filter.
 
@@ -1133,234 +1502,3 @@ class GaussianTF(TransferFunction):
 
         super().set_times(times)
         # TODO: properly implement 'w'
-
-
-class EfficientOversamplingTF(TransferFunction):
-    """ Handles oversampling and boundaries without transfer matrix.
-
-    This function is destined to be used for the oversampling and the boundary
-    functions for all transfer functions which do not compute a transfer matrix.
-
-    See Also
-    --------
-    Base Class
-
-    """
-    @property
-    def transfer_matrix(self) -> np.array:
-        """Overrides the base class method. """
-        raise NotImplementedError
-
-    def _calculate_transfer_matrix(self):
-        """Overrides the base class method. """
-        raise NotImplementedError
-
-    def __call__(self, y: np.array) -> np.array:
-        """Calculate the transferred optimization parameters (x).
-
-        Oversampling and boundary conditions applied without generating a
-        transfer function.
-
-        Parameters
-        ----------
-        y: np.array, shape (num_y, num_par)
-            Raw optimization variables; num_y is the number of time slices of
-            the raw optimization parameters and num_par is the number of
-            distinct raw optimization parameters.
-
-        Returns
-        -------
-        u: np.array, shape (num_x, num_par)
-            Control parameters; num_u is the number of times slices for the
-            transferred optimization parameters.
-
-        """
-        # oversample pulse by repetition
-        u = np.repeat(y, self.oversampling, axis=0)
-
-        # add the padding elements
-        padding_start, padding_end = self.num_padding_elements
-
-        u = np.concatenate(
-            (np.zeros((padding_start, self.num_ctrls)),
-             u,
-             np.zeros((padding_end, self.num_ctrls))), axis=0)
-
-        return u
-
-    def gradient_chain_rule(
-            self, deriv_by_transferred_par: np.array) -> np.array:
-        """
-        See base class.
-
-        Processing without transfer matrix.
-
-        Parameters
-        ----------
-        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
-            The gradients of num_f functions by num_par optimization parameters
-            at num_x different time steps.
-
-        Returns
-        -------
-        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
-            The derivatives by the optimization parameters at num_y time steps.
-
-        """
-
-        shape = deriv_by_transferred_par.shape
-        assert len(shape) == 3
-        assert shape[0] == self.num_x
-        assert shape[2] == self.num_ctrls
-
-        # delete the padding elements
-        padding_start, padding_end = self.num_padding_elements
-
-        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
-        cropped_derivs = deriv_by_transferred_par[
-                         padding_start:-padding_end, :, :]
-
-        cropped_derivs = np.expand_dims(cropped_derivs, axis=1)
-        cropped_derivs = np.reshape(
-            cropped_derivs, (
-                self._num_y,
-                self.oversampling,
-                cropped_derivs.shape[2],
-                cropped_derivs.shape[3]
-            )
-        )
-        deriv_by_opt_par = np.sum(cropped_derivs, axis=1)
-        return deriv_by_opt_par
-
-
-# TODO: num_ctrls is needed for checks
-class GaussianConvolution(TransferFunction):
-    """ A gaussian convolution is applied as filter function.
-
-    For oversampling and boundaries use this TransferFunction in combination
-    with EfficientOversamplingTF and ConcatenateTF.
-    The implementation makes use of the gaussian filter function in the
-    scipy.ndimage package.
-
-    Parameters
-    ----------
-    sigma: float or sequence of float
-        standard deviation for Gaussian kernel
-
-    order: int, optional
-        An order of 0 corresponds to convolution with a Gaussian kernel. A
-        positive order corresponds to convolution with that derivative of a
-        Gaussian.
-
-    mode: {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}, optional
-        The mode parameter determines how the input array is extended beyond its
-        boundaries. Default is ‘reflect’. Behavior for each valid value is as
-        follows:
-
-        ‘reflect’ (d c b a | a b c d | d c b a)
-        The input is extended by reflecting about the edge of the last pixel.
-
-        ‘constant’ (k k k k | a b c d | k k k k)
-        The input is extended by filling all values beyond the edge with the
-        same constant value, defined by the cval parameter.
-
-        ‘nearest’ (a a a a | a b c d | d d d d)
-        The input is extended by replicating the last pixel.
-
-        ‘mirror’ (d c b | a b c d | c b a)
-        The input is extended by reflecting about the center of the last pixel.
-
-        ‘wrap’ (a b c d | a b c d | a b c d)
-        The input is extended by wrapping around to the opposite edge
-
-        Default is 'nearest'.
-
-    truncate: float, optinal
-        Truncate the filter at this many standard deviations. Default is 4.0.
-
-    See Also
-    --------
-    Base Class
-
-    scipy.ndimage
-
-    """
-    def __init__(self,
-                 sigma: Union[float, Sequence[float]],
-                 order: int = 0,
-                 mode: str = 'nearest',
-                 truncate: float = 4.):
-        super().__init__()
-        self.sigma = sigma
-        self.order = order
-        self.mode = mode
-        self.truncate = truncate
-
-    def __call__(self, y: np.array) -> np.array:
-        """Calculate the transferred optimization parameters (x).
-
-        Evaluates the transfer function at the raw optimization parameters (y)
-        to calculate the transferred optimization parameters (x).
-
-        Parameters
-        ----------
-        y: np.array, shape (num_y, num_par)
-            Raw optimization variables; num_y is the number of time slices of
-            the raw optimization parameters and num_par is the number of
-            distinct raw optimization parameters.
-
-        Returns
-        -------
-        u: np.array, shape (num_x, num_par)
-            Control parameters; num_u is the number of times slices for the
-            transferred optimization parameters.
-
-        """
-        shape = y.shape
-        assert len(shape) == 2
-        assert shape[0] == self._num_y
-        assert shape[1] == self.num_ctrls
-        assert y.dtype in [np.float64, np.float32]
-
-        return scipy.ndimage.gaussian_filter1d(
-            y, self.sigma, axis=0, order=self.order, mode=self.mode,
-            truncate=self.truncate
-        )
-
-    def gradient_chain_rule(
-            self, deriv_by_transferred_par: np.array) -> np.array:
-        """ See base class.
-
-        The application of the chain rule is another Gaussian filter.
-
-        Parameters
-        ----------
-        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
-            The gradients of num_f functions by num_par optimization parameters
-            at num_x different time steps.
-
-        Returns
-        -------
-        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
-            The derivatives by the optimization parameters at num_y time steps.
-        """
-
-        shape = deriv_by_transferred_par.shape
-        assert len(shape) == 3
-        assert shape[0] == self.num_x
-        assert shape[2] == self.num_ctrls
-        assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
-
-        return scipy.ndimage.gaussian_filter1d(
-            deriv_by_transferred_par, self.sigma, axis=0, order=self.order,
-            mode=self.mode, truncate=self.truncate
-        )
-
-    @property
-    def transfer_matrix(self) -> np.array:
-        """Overrides the base class method. """
-        raise NotImplementedError
-
-    def _calculate_transfer_matrix(self):
-        """Overrides the base class method. """
-        raise NotImplementedError

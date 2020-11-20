@@ -75,9 +75,9 @@ class TestEntanglementFidelity(unittest.TestCase):
         T = np.diag(num_x * [lin_freq_rel])
         T = np.expand_dims(T, 2)
         linear_transfer_function = \
-            transfer_function.CustomTF(T, num_ctrls=2)
+            transfer_function.CustomMTF(T, num_ctrls=2)
         exponential_saturation_transfer_function = \
-            transfer_function.ExponentialTF(
+            transfer_function.ExponentialMTF(
                 awg_rise_time=.2 * tau[0],
                 oversampling=over_sample_rate,
                 bound_type=bound_type,

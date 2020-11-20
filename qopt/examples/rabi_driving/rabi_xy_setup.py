@@ -52,7 +52,7 @@ y_half = sigma_y.exp(tau=np.pi * .25j)
 
 # 4.1: Exponential Transfer Function
 # This transfer function assumes an exponential saturation of voltages.
-transfer_function = ExponentialTF(
+transfer_function = ExponentialMTF(
     awg_rise_time=awg_rise_time,
     oversampling=oversampling,
     num_ctrls=2

@@ -3,7 +3,7 @@ from qopt.noise import NTGQuasiStatic
 from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \
     SchroedingerSolver
 from qopt.amplitude_functions import CustomAmpFunc
-from qopt.transfer_function import OversamplingTF
+from qopt.transfer_function import OversamplingMTF
 
 import qopt.examples.rabi_driving.setup as rabi
 import numpy as np
@@ -64,7 +64,7 @@ class Lab_frame_rabi_driving(TestCase):
 
         rabi_driving_amp_func = CustomAmpFunc(value_function=rabi_driving,
                                               derivative_function=None)
-        id_transfer_func = OversamplingTF(oversampling=n_time_steps)
+        id_transfer_func = OversamplingMTF(oversampling=n_time_steps)
         id_transfer_func.set_times(np.asarray([evolution_time]))
 
 

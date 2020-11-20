@@ -6,7 +6,7 @@ from scipy.io import loadmat
 import filter_functions as ff
 import temp.ff_testutil as ff_testutil
 
-from qopt.transfer_function import OversamplingTF
+from qopt.transfer_function import OversamplingMTF
 from qopt.amplitude_functions import UnaryAnalyticAmpFunc
 from qopt.solver_algorithms import SchroedingerSolver, \
     LindbladSolver, SchroedingerSMCControlNoise
@@ -34,7 +34,7 @@ B = np.asarray(struct['B'].ravel(), order='C')
 B_avg = struct['BAvg'].ravel()
 
 # Frequently used auxiliary classes
-id_tf = OversamplingTF(num_ctrls=3)
+id_tf = OversamplingMTF(num_ctrls=3)
 id_tf.set_times(dt)
 
 exp_amp_func = UnaryAnalyticAmpFunc(

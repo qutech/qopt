@@ -6,8 +6,8 @@ for the simulation of rabi drive.
 
 import numpy as np
 from qopt.matrix import DenseOperator
-from qopt.transfer_function import ExponentialTF, OversamplingTF, \
-    LinearTF, ParallelTF, ConcatenateTF
+from qopt.transfer_function import ExponentialMTF, OversamplingMTF, \
+    LinearMTF, ParallelMTF, ConcatenateTF
 from qopt.amplitude_functions import UnaryAnalyticAmpFunc, \
     CustomAmpFunc
 from qopt.solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo
@@ -64,7 +64,7 @@ y_half = sigma_y.exp(tau=np.pi * .25j)
 
 # 4.1: Exponential Transfer Function
 # This transfer function assumes an exponential saturation of voltages.
-exponential_transfer_function = ExponentialTF(
+exponential_transfer_function = ExponentialMTF(
     awg_rise_time=awg_rise_time,
     oversampling=oversampling,
     num_ctrls=2
@@ -73,8 +73,8 @@ exponential_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # 4.2: Identity
 # No transfer function. Here we assume ideal control electronics.
-identity_transfer_function = OversamplingTF(oversampling=oversampling,
-                                            num_ctrls=2)
+identity_transfer_function = OversamplingMTF(oversampling=oversampling,
+                                             num_ctrls=2)
 identity_transfer_function.set_times(time_step * np.ones(n_time_samples))
 
 # ##################### 5. Amplitude Function #################################
@@ -346,21 +346,21 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
     n_max_amp = 2 ** n_bit_amp - 1
     delta_amp = amp_bound / n_max_amp
 
-    discrete_tf_phase = LinearTF(
+    discrete_tf_phase = LinearMTF(
         oversampling=1,
         bound_type=None,
         num_ctrls=1,
         linear_factor=delta_phase
     )
 
-    discrete_tf_amp = LinearTF(
+    discrete_tf_amp = LinearMTF(
         oversampling=1,
         bound_type=None,
         num_ctrls=1,
         linear_factor=delta_amp
     )
 
-    discrete_tf = ParallelTF(
+    discrete_tf = ParallelMTF(
         tf1=discrete_tf_amp,
         tf2=discrete_tf_phase
     )

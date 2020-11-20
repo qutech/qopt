@@ -269,7 +269,7 @@ class TestTransferFunctions(unittest.TestCase):
         df_du = np.expand_dims(df_du, axis=1)
         df_du = np.expand_dims(df_du, axis=2)
 
-        identity_tf = transfer_function.OversamplingTF(
+        identity_tf = transfer_function.OversamplingMTF(
             oversampling=oversampling, bound_type=bound_type, offset=offset)
 
         identity_tf.set_times(x_times)
@@ -291,7 +291,7 @@ class TestTransferFunctions(unittest.TestCase):
         df_du = np.expand_dims(df_du, axis=1)
         df_du = np.expand_dims(df_du, axis=2)
 
-        identity_tf = transfer_function.OversamplingTF(
+        identity_tf = transfer_function.OversamplingMTF(
             oversampling=oversampling, bound_type=bound_type, offset=offset)
 
         identity_tf.set_times(x_times)
@@ -311,7 +311,7 @@ class TestTransferFunctions(unittest.TestCase):
         bound_type = None
 
         identity_tf_1 = transfer_function.IdentityTF(num_ctrls=1)
-        identity_tf_2 = transfer_function.OversamplingTF(
+        identity_tf_2 = transfer_function.OversamplingMTF(
             oversampling=1, bound_type=bound_type, offset=0)
 
         identity_tf_1.set_times(x_times)
@@ -337,7 +337,7 @@ class TestTransferFunctions(unittest.TestCase):
         awg_rise_time = .5
         bound_type = ('x', 1)
 
-        ex = transfer_function.ExponentialTF(
+        ex = transfer_function.ExponentialMTF(
             awg_rise_time=awg_rise_time, oversampling=oversampling,
             bound_type=bound_type, num_ctrls=2)
 
@@ -421,12 +421,12 @@ class TestTransferFunctions(unittest.TestCase):
             np.expand_dims(custom_t, axis=2),
             repeats=1, axis=2)
 
-        custom_tf = transfer_function.CustomTF(custom_t)
+        custom_tf = transfer_function.CustomMTF(custom_t)
 
         awg_rise_time = .5 / oversampling
 
         boundary_type = ('n', 0)
-        ex = transfer_function.ExponentialTF(
+        ex = transfer_function.ExponentialMTF(
             awg_rise_time=awg_rise_time,
             oversampling=oversampling,
             bound_type=boundary_type)
@@ -456,19 +456,19 @@ class TestTransferFunctions(unittest.TestCase):
         awg_rise_time = .5 / oversampling
 
         boundary_type = ('n', 0)
-        ex1 = transfer_function.ExponentialTF(
+        ex1 = transfer_function.ExponentialMTF(
             awg_rise_time=awg_rise_time, oversampling=oversampling,
             bound_type=boundary_type, num_ctrls=1)
 
-        ex2 = transfer_function.ExponentialTF(
+        ex2 = transfer_function.ExponentialMTF(
             awg_rise_time=awg_rise_time, oversampling=oversampling,
             bound_type=boundary_type, num_ctrls=1)
 
-        ex_2ctrl = transfer_function.ExponentialTF(
+        ex_2ctrl = transfer_function.ExponentialMTF(
             awg_rise_time=awg_rise_time, oversampling=oversampling,
             bound_type=boundary_type, num_ctrls=2)
 
-        parallel_tf = transfer_function.ParallelTF(
+        parallel_tf = transfer_function.ParallelMTF(
             tf1=ex1,
             tf2=ex2
         )
@@ -480,7 +480,7 @@ class TestTransferFunctions(unittest.TestCase):
 
     def test_efficient_oversampling_tf(self):
 
-        ef_ov_tf = transfer_function.EfficientOversamplingTF(
+        ef_ov_tf = transfer_function.OversamplingTF(
             oversampling=2,
             bound_type=("n", 2)
         )
@@ -513,7 +513,7 @@ class TestTransferFunctions(unittest.TestCase):
 
     def test_gaussian_convolution(self):
 
-        ef_ov_tf = transfer_function.EfficientOversamplingTF(
+        ef_ov_tf = transfer_function.OversamplingTF(
             oversampling=5,
             bound_type=("n", 2)
         )
@@ -542,3 +542,30 @@ class TestTransferFunctions(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(
             np.expand_dims(grad_numeric, axis=2), grad_analytic, 1e-5)
+
+    def test_parallel_tfs(self):
+        y_times = 3 * np.ones(3)
+        oversampling = 3
+        tf1 = transfer_function.ExponentialMTF(
+            awg_rise_time=.2, oversampling=oversampling, num_ctrls=2
+        )
+        tf1.set_times(y_times)
+        tf2 = transfer_function.CustomMTF(
+            transfer_matrix=np.reshape(np.arange(54), (9, 3, 2)),
+            oversampling=oversampling,
+            num_ctrls=2,
+            bound_type=('x', 0)
+        )
+
+        parallel_mtf = transfer_function.ParallelMTF(tf1, tf2)
+        parallel_tf = transfer_function.ParallelTF(tf1, tf2)
+
+        parallel_mtf.set_times(y_times)
+        parallel_tf.set_times(y_times)
+
+        np.random.seed(0)
+        random_ctrl_pulse = np.random.rand(3, 4)
+        np.testing.assert_array_almost_equal(
+            parallel_mtf(random_ctrl_pulse),
+            parallel_tf(random_ctrl_pulse)
+        )
