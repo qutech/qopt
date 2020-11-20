@@ -31,6 +31,13 @@ control electronics might need some time to physically reach the new voltage.
 Another example would be an amplifier, which has a non-linearity in the
 amplification of a control pulse.
 
+There are two kinds of transfer functions. Those who are based on transfer
+matrices and those who are not. In principle every transfer function can be
+expressed as a matrix multiplication because it is linear by definition,
+but the transfer function will have n_time ** 2 entries which might be huge
+number if you consider a control pulse with a large number n_time of time
+steps.
+
 
 Optimal control methods for rapidly time-varying Hamiltonians, 2011
 Motzoi, F. and Gambetta, J. M. and Merkel, S. T. and Wilhelm, F. K.
@@ -463,236 +470,6 @@ class TransferFunction(ABC):
     def _calculate_transfer_matrix(self):
         """Create the transfer matrix. """
         pass
-
-
-class EfficientOversamplingTF(TransferFunction):
-    """ Handles oversampling and boundaries without transfer matrix.
-
-    This function is destined to be used for the oversampling and the boundary
-    functions for all transfer functions which do not compute a transfer matrix.
-
-    See Also
-    --------
-    Base Class
-
-    """
-    @property
-    def transfer_matrix(self) -> np.array:
-        """Overrides the base class method. """
-        raise NotImplementedError
-
-    def _calculate_transfer_matrix(self):
-        """Overrides the base class method. """
-        raise NotImplementedError
-
-    def __call__(self, y: np.array) -> np.array:
-        """Calculate the transferred optimization parameters (x).
-
-        Oversampling and boundary conditions applied without generating a
-        transfer function.
-
-        Parameters
-        ----------
-        y: np.array, shape (num_y, num_par)
-            Raw optimization variables; num_y is the number of time slices of
-            the raw optimization parameters and num_par is the number of
-            distinct raw optimization parameters.
-
-        Returns
-        -------
-        u: np.array, shape (num_x, num_par)
-            Control parameters; num_u is the number of times slices for the
-            transferred optimization parameters.
-
-        """
-        # oversample pulse by repetition
-        u = np.repeat(y, self.oversampling, axis=0)
-
-        # add the padding elements
-        padding_start, padding_end = self.num_padding_elements
-
-        u = np.concatenate(
-            (np.zeros((padding_start, self.num_ctrls)),
-             u,
-             np.zeros((padding_end, self.num_ctrls))), axis=0)
-
-        return u
-
-    def gradient_chain_rule(
-            self, deriv_by_transferred_par: np.array) -> np.array:
-        """
-        See base class.
-
-        Processing without transfer matrix.
-
-        Parameters
-        ----------
-        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
-            The gradients of num_f functions by num_par optimization parameters
-            at num_x different time steps.
-
-        Returns
-        -------
-        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
-            The derivatives by the optimization parameters at num_y time steps.
-
-        """
-
-        shape = deriv_by_transferred_par.shape
-        assert len(shape) == 3
-        assert shape[0] == self._num_x
-        assert shape[2] == self.num_ctrls
-
-        # delete the padding elements
-        padding_start, padding_end = self.num_padding_elements
-
-        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
-        cropped_derivs = deriv_by_transferred_par[
-                         padding_start:-padding_end, :, :]
-
-        cropped_derivs = np.expand_dims(cropped_derivs, axis=1)
-        cropped_derivs = np.reshape(
-            cropped_derivs, (
-                self._num_y,
-                self.oversampling,
-                cropped_derivs.shape[2],
-                cropped_derivs.shape[3]
-            )
-        )
-        deriv_by_opt_par = np.sum(cropped_derivs, axis=1)
-        return deriv_by_opt_par
-
-
-class GaussianConvolution(TransferFunction):
-    """ A gaussian convolution is applied as filter function.
-
-    For oversampling and boundaries use this TransferFunction in combination
-    with EfficientOversamplingTF and ConcatenateTF.
-    The implementation makes use of the gaussian filter function in the
-    scipy.ndimage package.
-
-    Parameters
-    ----------
-    sigma: float or sequence of float
-        standard deviation for Gaussian kernel
-
-    order: int, optional
-        An order of 0 corresponds to convolution with a Gaussian kernel. A
-        positive order corresponds to convolution with that derivative of a
-        Gaussian.
-
-    mode: {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}, optional
-        The mode parameter determines how the input array is extended beyond its
-        boundaries. Default is ‘reflect’. Behavior for each valid value is as
-        follows:
-
-        ‘reflect’ (d c b a | a b c d | d c b a)
-        The input is extended by reflecting about the edge of the last pixel.
-
-        ‘constant’ (k k k k | a b c d | k k k k)
-        The input is extended by filling all values beyond the edge with the
-        same constant value, defined by the cval parameter.
-
-        ‘nearest’ (a a a a | a b c d | d d d d)
-        The input is extended by replicating the last pixel.
-
-        ‘mirror’ (d c b | a b c d | c b a)
-        The input is extended by reflecting about the center of the last pixel.
-
-        ‘wrap’ (a b c d | a b c d | a b c d)
-        The input is extended by wrapping around to the opposite edge
-
-        Default is 'nearest'.
-
-    truncate: float, optinal
-        Truncate the filter at this many standard deviations. Default is 4.0.
-
-    See Also
-    --------
-    Base Class
-
-    scipy.ndimage
-
-    """
-    def __init__(self,
-                 sigma: Union[float, Sequence[float]],
-                 order: int = 0,
-                 mode: str = 'nearest',
-                 truncate: float = 4.):
-        super().__init__()
-        self.sigma = sigma
-        self.order = order
-        self.mode = mode
-        self.truncate = truncate
-
-    def __call__(self, y: np.array) -> np.array:
-        """Calculate the transferred optimization parameters (x).
-
-        Evaluates the transfer function at the raw optimization parameters (y)
-        to calculate the transferred optimization parameters (x).
-
-        Parameters
-        ----------
-        y: np.array, shape (num_y, num_par)
-            Raw optimization variables; num_y is the number of time slices of
-            the raw optimization parameters and num_par is the number of
-            distinct raw optimization parameters.
-
-        Returns
-        -------
-        u: np.array, shape (num_x, num_par)
-            Control parameters; num_u is the number of times slices for the
-            transferred optimization parameters.
-
-        """
-        shape = y.shape
-        assert len(shape) == 2
-        assert shape[0] == self._num_y
-        assert shape[1] == self.num_ctrls
-        assert y.dtype in [np.float64, np.float32]
-
-        return scipy.ndimage.gaussian_filter1d(
-            y, self.sigma, axis=0, order=self.order, mode=self.mode,
-            truncate=self.truncate
-        )
-
-    def gradient_chain_rule(
-            self, deriv_by_transferred_par: np.array) -> np.array:
-        """ See base class.
-
-        The application of the chain rule is another Gaussian filter.
-
-        Parameters
-        ----------
-        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
-            The gradients of num_f functions by num_par optimization parameters
-            at num_x different time steps.
-
-        Returns
-        -------
-        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
-            The derivatives by the optimization parameters at num_y time steps.
-        """
-
-        shape = deriv_by_transferred_par.shape
-        assert len(shape) == 3
-        assert shape[0] == self._num_x
-        assert shape[2] == self.num_ctrls
-        assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
-
-        return scipy.ndimage.gaussian_filter1d(
-            deriv_by_transferred_par, self.sigma, axis=0, order=self.order,
-            mode=self.mode, truncate=self.truncate
-        )
-
-    @property
-    def transfer_matrix(self) -> np.array:
-        """Overrides the base class method. """
-        raise NotImplementedError
-
-    def _calculate_transfer_matrix(self):
-        """Overrides the base class method. """
-        raise NotImplementedError
 
 
 class IdentityTF(TransferFunction):
@@ -1355,3 +1132,234 @@ class GaussianTF(TransferFunction):
 
         super().set_times(times)
         # TODO: properly implement 'w'
+
+
+class EfficientOversamplingTF(TransferFunction):
+    """ Handles oversampling and boundaries without transfer matrix.
+
+    This function is destined to be used for the oversampling and the boundary
+    functions for all transfer functions which do not compute a transfer matrix.
+
+    See Also
+    --------
+    Base Class
+
+    """
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Oversampling and boundary conditions applied without generating a
+        transfer function.
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        # oversample pulse by repetition
+        u = np.repeat(y, self.oversampling, axis=0)
+
+        # add the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        u = np.concatenate(
+            (np.zeros((padding_start, self.num_ctrls)),
+             u,
+             np.zeros((padding_end, self.num_ctrls))), axis=0)
+
+        return u
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """
+        See base class.
+
+        Processing without transfer matrix.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self._num_x
+        assert shape[2] == self.num_ctrls
+
+        # delete the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        cropped_derivs = deriv_by_transferred_par[
+                         padding_start:-padding_end, :, :]
+
+        cropped_derivs = np.expand_dims(cropped_derivs, axis=1)
+        cropped_derivs = np.reshape(
+            cropped_derivs, (
+                self._num_y,
+                self.oversampling,
+                cropped_derivs.shape[2],
+                cropped_derivs.shape[3]
+            )
+        )
+        deriv_by_opt_par = np.sum(cropped_derivs, axis=1)
+        return deriv_by_opt_par
+
+
+# TODO: num_ctrls is needed for checks
+class GaussianConvolution(TransferFunction):
+    """ A gaussian convolution is applied as filter function.
+
+    For oversampling and boundaries use this TransferFunction in combination
+    with EfficientOversamplingTF and ConcatenateTF.
+    The implementation makes use of the gaussian filter function in the
+    scipy.ndimage package.
+
+    Parameters
+    ----------
+    sigma: float or sequence of float
+        standard deviation for Gaussian kernel
+
+    order: int, optional
+        An order of 0 corresponds to convolution with a Gaussian kernel. A
+        positive order corresponds to convolution with that derivative of a
+        Gaussian.
+
+    mode: {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}, optional
+        The mode parameter determines how the input array is extended beyond its
+        boundaries. Default is ‘reflect’. Behavior for each valid value is as
+        follows:
+
+        ‘reflect’ (d c b a | a b c d | d c b a)
+        The input is extended by reflecting about the edge of the last pixel.
+
+        ‘constant’ (k k k k | a b c d | k k k k)
+        The input is extended by filling all values beyond the edge with the
+        same constant value, defined by the cval parameter.
+
+        ‘nearest’ (a a a a | a b c d | d d d d)
+        The input is extended by replicating the last pixel.
+
+        ‘mirror’ (d c b | a b c d | c b a)
+        The input is extended by reflecting about the center of the last pixel.
+
+        ‘wrap’ (a b c d | a b c d | a b c d)
+        The input is extended by wrapping around to the opposite edge
+
+        Default is 'nearest'.
+
+    truncate: float, optinal
+        Truncate the filter at this many standard deviations. Default is 4.0.
+
+    See Also
+    --------
+    Base Class
+
+    scipy.ndimage
+
+    """
+    def __init__(self,
+                 sigma: Union[float, Sequence[float]],
+                 order: int = 0,
+                 mode: str = 'nearest',
+                 truncate: float = 4.):
+        super().__init__()
+        self.sigma = sigma
+        self.order = order
+        self.mode = mode
+        self.truncate = truncate
+
+    def __call__(self, y: np.array) -> np.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        shape = y.shape
+        assert len(shape) == 2
+        assert shape[0] == self._num_y
+        assert shape[1] == self.num_ctrls
+        assert y.dtype in [np.float64, np.float32]
+
+        return scipy.ndimage.gaussian_filter1d(
+            y, self.sigma, axis=0, order=self.order, mode=self.mode,
+            truncate=self.truncate
+        )
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """ See base class.
+
+        The application of the chain rule is another Gaussian filter.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self._num_x
+        assert shape[2] == self.num_ctrls
+        assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
+
+        return scipy.ndimage.gaussian_filter1d(
+            deriv_by_transferred_par, self.sigma, axis=0, order=self.order,
+            mode=self.mode, truncate=self.truncate
+        )
+
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError

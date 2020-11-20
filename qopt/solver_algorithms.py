@@ -307,7 +307,6 @@ class Solver(ABC):
             self.transfer_function.set_times(tau)
         else:
             self.transfer_function = transfer_function
-            self.transfer_function.set_times(tau)
 
         if amplitude_function is None:
             self.amplitude_function = IdentityAmpFunc()
@@ -1620,6 +1619,7 @@ class LindbladSolver(SchroedingerSolver):
 
             prefactor_derivatives = \
                 self._prefactor_deriv_function(self._ctrl_amps)
+            # Todo: Assert that the prefactor returns the right dimension
             # prefactor_derivatives: shape (num_t, num_ctrl, num_l)
             diss_sup_op_deriv = []
             for factor_per_ctrl_lind in prefactor_derivatives:
