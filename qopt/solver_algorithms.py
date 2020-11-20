@@ -307,6 +307,7 @@ class Solver(ABC):
             self.transfer_function.set_times(tau)
         else:
             self.transfer_function = transfer_function
+            self.transfer_function.set_times(tau)
 
         if amplitude_function is None:
             self.amplitude_function = IdentityAmpFunc()
