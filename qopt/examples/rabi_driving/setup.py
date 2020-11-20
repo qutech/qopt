@@ -7,7 +7,7 @@ for the simulation of rabi drive.
 import numpy as np
 from qopt.matrix import DenseOperator
 from qopt.transfer_function import ExponentialMTF, OversamplingMTF, \
-    LinearMTF, ParallelMTF, ConcatenateTF
+    ParallelMTF, ConcatenateTF
 from qopt.amplitude_functions import UnaryAnalyticAmpFunc, \
     CustomAmpFunc
 from qopt.solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo
@@ -335,7 +335,7 @@ def random_xy_init_pulse(seed=None):
         np.random.seed(seed)
     return np.random.rand(n_time_samples, len(h_ctrl)) * amp_bound
 
-
+"""
 def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
     n_max_phase = 2 ** n_bit_ph - 1
     delta_phase = phase_max / n_max_phase * np.pi / 180
@@ -413,3 +413,4 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
     return [ts_comp_unperturbed_pc_discrete,
             time_slot_comp_qs_noise_pc_discrete], \
            [entanglement_infid_pc_discrete, qs_noise_pc_discrete]
+"""
