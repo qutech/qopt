@@ -1817,6 +1817,9 @@ class LindbladSolver(SchroedingerSolver):
                 self._prefactor_deriv_function(
                 copy.deepcopy(self._ctrl_amps),
                 copy.deepcopy(self.transferred_parameters))
+
+            # Todo: Assert that the prefactor returns the right dimension
+
             # prefactor_derivatives: shape (num_t, num_ctrl, num_l)
             diss_sup_op_deriv = []
             for factor_per_ctrl_lind in prefactor_derivatives:
