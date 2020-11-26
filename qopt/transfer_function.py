@@ -733,7 +733,8 @@ class ConcatenateTF(TransferFunction):
         self.tf2 = tf2
         self._num_y = tf1._num_y
         self._y_times = tf1._y_times
-        self.x_times = tf2._y_times
+        self.x_times = tf2.x_times
+        self.num_x = tf2.num_x
 
     def __call__(self, y: np.ndarray, *args, **kwargs):
         """Calls the concatenated transfer functions in sequence."""
@@ -765,6 +766,10 @@ class ConcatenateTF(TransferFunction):
         """
         self.tf1.set_times(y_times)
         self.tf2.set_times(y_times=self.tf1.x_times)
+        self._num_y = self.tf1._num_y
+        self._y_times = self.tf1._y_times
+        self.x_times = self.tf2.x_times
+        self.num_x = self.tf2.num_x
         return
 
 
@@ -803,6 +808,7 @@ class ParallelTF(TransferFunction):
         # tf1 and tf2 should have identical times
         self._y_times = tf1._y_times
         self.x_times = tf1.x_times
+        self.num_x = self.tf1.num_x
 
         if not tf1.bound_type == tf2.bound_type:
             raise ValueError("The parallized transfer functions must have the "
@@ -990,7 +996,8 @@ class ConcatenateMTF(MatrixTF):
         self.tf2 = tf2
         self._num_y = tf1._num_y
         self._y_times = tf1._y_times
-        self.x_times = tf2._y_times
+        self.x_times = tf2.x_times
+        self.num_x = tf2.num_x
 
     @property
     def transfer_matrix(self):
@@ -1013,6 +1020,10 @@ class ConcatenateMTF(MatrixTF):
         """
         self.tf1.set_times(y_times)
         self.tf2.set_times(y_times=self.tf1.x_times)
+        self._num_y = self.tf1._num_y
+        self._y_times = self.tf1._y_times
+        self.x_times = self.tf2.x_times
+        self.num_x = self.tf2.num_x
         return
 
     def plot_pulse(self, y: np.ndarray) -> None:
@@ -1060,6 +1071,7 @@ class ParallelMTF(MatrixTF):
         # tf1 and tf2 should have identical times
         self._y_times = tf1._y_times
         self.x_times = tf1.x_times
+        self.num_x = self.tf1.num_x
 
         if not tf1.bound_type == tf2.bound_type:
             raise ValueError("The parallized transfer functions must have the "
