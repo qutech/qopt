@@ -329,12 +329,27 @@ class OperatorMatrix(ABC):
         Parameters
         ----------
         index: tuple of int, length: 2
-            Index describing an entry in the marix.
+            Index describing an entry in the matrix.
 
         Returns
         -------
         value: complex
             Matrix element at the position described by the index.
+
+        """
+        pass
+
+    @abstractmethod
+    def __setitem__(self, key, value) -> None:
+        """ Sets the value at the position key.
+
+        Parameters
+        ----------
+        key: tuple of int, length: 2
+            Index specifying an entry in the matrix.
+
+        value: complex
+            Value to be set at the position key.
 
         """
         pass
@@ -734,6 +749,14 @@ class DenseOperator(OperatorMatrix):
     def __getitem__(self, index: Tuple) -> np.complex128:
         """See base class. """
         return self.data[index]
+
+    def __setitem__(self, key, value) -> None:
+        """See base class. """
+        self.data.__setitem__(key, value)
+
+    def __repr__(self):
+        """Representation as numpy array. """
+        return self.data.__repr__()
 
     def dag(self, do_copy: bool = True) -> Optional['DenseOperator']:
         """See base class. """
