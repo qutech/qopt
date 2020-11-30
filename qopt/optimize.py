@@ -61,6 +61,8 @@ from typing import Dict, Optional, Callable, List, Union, Sequence
 
 from qopt import optimization_data, simulator, performance_statistics
 import simanneal
+import constrNMPy.constrNMPy as cNM
+
 
 default_termination_conditions = {
     "min_gradient_norm": 1e-7,
@@ -317,9 +319,10 @@ class LeastSquaresOptimizer(Optimizer):
         The optimization method used. Currently implemented are:
         - 'trf': A trust region optimization algorithm. This is the default.
 
-    bounds: array or list of boundaries, optional
+    bounds: 2-tuple of array, optional
         The boundary conditions for the pulse optimizations. If none are given
-        then the pulse is assumed to take any real value.
+        then the pulse is assumed to take any real value. First array signifies
+        the lower bounds and the second one the upper bounds.
 
     """
 
@@ -394,6 +397,10 @@ class ScalarMinimizingOptimizer(Optimizer):
     ----------
     method: string
         Takes methods implemented by scipy.optimize.minimize.
+
+    bounds: sequence
+        Sequence of (min, max) pairs for each element in x. None is used to
+        specify no bounds.
 
     """
     def __init__(
@@ -535,6 +542,52 @@ class ScalarMinimizingOptimizer(Optimizer):
                 )
             except WallTimeExceeded:
                 optim_result = self.write_state_to_result()
+
+        if self.system_simulator.stats is not None:
+            self.system_simulator.stats.end_t_opt = time.time()
+
+        return optim_result
+
+
+class BoundedNelderMead(ScalarMinimizingOptimizer):
+    """Provisional Implementation of the constrained Nelder-Mead. """
+    def __init__(
+            self,
+            system_simulator: Optional[simulator.Simulator] = None,
+            termination_cond: Optional[Dict] = None,
+            save_intermediary_steps: bool = False,
+            lower_bounds: Union[np.ndarray, List, None] = None,
+            upper_bounds: Union[np.ndarray, List, None] = None,
+            use_jacobian_function=True,
+            cost_fktn_weights: Optional[Sequence[float]] = None
+    ):
+        super().__init__(system_simulator=system_simulator,
+                         termination_cond=termination_cond,
+                         save_intermediary_steps=save_intermediary_steps,
+                         cost_fktn_weights=cost_fktn_weights,
+                         use_jacobian_function=use_jacobian_function)
+        self.lower_bounds = lower_bounds
+        self.uppter_bounds = upper_bounds
+
+    def run_optimization(
+            self, initial_control_amplitudes: np.array
+    ) -> optimization_data.OptimizationResult:
+        super().prepare_optimization(
+            initial_optimization_parameters=initial_control_amplitudes)
+
+        try:
+            result = cNM.constrNM(
+                func=self.cost_fktn_wrapper,
+                x0=initial_control_amplitudes.T.flatten(),
+                LB=np.asarray(self.lower_bounds),
+                UB=np.asarray(self.uppter_bounds),
+                maxiter=self.termination_conditions["max_iterations"],
+                maxfun=self.termination_conditions["max_cost_func_calls"]
+            )
+
+            optim_result = self.write_state_to_result()
+        except WallTimeExceeded:
+            optim_result = self.write_state_to_result()
 
         if self.system_simulator.stats is not None:
             self.system_simulator.stats.end_t_opt = time.time()
