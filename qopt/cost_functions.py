@@ -1121,7 +1121,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             self.solver.create_pulse_sequence()
         infidelity = filter_functions.numeric.infidelity(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density(self.omega),
+            spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega)
         return infidelity
 
@@ -1144,7 +1144,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             pulse=self.solver.pulse_sequence,
             S=self.noise_power_spec_density(self.omega),
             omega=self.omega,
-            c_id=c_id,
+            control_identifiers=c_id,
             s_derivs=self.solver.filter_function_s_derivs_vals
         )
         # what comes from ff:
