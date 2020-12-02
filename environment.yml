@@ -5,6 +5,6 @@ channels:
 
 dependencies:
   - qutip
-  - pip
+  - pip>=20.2
 
 prefix: /home/docs/.conda/envs/qopt
