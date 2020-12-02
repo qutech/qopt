@@ -1,9 +1,11 @@
 name: qopt
 
 channels:
+  - defaults
   - conda-forge
 
 dependencies:
   - qutip
+  - pip
 
 prefix: /home/docs/.conda/envs/qopt
