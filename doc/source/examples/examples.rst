@@ -13,5 +13,6 @@ from *Doc/source/examples* using `jupyter notebook`.
    pulse_parameterization
    monte_carlo_experiments
    open_quantum_systems
+   parallelization
    numerics
    energy_spectra_analyser
