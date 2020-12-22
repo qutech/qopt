@@ -305,8 +305,9 @@ class Solver(ABC):
             self.transfer_function = IdentityTF(num_ctrls=len(h_ctrl))
         else:
             self.transfer_function = transfer_function
-        self.transfer_function.set_times(tau)
-        self.transferred_time = self.transfer_function.x_times
+
+        self.transferred_time = None
+        self.set_times(tau=tau)
 
         if type(h_drift) in [matrix.DenseOperator, matrix.SparseOperator]:
             self.h_drift = [h_drift, ] * self.transfer_function.num_x
@@ -323,6 +324,19 @@ class Solver(ABC):
         self.transferred_parameters = None
 
         self.consistency_checks(paranoia_level=paranoia_level)
+
+    def set_times(self, tau):
+        """ Set time values by passing them to the transfer function.
+
+        Parameters
+        ----------
+        tau: array of float, shape (num_t, )
+            Durations of the time slices.
+
+        """
+        self.transfer_function.set_times(tau)
+        self.transferred_time = self.transfer_function.x_times
+        self.reset_cached_propagators()
 
     def set_optimization_parameters(self, y: np.array) -> None:
         """
@@ -370,6 +384,10 @@ class Solver(ABC):
                              'correnct number of entries on the control axis!')
 
         self._ctrl_amps = u
+        self.reset_cached_propagators()
+
+    def reset_cached_propagators(self):
+        """ Resets all cached propagators. """
         self._prop = None
         self._fwd_prop = None
         self._derivative_prop = None
@@ -760,8 +778,13 @@ class SchroedingerSolver(Solver):
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
-            self._dyn_gen = None
+            self.reset_cached_propagators()
         super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        self._dyn_gen = None
+        super().reset_cached_propagators()
 
     def _compute_dyn_gen(self) -> List[q_mat.OperatorMatrix]:
         """
@@ -1032,12 +1055,18 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
-            self._dyn_gen_noise = None
-            self._prop_noise = None
-            self._derivative_prop_noise = None
-            self._fwd_prop_noise = None
-            self._reversed_prop_noise = None
+            self.reset_cached_propagators()
         super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        super().reset_cached_propagators()
+        self._dyn_gen_noise = None
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+
 
     @property
     def propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
@@ -1665,6 +1694,18 @@ class LindbladSolver(SchroedingerSolver):
             dim = h_ctrl[0].shape[0]
             initial_state = type(h_ctrl[0])(np.eye(dim ** 2))
 
+        self._diss_sup_op = None
+        self._diss_sup_op_deriv = None
+
+        # we do not throw away any operators or functions, just in case
+        self._initial_diss_super_op = initial_diss_super_op
+        self._lindblad_operators = lindblad_operators
+        self._prefactor_function = prefactor_function
+        self._prefactor_deriv_function = prefactor_derivative_function
+        self._sup_op_func = super_operator_function
+        self._sup_op_deriv_func = super_operator_derivative_function
+        self._is_hermitian = is_skew_hermitian
+
         super().__init__(
             h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
             tau=tau, ctrl_amps=ctrl_amps,
@@ -1678,26 +1719,20 @@ class LindbladSolver(SchroedingerSolver):
             transfer_function=transfer_function,
             amplitude_function=amplitude_function)
 
-        self._diss_sup_op = None
-        self._diss_sup_op_deriv = None
-
-        # we do not throw away any operators or functions, just in case
-        self._initial_diss_super_op = initial_diss_super_op
-        self._lindblad_operators = lindblad_operators
-        self._prefactor_function = prefactor_function
-        self._prefactor_deriv_function = prefactor_derivative_function
-        self._sup_op_func = super_operator_function
-        self._sup_op_deriv_func = super_operator_derivative_function
-        self._is_hermitian = is_skew_hermitian
-
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
             super().set_optimization_parameters(y)
-            if self._prefactor_function is not None \
-                    or self._sup_op_func is not None:
-                self._diss_sup_op = None
-                self._diss_sup_op_deriv = None
+            self.reset_cached_propagators()
+
+    def reset_cached_propagators(self):
+        """ See base class. """
+        super().reset_cached_propagators()
+        if self._prefactor_function is not None \
+                or self._sup_op_func is not None:
+            self._diss_sup_op = None
+            self._diss_sup_op_deriv = None
+
 
     def _calc_diss_sup_op(self) -> List[q_mat.OperatorMatrix]:
         r"""
