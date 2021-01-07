@@ -38,7 +38,6 @@ References
 
 """
 
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -79,15 +78,41 @@ class Analyser:
         squared_sum = np.sum(final_costs**2, axis=1)
         return int(np.argmin(squared_sum, axis=0))
 
-    def plot_costs(self, n=0) -> None:
+    def plot_costs(self, n=0, log_y=True, ax=None) -> None:
         """Plots the absolute cost values as function of optimization
         iteration.
 
+        Parameters
+        ----------
+        n: int, optional
+            Number of the optimization run. Defaults to 0.
+
+        log_y: bool, optional
+            If True then the costs are plotted logarithmically. Defaults to
+            True.
+
+        ax: matplotlib.pyplot.axes
+            Axes element in which the data is plotted. If not specified, a new
+            one will be created.
+
+        Returns
+        -------
+        ax: matplotlib.pyplot.axes
+            Axes with the plot.
+
         """
-        df = pd.DataFrame(
-            data=np.abs(np.asarray(self.data.costs[n]).T),
-            index=self.data.indices)
-        df.T.plot(logy=True)
+        if ax is None:
+            _, ax = plt.subplots()
+
+        for cost, index in zip(np.asarray(self.data.costs[n]).T, self.data.indices):
+            ax.plot(cost, label=index)
+        ax.set_ylabel('Costs')
+        ax.set_xlabel('Iteration')
+        ax.legend()
+        if log_y:
+            ax.set_yscale('log')
+
+        return ax
 
     def absolute_costs(self) -> np.ndarray:
         """
@@ -125,10 +150,6 @@ class Analyser:
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Infidelity')
         return fig, ax
-
-        # df = pd.DataFrame(costs, index=range(costs.shape[0]),
-        #                  columns=range(costs.shape[1]))
-        # df.T.plot(logy=True)
 
     def integral_cost_fkt_times(self, n: int = 0) -> np.ndarray:
         """Sum of the time required for the evaluation of the cost

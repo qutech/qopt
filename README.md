@@ -37,7 +37,7 @@ package was written and tested using python 3.7.
     conda create --name qopt_env python=3.7
     conda activate qopt_env
 
-Start with all recommended dependencies: 
+Start with all recommended dependencies of QuTiP: 
 
     conda install numpy scipy cython matplotlib pytest pytest-cov jupyter
 
@@ -52,7 +52,7 @@ and install QuTiP:
 Then install two remaining dependencies and the 
 [filter_functions package](https://github.com/qutech/filter_functions) via pip:
 
-    conda install pandas simanneal
+    conda install simanneal
     pip install filter_functions
     
 And either install qopt via pip 
