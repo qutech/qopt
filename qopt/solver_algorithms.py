@@ -675,6 +675,9 @@ class Solver(ABC):
             Qutips Bloch object. Only returned if return_Bloch is set to True.
 
         """
+        if new_amps is not None:
+            self.set_optimization_parameters(new_amps)
+
         if self.pulse_sequence is None:
             self.create_pulse_sequence(new_amps=new_amps)
 
