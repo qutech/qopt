@@ -146,8 +146,7 @@ class CostFunction(ABC):
         pass
 
 
-@needs_refactoring
-def angle_axis_representation(u: Union[np.ndarray, matrix.DenseOperator]) \
+def angle_axis_representation(u: np.ndarray) \
         -> (float, np.ndarray):
     """
     Calculates the representation of a 2x2 unitary matrix by a rotational axis
@@ -163,30 +162,47 @@ def angle_axis_representation(u: Union[np.ndarray, matrix.DenseOperator]) \
     beta, n: float, np.ndarray
         beta is the angle of the rotation and n the rotational axis.
 
-    TODO:
-        * implement for control matrices. Not only numpy arrays.
-
     """
+    if type(u) == matrix.DenseOperator:
+        u = np.copy(u.data)
+
     # check if u is unitary
     ident = u @ np.conjugate(np.transpose(u))
-    is_unitary = np.isclose(ident[0, 0], 1) and np.isclose(ident[1, 0], 0) and \
-        np.isclose(ident[0, 1], 0) and np.isclose(ident[0, 0], 1)
+    is_unitary = np.isclose(ident[0, 0], 1) \
+        and np.isclose(ident[1, 0], 0) \
+        and np.isclose(ident[0, 1], 0) \
+        and np.isclose(ident[0, 0], 1)
+
     if not is_unitary:
         raise ValueError("Your input matrix must be unitary to calculate a "
                          "angle axis representation!")
 
-    cos = .5 * (u[0, 0] + u[1, 1])
-    if np.isclose(cos, 1):
+    # there is an unphysical global phase alpha
+    cos_alpha = .5 * (u[0, 0] + u[1, 1])
+    # beta in [0, pi) so sin in [0, 1]
+    sin = np.sqrt(1 - np.abs(cos_alpha) ** 2)
+    if np.isclose(0, sin, atol=1e-6):
         return 0, np.array([1, 0, 0])
-    sin = np.sqrt(1 - cos ** 2)
-    n_1 = np.real((u[0, 1] + u[1, 0]) / 1j / sin / 2)
-    n_2 = np.real((u[0, 1] - u[1, 0]) / sin / 2)
-    n_3 = np.real((u[0, 0] - u[1, 1]) / 1j / sin / 2)
-    # beta = np.real(np.arccos(cos) * 2)
-    # It seems more coherent to neglect the factor of 2
-    beta = np.real(np.arccos(cos) * 2)
+    n_1_alpha = (u[0, 1] + u[1, 0]) / 1j / sin / 2
+    n_2_alpha = (u[0, 1] - u[1, 0]) / sin / 2
+    n_3_alpha = (u[0, 0] - u[1, 1]) / 1j / sin / 2
+    if not np.isclose(n_1_alpha, 0):
+        alpha = n_1_alpha / np.abs(n_1_alpha)
+    elif not np.isclose(n_2_alpha, 0):
+        alpha = n_2_alpha / np.abs(n_2_alpha)
+    elif not np.isclose(n_3_alpha, 0):
+        alpha = n_3_alpha / np.abs(n_3_alpha)
+    else:
+        return 0, np.array([1, 0, 0])
+
+    beta = np.arccos(np.real(cos_alpha / alpha)) * 2
+    n_1, n_2, n_3 = n_1_alpha / alpha, n_2_alpha / alpha, n_3_alpha / alpha
     assert np.isclose(np.linalg.norm(np.array([n_1, n_2, n_3])), 1, atol=1e-5)
-    return beta, np.array([n_1, n_2, n_3])
+
+    # if beta < 0:
+    #     beta = -1 * beta
+    #    n_1, n_2, n_3 = -1 * n_1, -1 * n_2, -1 * n_3
+    return beta, np.array([np.real(n_1), np.real(n_2), np.real(n_3)])
 
 
 class OperatorMatrixNorm(CostFunction):

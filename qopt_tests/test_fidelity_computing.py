@@ -1,16 +1,37 @@
 import math
 import unittest
 from qopt import matrix, cost_functions as q_fc, solver_algorithms, \
-    transfer_function
+    transfer_function, DenseOperator
+from qopt import *
 import numpy as np
 
-sig_0 = matrix.DenseOperator(np.eye(2))
-sig_x = matrix.DenseOperator(np.asarray([[0, 1], [1, 0]]))
-sig_y = matrix.DenseOperator(np.asarray([[0, -1j], [1j, 0]]))
-sig_z = matrix.DenseOperator(np.asarray([[1, 0], [0, -1]]))
+sig_0 = DenseOperator.pauli_0()
+sig_x = DenseOperator.pauli_x()
+sig_y = DenseOperator.pauli_y()
+sig_z = DenseOperator.pauli_z()
 
 
 class TestEntanglementFidelity(unittest.TestCase):
+    def test_angle_axis_representation(self):
+        angle, axis = angle_axis_representation(np.eye(2))
+        self.assertAlmostEqual(angle, 0)
+        angle, axis = angle_axis_representation(-1 * np.eye(2))
+        self.assertAlmostEqual(angle, 0)
+        angle, axis = angle_axis_representation(1j * np.eye(2))
+        self.assertAlmostEqual(angle, 0)
+
+        angle, axis = angle_axis_representation(
+            (
+                np.exp(.5j * np.pi) * (
+                    1. / np.sqrt(2) * sig_x + 1. / np.sqrt(2) * sig_y).exp(
+                        .125j * np.pi)
+            )
+        )
+        self.assertAlmostEqual(angle, .25 * np.pi)
+        self.assertAlmostEqual(axis[0], 1. / np.sqrt(2))
+        self.assertAlmostEqual(axis[1], 1. / np.sqrt(2))
+        self.assertAlmostEqual(axis[2], 0)
+
     def test_entanglement_average_fidelity(self):
         a = 1 - q_fc.averge_gate_fidelity(sig_x, sig_y)
         b = 1 - q_fc.averge_gate_fidelity(sig_x, sig_x)

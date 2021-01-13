@@ -23,3 +23,8 @@ Optimizer
 - scalar optimization algorithms available
 - gradient free nelder mead algorithm available
 - cost function weights must now be given in 
+
+### Version 1.0 to 1.1
+
+Cost Functions
+- refactoring of the angle axis representation
