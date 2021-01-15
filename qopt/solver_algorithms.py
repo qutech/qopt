@@ -247,7 +247,7 @@ class Solver(ABC):
             * not coherent with the pulse sequence interface. Alternatively
             * amplitude=1?
         * transferred_time should be taken from the transfer function
-        * Use plotting
+        * Use own plotting for the plotting
         * Consequent try catches for the computation of the matrix exponential
 
     """

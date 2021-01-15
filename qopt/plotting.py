@@ -17,7 +17,7 @@ except ImportError:
     qt = mock.Mock()
 
 
-def plot_bloch_sphere(
+def plot_bloch_vector_evolution(
         forward_propagators: Sequence[OperatorMatrix],
         initial_state: OperatorMatrix,
         return_bloch: bool = False,

@@ -11,6 +11,7 @@ from *Doc/source/examples* using `jupyter notebook`.
    entanglement_fidelity
    optimization
    pulse_parameterization
+   rabi_rwa
    monte_carlo_experiments
    open_quantum_systems
    parallelization

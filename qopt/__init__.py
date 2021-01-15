@@ -66,6 +66,12 @@ __all__ = [
     'run_optimization_parallel'
 ]
 
+try:
+    from .plotting import plot_bloch_vector_evolution
+    __all__.append('plot_bloch_vector_evolution')
+except ImportError:
+    pass
+
 __version__ = '1.0.2'
 __license__ = 'GNU GPLv3+'
 __author__ = 'Julian Teske, Forschungszentrum Juelich'
