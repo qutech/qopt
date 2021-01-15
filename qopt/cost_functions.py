@@ -199,9 +199,10 @@ def angle_axis_representation(u: np.ndarray) \
     n_1, n_2, n_3 = n_1_alpha / alpha, n_2_alpha / alpha, n_3_alpha / alpha
     assert np.isclose(np.linalg.norm(np.array([n_1, n_2, n_3])), 1, atol=1e-5)
 
-    # if beta < 0:
-    #     beta = -1 * beta
-    #    n_1, n_2, n_3 = -1 * n_1, -1 * n_2, -1 * n_3
+    # to make this representation unique, we request that beta in [0, pi]
+    if beta > np.pi:
+        beta = 2 * np.pi - beta
+        n_1, n_2, n_3 = -1 * n_1, -1 * n_2, -1 * n_3
     return beta, np.array([np.real(n_1), np.real(n_2), np.real(n_3)])
 
 
