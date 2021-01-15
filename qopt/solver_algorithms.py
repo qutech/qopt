@@ -247,6 +247,8 @@ class Solver(ABC):
             * not coherent with the pulse sequence interface. Alternatively
             * amplitude=1?
         * transferred_time should be taken from the transfer function
+        * Use plotting
+        * Consequent try catches for the computation of the matrix exponential
 
     """
 
@@ -842,11 +844,17 @@ class SchroedingerSolver(Solver):
                 for _2 in range(len(self.h_ctrl))]
             for t in range(len(self.transferred_time)):
                 for ctrl in range(len(self.h_ctrl)):
-                    self._prop[t], self._derivative_prop[ctrl][t] \
-                        = self._dyn_gen[t].dexp(
-                        derivative_directions[t][ctrl], self.transferred_time[t],
-                        compute_expm=True, method=self.exponential_method,
-                        is_skew_hermitian=self._is_skew_hermitian)
+                    try:
+                        self._prop[t], self._derivative_prop[ctrl][t] \
+                            = self._dyn_gen[t].dexp(
+                            derivative_directions[t][ctrl],
+                            self.transferred_time[t],
+                            compute_expm=True, method=self.exponential_method,
+                            is_skew_hermitian=self._is_skew_hermitian)
+                    except ValueError:
+                        raise ValueError('The computation has failed with '
+                                         'a value error. Try another '
+                                         'exponentiation method.')
         else:
             for t in range(len(self.transferred_time)):
                 self._prop[t] = self._dyn_gen[t].exp(
