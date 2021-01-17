@@ -1018,8 +1018,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             h_ctrl: List[q_mat.OperatorMatrix],
             tau: np.array,
             h_noise: List[q_mat.OperatorMatrix],
-            noise_trace_generator:
-            Optional[noise.NoiseTraceGenerator],
+            noise_trace_generator: noise.NoiseTraceGenerator,
             initial_state: q_mat.OperatorMatrix = None,
             ctrl_amps: Optional[np.array] = None,
             calculate_propagator_derivatives: bool = False,
@@ -1077,7 +1076,6 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         self._derivative_prop_noise = None
         self._fwd_prop_noise = None
         self._reversed_prop_noise = None
-
 
     @property
     def propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
@@ -1744,7 +1742,6 @@ class LindbladSolver(SchroedingerSolver):
             self._diss_sup_op = None
             self._diss_sup_op_deriv = None
 
-
     def _calc_diss_sup_op(self) -> List[q_mat.OperatorMatrix]:
         r"""
         Calculates the dissipative super operator as described in the class
@@ -2068,3 +2065,447 @@ class LindbladSControlNoise(LindbladSolver):
             self._fwd.append(self._prop[t] * self._fwd[t])
 
         self.prop_calculated = True
+
+
+class LindbladSMonteCarlo(LindbladSolver, SchroedingerSMonteCarlo):
+
+    def __init__(
+            self,
+            h_drift: List[q_mat.OperatorMatrix],
+            h_ctrl: List[q_mat.OperatorMatrix],
+            tau: np.array,
+            h_noise: List[q_mat.OperatorMatrix],
+            noise_trace_generator: noise.NoiseTraceGenerator,
+            initial_state: q_mat.OperatorMatrix = None,
+            ctrl_amps: Optional[np.array] = None,
+            calculate_unitary_derivatives: bool = False,
+            processes: Optional[int] = 1,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
+            filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_s_derivs: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
+            exponential_method: Optional[str] = None,
+            frechet_deriv_approx_method: Optional[str] = None,
+            initial_diss_super_op: List[q_mat.OperatorMatrix] = None,
+            lindblad_operators: List[q_mat.OperatorMatrix] = None,
+            prefactor_function: Callable[[np.array, np.array], np.array] = None,
+            prefactor_derivative_function:
+            Callable[[np.array, np.array], np.array] = None,
+            super_operator_function:
+            Callable[[np.array, np.array], List[q_mat.OperatorMatrix]] = None,
+            super_operator_derivative_function:
+            Callable[[np.array, np.array],
+                     List[List[q_mat.OperatorMatrix]]] = None,
+            is_skew_hermitian: bool = False,
+            transfer_function: Optional[TransferFunction] = None,
+            amplitude_function: Optional[AmplitudeFunction] = None,
+            noise_amplitude_function: Optional[Callable[
+                [np.array, np.array, np.array,
+                 np.array], np.array]] = None) \
+            -> None:
+
+        super().__init__(
+            h_drift=h_drift,
+            h_ctrl=h_ctrl,
+            tau=tau,
+            initial_state=initial_state,
+            ctrl_amps=ctrl_amps,
+            calculate_unitary_derivatives=calculate_unitary_derivatives,
+            filter_function_h_n=filter_function_h_n,
+            filter_function_basis=filter_function_basis,
+            filter_function_s_derivs=filter_function_s_derivs,
+            exponential_method=exponential_method,
+            frechet_deriv_approx_method=frechet_deriv_approx_method,
+            initial_diss_super_op=initial_diss_super_op,
+            lindblad_operators=lindblad_operators,
+            prefactor_function=prefactor_function,
+            prefactor_derivative_function=prefactor_derivative_function,
+            super_operator_function=super_operator_function,
+            super_operator_derivative_function=
+            super_operator_derivative_function,
+            is_skew_hermitian=is_skew_hermitian,
+            transfer_function=transfer_function,
+            amplitude_function=amplitude_function)
+
+        self.h_noise = h_noise
+        self.noise_trace_generator = noise_trace_generator
+        self.noise_amplitude_function = noise_amplitude_function
+        self.processes = processes
+
+        self._dyn_gen_noise = None
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+
+        self._diss_sup_op_noise = None
+        self._diss_sup_op_deriv_noise = None
+
+    def set_optimization_parameters(self, y: np.array) -> None:
+        """See base class. """
+        if not np.array_equal(self._opt_pars, y):
+            self.reset_cached_propagators()
+        super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        super().reset_cached_propagators()
+        self._dyn_gen_noise = None
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+
+        self._diss_sup_op_noise = None
+        self._diss_sup_op_deriv_noise = None
+
+    def _compute_dyn_gen_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Computes the dynamics generators for the perturbed and unperturbed
+        Schroedinger equation.
+
+        Returns
+        -------
+        dyn_gen_noise: List[List[q_mat.ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+            Dynamics generators for each noise trace.
+
+        """
+        # compute the generators of the unperturbed dynamics
+        self._dyn_gen = super()._compute_dyn_gen()
+
+        # compute the generators for the noise traces.
+        n_noise_traces = self.noise_trace_generator.n_traces
+
+        noise_samples = self.noise_trace_generator.noise_samples
+        # we transpose, so we iterate over the time last
+        noise_samples = np.transpose(noise_samples, (2, 1, 0))
+
+        if self.noise_amplitude_function:
+            noise_samples = self.noise_amplitude_function(
+                noise_samples=noise_samples,
+                optimization_parameters=self._opt_pars,
+                transferred_parameters=self.transferred_parameters,
+                control_amplitudes=self._ctrl_amps
+            )
+
+        self._dyn_gen_noise = [[dyn_gen.copy() for dyn_gen in self._dyn_gen]
+                               for _ in range(n_noise_traces)]
+
+        for t, sample_stack in enumerate(noise_samples):
+            for n_trace, trace in enumerate(sample_stack):
+                for operator_sample, operator in zip(trace, self.h_noise):
+                    self._dyn_gen_noise[n_trace][t] += \
+                        (-1j * operator_sample) * operator
+        return self._dyn_gen_noise
+
+    def _compute_propagation(
+            self, calculate_propagator_derivatives: Optional[bool] = None
+    ) -> None:
+        """
+        Computes the propagators for the perturbed Schroedinger equation and
+        the derivatives on demand.
+
+        Parameters
+        ----------
+        calculate_propagator_derivatives: bool, optional
+            Calculate the derivatives of the propagators with respect to the
+            control amplitudes if true.
+
+        """
+
+        if self._dyn_gen_noise is None:
+            self._dyn_gen_noise = self._compute_dyn_gen_noise()
+
+        n_noise_traces = self.noise_trace_generator.n_traces
+        num_t = len(self.transferred_time)
+        num_ctrl = len(self.h_ctrl)
+
+        self._prop_noise = [[None for _ in range(num_t)]
+                            for _2 in range(n_noise_traces)]
+
+        if calculate_propagator_derivatives is None:
+            calculate_propagator_derivatives = \
+                self.calculate_propagator_derivatives
+
+        # parallelization of following code probably unnecessary
+        if calculate_propagator_derivatives:
+            self._derivative_prop_noise = \
+                [[[None for _ in range(num_t)]
+                  for _2 in range(num_ctrl)]
+                 for _3 in range(n_noise_traces)]
+            derivative_directions = self._compute_derivative_directions()
+
+        # call the parent method for the noiseless propagators
+        super()._compute_propagation(
+            calculate_propagator_derivatives=calculate_propagator_derivatives)
+
+        if self.processes == 1:
+            if calculate_propagator_derivatives:
+                for k in range(n_noise_traces):
+                    for t in range(num_t):
+                        for ctrl in range(len(self.h_ctrl)):
+                            self._prop_noise[k][t], \
+                                self._derivative_prop_noise[k][ctrl][t] \
+                                = self._dyn_gen_noise[k][t].dexp(
+                                derivative_directions[t][ctrl],
+                                self.transferred_time[t],
+                                compute_expm=True,
+                                method=self.exponential_method,
+                                is_skew_hermitian=self._is_skew_hermitian)
+            else:
+                for k in range(n_noise_traces):
+                    for t in range(num_t):
+                        self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
+                            tau=self.transferred_time[t],
+                            method=self.exponential_method,
+                            is_skew_hermitian=self._is_skew_hermitian)
+
+        elif (type(self.processes) == int and self.processes > 0) \
+                or self.processes is None:
+
+            if calculate_propagator_derivatives:
+                raise NotImplementedError
+            else:
+                input_dicts = []
+                for k in range(n_noise_traces):
+                    input_dicts.append(dict())
+                    input_dicts[-1]['time'] = self.transferred_time
+                    input_dicts[-1]['matrices'] = self._dyn_gen_noise[k]
+                    input_dicts[-1]['method'] = self.exponential_method
+                    input_dicts[-1][
+                        'is_skew_hermitian'] = self._is_skew_hermitian
+
+                with Pool(processes=self.processes) as pool:
+                    self._prop_noise = pool.map(
+                        _compute_matrix_exponentials, input_dicts)
+
+        else:
+            raise ValueError('Invalid number of processes for parallel '
+                             'computation!')
+
+    def _compute_forward_propagation(self) -> None:
+        """Computes the forward propagators. """
+        super()._compute_forward_propagation()
+        if self._prop_noise is None:
+            self._compute_propagation()
+
+        self._fwd_prop_noise = [
+            [self.initial_state.copy(), ]
+            for _ in range(self.noise_trace_generator.n_traces)]
+
+        for fwd_per_trace, prop_per_trace in zip(self._fwd_prop_noise,
+                                                 self._prop_noise):
+            for prop in prop_per_trace:
+                fwd_per_trace.append(prop * fwd_per_trace[-1])
+
+    def _compute_reversed_propagation(self) -> None:
+        """Compute the reversed propagation. For the perturbed and unperturbed
+        Schroedinger equation. """
+        super()._compute_reversed_propagation()
+        if self._prop_noise is None:
+            self._compute_propagation()
+
+        self._reversed_prop_noise = [
+            [self._prop[0].identity_like(), ]
+            for _ in range(self.noise_trace_generator.n_traces)]
+
+        for rev_per_trace, prop_per_trace in zip(self._reversed_prop_noise,
+                                                 self._prop_noise):
+            for prop in prop_per_trace[::-1]:
+                rev_per_trace.append(rev_per_trace[-1] * prop)
+
+    def _compute_propagation_derivatives(self) -> None:
+        """
+        Computes the frechet derivatives of the propagators.
+
+        The derivatives are not returned but cached. Since the function is only
+        called when no derivatives are cached, the approximation is
+        prioritised.
+        """
+        if not self.frechet_deriv_approx_method:
+            self._compute_propagation(calculate_propagator_derivatives=True)
+        elif self.frechet_deriv_approx_method == 'grape':
+            super()._compute_propagation_derivatives()
+
+            if self._prop_noise is None:
+                self._compute_propagation(
+                    calculate_propagator_derivatives=False)
+
+            n_noise_traces = self.noise_trace_generator.n_traces
+            num_t = len(self.transferred_time)
+            num_ctrl = len(self.h_ctrl)
+
+            self._derivative_prop_noise = [
+                [[None for _ in range(num_t)]
+                 for _2 in range(num_ctrl)]
+                for _3 in range(n_noise_traces)]
+
+            derivative_directions = self._compute_derivative_directions()
+
+            for k in range(n_noise_traces):
+                for t in range(len(self.transferred_time)):
+                    for ctrl in range(num_ctrl):
+                        self._derivative_prop_noise[k][ctrl][t] = \
+                            self.transferred_time[t] * derivative_directions[t][ctrl] \
+                            * self._prop_noise[k][t]
+        else:
+            raise ValueError('Unknown gradient derivative approximation '
+                             'method:'
+                             + str(self.frechet_deriv_approx_method))
+
+
+class MonteCarloSolver(Solver):
+
+    def __init__(self, solver):
+        self.solver = solver
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+
+    def set_times(self, tau):
+        """ See base class. """
+        self.solver.set_times(tau)
+
+    def set_optimization_parameters(self, y: np.array) -> None:
+        """ See base class. """
+        self.solver.set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """ See base class. """
+        self.solver.reset_cached_propagators()
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+
+    def consistency_checks(self, paranoia_level: int):
+        """ See base class. """
+        self.solver.consistency_checks(paranoia_level)
+
+    @property
+    def propagators(self) -> List[q_mat.OperatorMatrix]:
+        """ See base class. """
+        return self.solver.propagators
+
+    @property
+    def forward_propagators(self) -> List[q_mat.OperatorMatrix]:
+        """ See base class. """
+        return self.solver.forward_propagators
+
+    @property
+    def frechet_deriv_propagators(self) -> List[List[q_mat.OperatorMatrix]]:
+        """ See base class. """
+        return self.solver.frechet_deriv_propagators
+
+    @property
+    def reversed_propagators(self) -> List[q_mat.OperatorMatrix]:
+        """ See base class. """
+        return self.solver.reversed_propagators
+
+    @property
+    def filter_function_s_derivs_vals(self) -> Optional[np.ndarray]:
+        """ See base class. """
+        return self.solver.filter_function_s_derivs_vals
+
+    @property
+    def create_ff_h_n(self) -> list:
+        """ See base class. """
+        return self.solver.create_ff_h_n()
+
+    def _compute_propagation(self) -> None:
+        """ See base class. """
+        self.solver._compute_propagation()
+
+    def create_pulse_sequence(
+            self, new_amps: Optional[np.array] = None,
+            ff_basis: Optional[basis.Basis] = None
+    ) -> pulse_sequence:
+        """ See base class. """
+        return  self.solver.create_pulse_sequence(new_amps, ff_basis)
+
+    def plot_bloch_sphere(
+            self, new_amps=None, return_Bloch: bool=False) -> None:
+        """ See base class. """
+        self.solver.plot_bloch_sphere(new_amps, return_Bloch)
+
+    @property
+    def propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Returns the propagators of the system for each noise trace and
+        calculates them if necessary.
+
+        Returns
+        -------
+        propagators_noise: List[List[ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+            Propagators of the system for each noise trace.
+
+        """
+        if self._prop_noise is None:
+            self._compute_propagation()
+        return self._prop_noise
+
+    @property
+    def forward_propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Returns the forward propagation of the initial state for every time
+        slice and every noise trace and calculate it if necessary. If the
+        initial state is the identity matrix, then the cumulative propagators
+        are given. The element forward_propagators[k][i] propagates a state by
+        the first i time steps under the kth noise trace, if the initial state
+        is the identity matrix.
+
+        Returns
+        -------
+        forward_propagation:List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+            Propagation of the initial state of the system. fwd[0] gives the
+            initial state itself.
+
+        """
+        if self._fwd_prop_noise is None:
+            self._compute_forward_propagation()
+        return self._fwd_prop_noise
+
+    @property
+    def frechet_deriv_propagators_noise(self) \
+            -> List[List[List[q_mat.OperatorMatrix]]]:
+        """
+        Returns the frechet derivatives of the propagators with respect to the
+        control amplitudes for each noise trace.
+
+        Returns
+        -------
+        derivative_prop_noise: List[List[List[ControlMatrix]]],
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
+            Frechet derivatives of the propagators by the control amplitudes.
+
+        """
+        if self._derivative_prop_noise is None:
+            self._compute_propagation_derivatives()
+        return self._derivative_prop_noise
+
+    @property
+    def reversed_propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Returns the reversed propagation of the initial state for every noise
+        trace and calculate it if necessary. If the initial state is the
+        identity matrix, then the reversed cumulative propagators are given.
+        The element forward_propagators[k][i] propagates a state by the first i
+        time steps under the kth noise trace, if the initial state is the
+        identity matrix.
+
+        Returns
+        -------
+        reversed_propagation_noise: List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+            Propagation of the initial state of the system. reversed[k][0]
+            gives the initial state itself.
+
+        """
+        if self._reversed_prop_noise is None:
+            self._compute_reversed_propagation()
+        return self._reversed_prop_noise
