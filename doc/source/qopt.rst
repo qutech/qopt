@@ -1,10 +1,7 @@
-qopt package
+qopt API Documentation
 =========================
 
-Submodules
-----------
-
-qopt.amplitude\_function module
+amplitude\_function module
 ---------------------------------
 
 .. automodule:: qopt.amplitude_functions
@@ -12,7 +9,7 @@ qopt.amplitude\_function module
    :undoc-members:
    :show-inheritance:
 
-qopt.analyser module
+analyser module
 ------------------------------
 
 .. automodule:: qopt.analyser
@@ -20,7 +17,7 @@ qopt.analyser module
    :undoc-members:
    :show-inheritance:
 
-qopt.cost\_functions module
+cost\_functions module
 --------------------------------
 
 .. automodule:: qopt.cost_functions
@@ -28,7 +25,7 @@ qopt.cost\_functions module
    :undoc-members:
    :show-inheritance:
 
-qopt.data\_container module
+data\_container module
 ---------------------------------
 
 .. automodule:: qopt.data_container
@@ -36,7 +33,7 @@ qopt.data\_container module
    :undoc-members:
    :show-inheritance:
 
-qopt.energy\_spectrum module
+energy\_spectrum module
 ----------------------------------------
 
 .. automodule:: qopt.energy_spectrum
@@ -44,7 +41,7 @@ qopt.energy\_spectrum module
    :undoc-members:
    :show-inheritance:
 
-qopt.matrix module
+matrix module
 ------------------------------
 
 .. automodule:: qopt.matrix
@@ -52,7 +49,7 @@ qopt.matrix module
    :undoc-members:
    :show-inheritance:
 
-qopt.noise module
+noise module
 ------------------------------
 
 .. automodule:: qopt.noise
@@ -60,7 +57,7 @@ qopt.noise module
    :undoc-members:
    :show-inheritance:
 
-qopt.optimization\_data module
+optimization\_data module
 ------------------------------
 
 .. automodule:: qopt.optimization_data
@@ -68,7 +65,7 @@ qopt.optimization\_data module
    :undoc-members:
    :show-inheritance:
 
-qopt.optimize module
+optimize module
 ------------------------------
 
 .. automodule:: qopt.optimize
@@ -84,7 +81,7 @@ qopt.performance\_statistics module
    :undoc-members:
    :show-inheritance:
 
-qopt.simulator module
+simulator module
 ------------------------------
 
 .. automodule:: qopt.simulator
@@ -92,7 +89,7 @@ qopt.simulator module
    :undoc-members:
    :show-inheritance:
 
-qopt.solver\_algorithms module
+solver\_algorithms module
 ------------------------------
 
 .. automodule:: qopt.solver_algorithms
@@ -100,7 +97,7 @@ qopt.solver\_algorithms module
    :undoc-members:
    :show-inheritance:
 
-qopt.transfer\_function module
+transfer\_function module
 ------------------------------
 
 .. automodule:: qopt.transfer_function
@@ -108,7 +105,7 @@ qopt.transfer\_function module
    :undoc-members:
    :show-inheritance:
 
-qopt.util module
+util module
 -----------------------------
 
 .. automodule:: qopt.util

@@ -11,7 +11,10 @@ qopt
    :numbered:
    :caption: Contents:
 
-Welcome to qopt.
+Welcome to qopt. In this documentation you will find everything you need to
+know about qopt to simulate qubits and apply optimal control techniques. You
+can find the source code and install instructions on
+https://github.com/qutech/qopt.
 
 
 Documentation
@@ -21,8 +24,9 @@ Documentation
    :maxdepth: 2
    :numbered:
 
+   qopt_features/qopt_features
    examples/examples
-   qsim API Documentation <qopt>
+   qopt API Documentation <qopt>
 
 
 
