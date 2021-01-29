@@ -475,14 +475,19 @@ class NTGColoredNoise(NoiseTraceGenerator):
         Number of noise operators. Default is 1.
 
     always_redraw_samples: bool
-        If true. The samples are always redrawn upon request. The stored samples
-        are not returned.
+        If true. The samples are always redrawn upon request. The stored
+        samples are not returned.
 
     noise_spectral_density: function
         The one-sided noise spectral density as function of frequency.
 
     dt: float
         Time distance between two adjacent samples.
+
+    low_frequency_extension_ratio: int, optional
+        When creating the time samples, the total time is multiplied with this
+        factor. This allows taking frequencies into account which are lower
+        than 1 / total time. Defaults to 1.
 
     Attributes
     ----------
@@ -518,6 +523,9 @@ class NTGColoredNoise(NoiseTraceGenerator):
                          always_redraw_samples=always_redraw_samples)
         self.noise_spectral_density = noise_spectral_density
         self.dt = dt
+        if low_frequency_extension_ratio < 1:
+            raise ValueError("The low frequency extension ratio must be "
+                             "greater or equal to 1.")
         self.low_frequency_extension_ratio = low_frequency_extension_ratio
         if hasattr(dt, "__len__"):
             raise ValueError('dt is supposed to be a scalar value!')
