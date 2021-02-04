@@ -755,6 +755,7 @@ class StateInfidelity(CostFunction):
     TODO:
         * support super operator formalism
         * handle leakage states?
+        * Docstring
     """
     def __init__(self,
                  solver: solver_algorithms.Solver,
@@ -798,6 +799,75 @@ class StateInfidelity(CostFunction):
             rescale_propagated_state=self.rescale_propagated_state
         )
         return -1. * np.real(derivative_fid)
+
+
+class StateNoiseInfidelity(CostFunction):
+    """ Averages the state infidelity over noise traces.
+
+    TODO:
+        * support super operator formalism
+        * implement gradient
+        * docstring
+    """
+    def __init__(self,
+                 solver: solver_algorithms.SchroedingerSMonteCarlo,
+                 target: matrix.OperatorMatrix,
+                 index: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 rescale_propagated_state: bool = False,
+                 neglect_systematic_errors: bool = True
+                 ):
+        if index is None:
+            index = ['State Infidelity', ]
+        super().__init__(solver=solver, index=index)
+        self.solver = solver
+
+        # assure target is a bra vector
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+
+        self.computational_states = computational_states
+        self.rescale_propagated_state = rescale_propagated_state
+
+        self.neglect_systematic_errors = neglect_systematic_errors
+        if target is None and not neglect_systematic_errors:
+            print('The systematic errors must be neglected if no target is '
+                  'set!')
+            self.neglect_systematic_errors = True
+
+    def costs(self) -> np.float64:
+        """See base class. """
+        n_traces = self.solver.noise_trace_generator.n_traces
+        infidelities = np.zeros((n_traces,))
+
+        if self.neglect_systematic_errors:
+            if self.computational_states is None:
+                target = self.solver.forward_propagators[-1]
+            else:
+                target = self.solver.forward_propagators[
+                    -1].truncate_to_subspace(
+                    self.computational_states,
+                    map_to_closest_unitary=self.rescale_propagated_state
+                )
+            target = target.dag()
+        else:
+            target = self.target
+
+        for i in range(n_traces):
+            final = self.solver.forward_propagators_noise[i][-1]
+            infidelities[i] = 1. - state_fidelity(
+                target=target,
+                propagated_state=final,
+                computational_states=self.computational_states,
+                rescale_propagated_state=self.rescale_propagated_state
+            )
+        return np.mean(infidelities)
+
+    def grad(self) -> np.ndarray:
+        """See base class. """
+        raise NotImplementedError
 
 
 class OperationInfidelity(CostFunction):
@@ -1205,10 +1275,11 @@ class LeakageError(CostFunction):
         final_prop = self.solver.forward_propagators[-1]
         clipped_prop = final_prop.truncate_to_subspace(
             self.computational_states)
-        temp = clipped_prop.dag(copy_=True)
+        temp = clipped_prop.dag(do_copy=True)
         temp *= clipped_prop
 
-        return 1 - temp.tr().real / clipped_prop.shape[0]
+        # the result should always be positive within numerical accuracy
+        return max(0, 1 - temp.tr().real / clipped_prop.shape[0])
 
     def grad(self):
         """See base class. """
@@ -1254,13 +1325,16 @@ class IncoherentLeakageError(CostFunction):
     index: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
+    TODO:
+        * adjust docstring
+
     """
 
     def __init__(self, solver: solver_algorithms.SchroedingerSMonteCarlo,
                  computational_states: List[int],
                  index: Optional[List[str]] = None):
         if index is None:
-            index = ["Leakage Error", ]
+            index = ["Incoherent Leakage Error", ]
         super().__init__(solver=solver, index=index)
         self.solver = solver
         self.computational_states = computational_states
@@ -1276,7 +1350,7 @@ class IncoherentLeakageError(CostFunction):
             for prop in final_props
         ]
         temp = [
-            c_prop.dag(copy_=True) * c_prop
+            c_prop.dag(do_copy=True) * c_prop
             for c_prop in clipped_props
         ]
         result = [

@@ -30,7 +30,8 @@ from .analyser import Analyser
 from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
     OperationNoiseInfidelity, OperatorFilterFunctionInfidelity, LeakageError, \
     state_fidelity, angle_axis_representation, entanglement_fidelity, \
-    entanglement_fidelity_super_operator
+    entanglement_fidelity_super_operator, StateInfidelity, \
+    StateNoiseInfidelity, IncoherentLeakageError
 from .data_container import DataContainer
 from .energy_spectrum import plot_energy_spectrum
 from .matrix import DenseOperator, convert_unitary_to_super_operator, \
@@ -51,9 +52,9 @@ __all__ = [
     'IdentityAmpFunc', 'UnaryAnalyticAmpFunc', 'CustomAmpFunc', 'Analyser',
     'OperatorMatrixNorm', 'OperationInfidelity', 'OperationNoiseInfidelity',
     'OperatorFilterFunctionInfidelity', 'LeakageError', 'state_fidelity',
-    'angle_axis_representation', 'entanglement_fidelity',
+    'angle_axis_representation', 'entanglement_fidelity', 'StateInfidelity',
     'entanglement_fidelity_super_operator', 'DataContainer',
-    'plot_energy_spectrum', 'DenseOperator',
+    'plot_energy_spectrum', 'DenseOperator', 'StateNoiseInfidelity',
     'convert_unitary_to_super_operator', 'closest_unitary', 'NTGColoredNoise',
     'NTGQuasiStatic', 'OptimizationResult', 'OptimizationSummary',
     'LeastSquaresOptimizer', 'ScalarMinimizingOptimizer',
@@ -62,7 +63,7 @@ __all__ = [
     'LindbladSControlNoise', 'IdentityTF', 'OversamplingTF',
     'GaussianConvolution', 'OversamplingMTF', 'ConcatenateMTF',
     'ConcatenateTF', 'ParallelTF', 'ParallelMTF', 'CustomMTF',
-    'ExponentialMTF',
+    'ExponentialMTF', 'IncoherentLeakageError',
     'run_optimization_parallel'
 ]
 
