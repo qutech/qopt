@@ -1073,6 +1073,7 @@ class OperationNoiseInfidelity(CostFunction):
             print('The systematic errors must be neglected if no target is '
                   'set!')
             self.neglect_systematic_errors = True
+    
     def _to_comp_space(self, dynamic_target):
         """Map an operator to the computational space"""
         if self.computational_states is not None:
@@ -1184,18 +1185,21 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             index = ['Infidelity Filter Function', ]
         super().__init__(solver=solver, index=index)
         self.noise_power_spec_density = noise_power_spec_density
-        if omega is None:
+        self._omega = omega
+    
+    @property
+    def omega(self):
+        if self._omega is None:
             if self.solver.pulse_sequence is None:
                 self.solver.create_pulse_sequence()
 
-            self.omega = filter_functions.util.get_sample_frequencies(
+            self._omega = filter_functions.util.get_sample_frequencies(
                 pulse=self.solver.pulse_sequence,
                 n_samples=200,
                 spacing='log',
                 symmetric=False
             )
-        else:
-            self.omega = omega
+        return self._omega
 
     def costs(self) -> Union[float, np.ndarray]:
         """
