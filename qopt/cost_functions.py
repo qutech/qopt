@@ -1073,23 +1073,26 @@ class OperationNoiseInfidelity(CostFunction):
             print('The systematic errors must be neglected if no target is '
                   'set!')
             self.neglect_systematic_errors = True
+    def _to_comp_space(self, dynamic_target):
+        """Map an operator to the computational space"""
+        if self.computational_states is not None:
+            dynamic_target = dynamic_target.truncate_to_subspace(
+                subspace_indices=self.computational_states,
+                map_to_closest_unitary=self.map_to_closest_unitary,
+                )
+    
+    def _effective_target(self):
+        if self.neglect_systematic_errors:
+            return self._to_comp_space(self.solver.forward_propagators[-1])
+        else:
+            return self.target
 
     def costs(self):
         """See base class. """
         n_traces = self.solver.noise_trace_generator.n_traces
         infidelities = np.zeros((n_traces,))
 
-        if self.neglect_systematic_errors:
-            if self.computational_states is None:
-                target = self.solver.forward_propagators[-1]
-            else:
-                target = self.solver.forward_propagators[
-                    -1].truncate_to_subspace(
-                    self.computational_states,
-                    map_to_closest_unitary=self.map_to_closest_unitary
-                )
-        else:
-            target = self.target
+        target = self._effective_target()
 
         if self.fidelity_measure == 'entanglement':
             for i in range(n_traces):
@@ -1108,10 +1111,7 @@ class OperationNoiseInfidelity(CostFunction):
 
     def grad(self):
         """See base class. """
-        if self.neglect_systematic_errors:
-            target = self.solver.forward_propagators[-1]
-        else:
-            target = self.target
+        target = self._effective_target()
 
         n_traces = self.solver.noise_trace_generator.n_traces
         num_t = len(self.solver.transferred_time)
@@ -1127,8 +1127,10 @@ class OperationNoiseInfidelity(CostFunction):
                 computational_states=self.computational_states
                 )
             if self.neglect_systematic_errors:
+                temp_target = self._to_comp_space(self.solver.forward_propagators_noise[i][-1])
+                
                 temp += derivative_entanglement_fidelity_with_du(
-                    target=self.solver.forward_propagators_noise[i][-1],
+                    target=temp_target,
                     forward_propagators=self.solver.forward_propagators,
                     propagator_derivatives=
                     self.solver.frechet_deriv_propagators,
