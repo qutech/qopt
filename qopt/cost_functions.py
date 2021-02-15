@@ -1074,15 +1074,17 @@ class OperationNoiseInfidelity(CostFunction):
                   'set!')
             self.neglect_systematic_errors = True
     
-    def _to_comp_space(self, dynamic_target):
+    def _to_comp_space(self, dynamic_target: matrix.OperatorMatrix) -> matrix.OperatorMatrix:
         """Map an operator to the computational space"""
         if self.computational_states is not None:
-            dynamic_target = dynamic_target.truncate_to_subspace(
+            return dynamic_target.truncate_to_subspace(
                 subspace_indices=self.computational_states,
                 map_to_closest_unitary=self.map_to_closest_unitary,
                 )
+        else:
+            return dynamic_target
     
-    def _effective_target(self):
+    def _effective_target(self) -> matrix.OperatorMatrix:
         if self.neglect_systematic_errors:
             return self._to_comp_space(self.solver.forward_propagators[-1])
         else:
