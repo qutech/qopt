@@ -991,14 +991,16 @@ class OperationInfidelity(CostFunction):
                 forward_propagators=self.solver.forward_propagators,
                 target=self.target,
                 reversed_propagators=self.solver.reversed_propagators,
-                unitary_derivatives=self.solver.frechet_deriv_propagators
+                unitary_derivatives=self.solver.frechet_deriv_propagators,
+                computational_states=self.computational_states,
             )
         elif self.fidelity_measure == 'entanglement':
             derivative_fid = derivative_entanglement_fidelity_with_du(
                 forward_propagators=self.solver.forward_propagators,
                 target=self.target,
                 reversed_propagators=self.solver.reversed_propagators,
-                propagator_derivatives=self.solver.frechet_deriv_propagators
+                propagator_derivatives=self.solver.frechet_deriv_propagators,
+                computational_states=self.computational_states,
             )
         else:
             raise NotImplementedError('Only the average and entanglement'
