@@ -349,7 +349,7 @@ class LeastSquaresOptimizer(Optimizer):
         if self.use_jacobian_function:
             jac = super().cost_jacobian_wrapper
         else:
-            jac = None
+            jac = '2-point'
 
         try:
             result = scipy.optimize.least_squares(
