@@ -1186,7 +1186,6 @@ class CustomMTF(MatrixTF):
                 raise ValueError('Trying to set x_times, which do not fit the'
                                  'dimension of the transfer function.')
 
-
     def _calculate_transfer_matrix(self):
         """See base class. """
         if self._transfer_matrix is None:
@@ -1232,7 +1231,8 @@ class ExponentialMTF(MatrixTF):
         return self._transfer_matrix
 
     def __call__(self, y: np.ndarray) -> np.ndarray:
-        """See base class."""
+        """See base class.
+        Todo: can be eliminated"""
         if self._transfer_matrix is None:
             self._calculate_transfer_matrix()
         u = np.einsum('ijk,jk->ik', self._transfer_matrix, y)
