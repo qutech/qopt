@@ -149,12 +149,22 @@ class TransferFunction(ABC):
         Each time step of the optimization variables is sliced into a number
         of time steps of the control amplitudes.
 
-    bound_type: (code, number)
-        Control the number of time slice of padding before and after the
-        original time range. Let dt denote the first or respectively last time
-        duration of the optimization variables.
+    bound_type: (str, int)
+        The pulse can be padded with zeros (before adding the offset) to avoid
+        bleedthrough i.e. that the pulses overlap slightly and thereby
+        influence each other.
 
-        code:
+        The string states, whether you want to pad before or after the
+        oversampling or just to the end of the pulse.
+
+        The integer specifies the amount of padding elements (also depending on
+        the code of course).
+
+        If not all time steps have the same length:
+        Let dt denote the first (or respectively last) time duration when you
+        are padding to the beginning (end) of the sequence.
+
+        string options:
             "n": n extra slice of dt/overSampleRate
             "x": n extra slice of dt (default with n=1)
             "right_n": n extra slice of dt/overSampleRage on the right side
@@ -172,12 +182,22 @@ class TransferFunction(ABC):
         Each time step of the optimization variables is sliced into a number
         of time steps of the control amplitudes.
 
-    bound_type: (code, number)
-        Control the number of time slice of padding before and after the
-        original time range. Let dt denote the first or respectively last time
-        duration of the optimization variables.
+    bound_type: (str, int) or None
+        The pulse can be padded with zeros (before adding the offset) to avoid
+        bleedthrough i.e. that the pulses overlap slightly and thereby
+        influence each other.
 
-        code:
+        The string states, whether you want to pad before or after the
+        oversampling or just to the end of the pulse.
+
+        The integer specifies the amount of padding elements (also depending on
+        the code of course).
+
+        If not all time steps have the same length:
+        Let dt denote the first (or respectively last) time duration when you
+        are padding to the beginning (end) of the sequence.
+
+        string options:
             "n": n extra slice of dt/overSampleRate
             "x": n extra slice of dt (default with n=1)
             "right_n": n extra slice of dt/overSampleRage on the right side
@@ -479,17 +499,24 @@ class OversamplingTF(TransferFunction):
     """ Handles oversampling and boundaries without transfer matrix.
 
     This function is destined to be used for the oversampling and the boundary
-    functions for all transfer functions which do not compute a transfer matrix.
+    functions for all transfer functions which do not compute a transfer
+    matrix.
 
     See Also
     --------
     Base Class
 
     """
-    @property
-    def transfer_matrix(self) -> np.array:
-        """Overrides the base class method. """
-        raise NotImplementedError
+    def __init__(self,
+                 num_ctrls: int = 1,
+                 bound_type: Optional[Tuple[str, int]] = None,
+                 oversampling: int = 1
+                 ):
+        super().__init__(
+            num_ctrls=num_ctrls,
+            bound_type=bound_type,
+            oversampling=oversampling
+        )
 
     def _calculate_transfer_matrix(self):
         """Overrides the base class method. """
@@ -498,8 +525,7 @@ class OversamplingTF(TransferFunction):
     def __call__(self, y: np.array) -> np.array:
         """Calculate the transferred optimization parameters (x).
 
-        Oversampling and boundary conditions applied without generating a
-        transfer function.
+        Only the oversampling and boundaries are taken into account.
 
         Parameters
         ----------
