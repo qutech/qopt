@@ -849,10 +849,10 @@ class DenseOperator(OperatorMatrix):
 
         """
         if is_skew_hermitian:
-            eig_val, eig_vec = la.eigh(-1j * self.data)
+            eig_val, eig_vec = np.linalg.eigh(-1j * self.data)
             eig_val = 1j * eig_val
         else:
-            eig_val, eig_vec = la.eig(self.data)
+            eig_val, eig_vec = np.linalg.eig(self.data)
 
         # apply the exponential function to the eigenvalues and invert the
         # diagonalization transformation
@@ -895,10 +895,10 @@ class DenseOperator(OperatorMatrix):
 
         """
         if is_skew_hermitian:
-            eig_val, eig_vec = la.eigh(-1j * self.data)
+            eig_val, eig_vec = np.linalg.eigh(-1j * self.data)
             eig_val = 1j * eig_val
         else:
-            eig_val, eig_vec = la.eig(self.data)
+            eig_val, eig_vec = np.linalg.eig(self.data)
 
         eig_vec_dag = eig_vec.conj().T
 
