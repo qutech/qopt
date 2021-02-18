@@ -261,14 +261,14 @@ entanglement_infid_xy = OperationInfidelity(
     solver=solver_qs_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity XY-Control']
+    label=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
     solver=solver_qs_noise_xy,
     target=y_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity QS-Noise XY-Control'],
+    label=['Entanglement Fidelity QS-Noise XY-Control'],
     neglect_systematic_errors=True
 )
 
@@ -276,14 +276,14 @@ entanglement_infid_xy_spectral = OperationInfidelity(
     solver=solver_qs_noise_xy_spectral,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity XY-Control']
+    label=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy_spectral = OperationNoiseInfidelity(
     solver=solver_qs_noise_xy_spectral,
     target=y_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity QS-Noise XY-Control'],
+    label=['Entanglement Fidelity QS-Noise XY-Control'],
     neglect_systematic_errors=True
 )
 
@@ -291,7 +291,7 @@ entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
     solver=solver_colored_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity 1-over-f-Noise XY-Control'],
+    label=['Entanglement Fidelity 1-over-f-Noise XY-Control'],
     neglect_systematic_errors=True
 )
 
@@ -300,7 +300,7 @@ entanglement_infid_phase_control = OperationInfidelity(
     solver=solver_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity Phase Control']
+    label=['Entanglement Fidelity Phase Control']
 )
 
 
@@ -309,7 +309,7 @@ entanglement_infid_qs_noise_phase_control = OperationNoiseInfidelity(
     solver=solver_qs_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity QS-Noise Phase Control'],
+    label=['Entanglement Fidelity QS-Noise Phase Control'],
     neglect_systematic_errors=True
 )
 
@@ -319,7 +319,7 @@ entanglement_infid_colored_noise_phase_control = OperationNoiseInfidelity(
     solver=solver_colored_noise_phase_control,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity 1-over-f-Noise Phase Control'],
+    label=['Entanglement Fidelity 1-over-f-Noise Phase Control'],
     neglect_systematic_errors=True
 )
 
@@ -399,7 +399,7 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
         solver=time_slot_comp_qs_noise_pc_discrete,
         target=x_half,
         fidelity_measure='entanglement',
-        index=['Entanglement Fidelity QS-Noise Phase Control'],
+        label=['Entanglement Fidelity QS-Noise Phase Control'],
         neglect_systematic_errors=True
     )
 
@@ -407,7 +407,7 @@ def create_discrete_classes(n_bit_ph: int, n_bit_amp: int):
         solver=ts_comp_unperturbed_pc_discrete,
         target=x_half,
         fidelity_measure='entanglement',
-        index=['Entanglement Fidelity Phase Control']
+        label=['Entanglement Fidelity Phase Control']
     )
 
     return [ts_comp_unperturbed_pc_discrete,

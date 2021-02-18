@@ -106,17 +106,17 @@ class CostFunction(ABC):
     solver : `Solver`
         Object that compute the forward/backward evolution and propagator.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
-                 index: Optional[List[str]] = None):
+                 label: Optional[List[str]] = None):
         self.solver = solver
-        if index is None:
-            self.index = ["Unspecified Cost Function"]
+        if label is None:
+            self.label = ["Unspecified Cost Function"]
         else:
-            self.index = index
+            self.label = label
 
     @abstractmethod
     def costs(self) -> Union[float, np.ndarray]:
@@ -246,25 +246,25 @@ class OperatorMatrixNorm(CostFunction):
     @needs_refactoring
     def __init__(self, solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix, mode: str = 'scalar',
-                 index: Optional[List[str]] = None):
+                 label: Optional[List[str]] = None):
         super().__init__()
         self.solver = solver
         self.target = target
         self.mode = mode
-        if index is not None:
-            self.index = index
+        if label is not None:
+            self.label = label
         elif mode == 'scalar':
-            self.index = ['Matrix Norm Distance']
+            self.label = ['Matrix Norm Distance']
         elif mode == 'vector':
             dim = target.shape[0]
-            self.index = ['redu' + str(i) + str(j)
+            self.label = ['redu' + str(i) + str(j)
                           for i in range(1, dim + 1)
                           for j in range(1, dim + 1)] + [
                              'imdu' + str(i) + str(j)
                              for i in range(1, dim + 1)
                              for j in range(1, dim + 1)]
         elif mode == 'rotation_axis':
-            self.index = ['n1 * phi', 'n2', 'n3']
+            self.label = ['n1 * phi', 'n2', 'n3']
         else:
             raise ValueError('Unknown fidelity computer mode: ' + str(mode)
                              + ' \n possible modes are: "scalar", "vector" '
@@ -760,13 +760,13 @@ class StateInfidelity(CostFunction):
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
                  rescale_propagated_state: bool = False
                  ):
-        if index is None:
-            index = ['State Infidelity', ]
-        super().__init__(solver=solver, index=index)
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
         # assure target is a bra vector
 
         if target.shape[0] > target.shape[1]:
@@ -812,14 +812,14 @@ class StateNoiseInfidelity(CostFunction):
     def __init__(self,
                  solver: solver_algorithms.SchroedingerSMonteCarlo,
                  target: matrix.OperatorMatrix,
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
                  rescale_propagated_state: bool = False,
                  neglect_systematic_errors: bool = True
                  ):
-        if index is None:
-            index = ['State Infidelity', ]
-        super().__init__(solver=solver, index=index)
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
         self.solver = solver
 
         # assure target is a bra vector
@@ -884,7 +884,7 @@ class OperationInfidelity(CostFunction):
     target: `ControlMatrix`
         Unitary target evolution.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     fidelity_measure: string, optional
@@ -938,17 +938,17 @@ class OperationInfidelity(CostFunction):
                  target: matrix.OperatorMatrix,
                  fidelity_measure: str = 'entanglement',
                  super_operator_formalism: bool = False,
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False
                  ):
-        if index is None:
+        if label is None:
             if fidelity_measure == 'entanglement':
-                index = ['Entanglement Infidelity', ]
+                label = ['Entanglement Infidelity', ]
             else:
-                index = ['Operator Infidelity', ]
+                label = ['Operator Infidelity', ]
 
-        super().__init__(solver=solver, index=index)
+        super().__init__(solver=solver, label=label)
         self.target = target
         self.computational_states = computational_states
         self.map_to_closest_unitary = map_to_closest_unitary
@@ -1021,7 +1021,7 @@ class OperationNoiseInfidelity(CostFunction):
     target: `ControlMatrix`
         Unitary target evolution.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     fidelity_measure: string, optional
@@ -1053,14 +1053,14 @@ class OperationNoiseInfidelity(CostFunction):
     def __init__(self,
                  solver: solver_algorithms.SchroedingerSMonteCarlo,
                  target: Optional[matrix.OperatorMatrix],
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  fidelity_measure: str = 'entanglement',
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False,
                  neglect_systematic_errors: bool = True):
-        if index is None:
-            index = ['Operator Noise Infidelity']
-        super().__init__(solver=solver, index=index)
+        if label is None:
+            label = ['Operator Noise Infidelity']
+        super().__init__(solver=solver, label=label)
         self.solver = solver
         self.target = target
 
@@ -1153,7 +1153,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
     solver: `Solver`
         The time slot computer simulating the systems dynamics.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     noise_power_spec_density: Union[Sequence[float], Callable]
@@ -1182,10 +1182,10 @@ class OperatorFilterFunctionInfidelity(CostFunction):
                  noise_power_spec_density: Union[Sequence[float], Callable],
                  omega: Union[
                      Sequence[float], Dict[str, Union[int, str]], None],
-                 index: Optional[List[str]] = None):
-        if index is None:
-            index = ['Infidelity Filter Function', ]
-        super().__init__(solver=solver, index=index)
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ['Infidelity Filter Function', ]
+        super().__init__(solver=solver, label=label)
         self.noise_power_spec_density = noise_power_spec_density
         self._omega = omega
     
@@ -1268,16 +1268,16 @@ class LeakageError(CostFunction):
         List of indices marking the computational states of the propagator.
         These are all but the leakage states.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
                  computational_states: List[int],
-                 index: Optional[List[str]] = None):
-        if index is None:
-            index = ["Leakage Error", ]
-        super().__init__(solver=solver, index=index)
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ["Leakage Error", ]
+        super().__init__(solver=solver, label=label)
         self.computational_states = computational_states
 
     def costs(self):
@@ -1332,7 +1332,7 @@ class IncoherentLeakageError(CostFunction):
         List of indices marking the computational states of the propagator.
         These are all but the leakage states.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     TODO:
@@ -1342,10 +1342,10 @@ class IncoherentLeakageError(CostFunction):
 
     def __init__(self, solver: solver_algorithms.SchroedingerSMonteCarlo,
                  computational_states: List[int],
-                 index: Optional[List[str]] = None):
-        if index is None:
-            index = ["Incoherent Leakage Error", ]
-        super().__init__(solver=solver, index=index)
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ["Incoherent Leakage Error", ]
+        super().__init__(solver=solver, label=label)
         self.solver = solver
         self.computational_states = computational_states
 
