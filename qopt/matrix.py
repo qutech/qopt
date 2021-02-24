@@ -756,7 +756,7 @@ class DenseOperator(OperatorMatrix):
 
     def __repr__(self):
         """Representation as numpy array. """
-        return self.data.__repr__()
+        return 'DenseOperator with data: \n' + self.data.__repr__()
 
     def dag(self, do_copy: bool = True) -> Optional['DenseOperator']:
         """See base class. """
