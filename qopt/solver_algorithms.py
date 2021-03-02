@@ -658,7 +658,7 @@ class Solver(ABC):
         return self.pulse_sequence
 
     def plot_bloch_sphere(
-            self, new_amps=None, return_Bloch: bool=False) -> None:
+            self, new_amps=None, return_Bloch: bool = False) -> None:
         """
         Uses the pulse sequence to plot the systems evolution on the bloch
         sphere.
@@ -680,13 +680,9 @@ class Solver(ABC):
             Qutips Bloch object. Only returned if return_Bloch is set to True.
 
         """
-        if new_amps is not None:
-            self.set_optimization_parameters(new_amps)
-
-        if self.pulse_sequence is None:
-            self.create_pulse_sequence(new_amps=new_amps)
-
-        return plotting.plot_bloch_vector_evolution(self.pulse_sequence,
+        # Already takes care of updating and cleaning the PulseSequence object
+        pulse_sequence = self.create_pulse_sequence(new_amps=new_amps)
+        return plotting.plot_bloch_vector_evolution(pulse_sequence,
                                                     n_samples=500,
                                                     return_Bloch=return_Bloch)
 
