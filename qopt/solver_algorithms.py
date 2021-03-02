@@ -601,7 +601,7 @@ class Solver(ABC):
     def create_pulse_sequence(
             self, new_amps: Optional[np.array] = None,
             ff_basis: Optional[basis.Basis] = None
-    ) -> pulse_sequence:
+    ) -> pulse_sequence.PulseSequence:
         """
         Create a pulse sequence of the filter function package written by
         Tobias Hangleiter.
@@ -628,29 +628,32 @@ class Solver(ABC):
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
 
-        h_n = self.create_ff_h_n
-        h_c = []
-        for drift_operator in [self.h_drift[0], ]:
-            if type(drift_operator) == matrix.DenseOperator:
-                drift_operator = drift_operator.data
-            h_c += [[drift_operator, len(self.transferred_time) * [1], 'Drift'], ]
-        for i, control_operator in enumerate(self.h_ctrl):
-            h_c += [
-                [control_operator.data,
-                 self._ctrl_amps[:, i],
-                 'Control' + str(i)], ]
-
-        dt = self.transferred_time
-
         if ff_basis is not None:
-            self.pulse_sequence = pulse_sequence.PulseSequence(
-                h_c, h_n, dt, basis=ff_basis)
+            basis = ff_basis
         elif self.filter_function_basis is not None:
+            basis = self.filter_function_basis
 
-            self.pulse_sequence = pulse_sequence.PulseSequence(
-                h_c, h_n, dt, basis=self.filter_function_basis)
+        if self.pulse_sequence is None:
+            h_n = self.create_ff_h_n
+            h_c = list(zip(
+                self.h_drift,
+                np.ones((len(self.h_drift), len(self.transferred_time))),
+                [f'Drift{i}' for i in range(len(self.h_drift))]
+            ))
+            h_c += list(zip(
+                self.h_ctrl,
+                self._ctrl_amps.T,
+                [f'Control{i}' for i in range(len(self.h_ctrl))]
+            ))
+            dt = self.transferred_time
+
+            self.pulse_sequence = pulse_sequence.PulseSequence(h_c, h_n, dt,
+                                                               basis)
         else:
-            self.pulse_sequence = pulse_sequence.PulseSequence(h_c, h_n, dt)
+            self.pulse_sequence.cleanup('all')
+            self.pulse_sequence.c_coeffs = new_amps.T
+            if basis is not None:
+                self.pulse_sequence.basis = basis
 
         return self.pulse_sequence
 
