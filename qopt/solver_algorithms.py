@@ -632,6 +632,8 @@ class Solver(ABC):
             basis = ff_basis
         elif self.filter_function_basis is not None:
             basis = self.filter_function_basis
+        else:
+            basis = None
 
         if self.pulse_sequence is None:
             h_n = self.create_ff_h_n
