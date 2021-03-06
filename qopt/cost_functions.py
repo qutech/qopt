@@ -1207,7 +1207,9 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         infidelity = filter_functions.numeric.infidelity(
             pulse=self.solver.pulse_sequence,
             spectrum=self.noise_power_spec_density(self.omega),
-            omega=self.omega)
+            omega=self.omega,
+            cache_intermediates=True
+        )
         return infidelity
 
     def grad(self):
