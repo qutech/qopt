@@ -212,7 +212,8 @@ class Optimizer(ABC):
         return jacobian
 
     @abstractmethod
-    def run_optimization(self, initial_control_amplitudes: np.ndarray) \
+    def run_optimization(self, initial_control_amplitudes: np.ndarray,
+                         verbose) \
             -> optimization_data.OptimizationResult:
         """Runs the optimization of the control amplitudes.
 
@@ -220,6 +221,8 @@ class Optimizer(ABC):
         ----------
         initial_control_amplitudes : array
             shape (num_t, num_ctrl)
+        verbose
+            Verbosity of the run. Depends on which optimizer is used.
 
         Returns
         -------
@@ -339,8 +342,8 @@ class LeastSquaresOptimizer(Optimizer):
         self.method = method
         self.bounds = bounds
 
-    def run_optimization(self, initial_control_amplitudes: np.array) \
-            -> optimization_data.OptimizationResult:
+    def run_optimization(self, initial_control_amplitudes: np.array,
+                         verbose: int = 0) -> optimization_data.OptimizationResult:
         """See base class. """
         super().prepare_optimization(
             initial_optimization_parameters=initial_control_amplitudes)
@@ -360,7 +363,8 @@ class LeastSquaresOptimizer(Optimizer):
                 ftol=self.termination_conditions["min_cost_gain"],
                 xtol=self.termination_conditions["min_amplitude_change"],
                 gtol=self.termination_conditions["min_gradient_norm"],
-                max_nfev=self.termination_conditions["max_iterations"]
+                max_nfev=self.termination_conditions["max_iterations"],
+                verbose=verbose
             )
 
             if self.system_simulator.stats is not None:
@@ -440,9 +444,8 @@ class ScalarMinimizingOptimizer(Optimizer):
         grad = (np.sum(jac, axis=0))
         return grad
 
-    def run_optimization(self, initial_control_amplitudes: np.array) \
-            -> optimization_data.OptimizationResult:
-        """See base class. """
+    def run_optimization(self, initial_control_amplitudes: np.array,
+                         verbose: bool = False) -> optimization_data.OptimizationResult:
         super().prepare_optimization(
             initial_optimization_parameters=initial_control_amplitudes)
 
@@ -461,10 +464,9 @@ class ScalarMinimizingOptimizer(Optimizer):
                     method=self.method,
                     options={
                         'ftol': self.termination_conditions["min_cost_gain"],
-                        'gtol': self.termination_conditions[
-                            "min_gradient_norm"],
-                        'maxiter': self.termination_conditions[
-                            "max_iterations"]
+                        'gtol': self.termination_conditions["min_gradient_norm"],
+                        'maxiter': self.termination_conditions["max_iterations"],
+                        'disp': verbose
                     }
                 )
 
@@ -743,7 +745,8 @@ class SimulatedAnnealingScipy(Optimizer):
         self.interval = interval
         self.bounds = bounds
 
-    def run_optimization(self, initial_control_amplitudes: np.ndarray):
+    def run_optimization(self, initial_control_amplitudes: np.ndarray,
+                         verbose: bool = False):
         """See base class. """
 
         super().prepare_optimization(
@@ -759,7 +762,7 @@ class SimulatedAnnealingScipy(Optimizer):
                 take_step=self._take_step,
                 callback=None,
                 interval=self.interval,
-                disp=True
+                disp=verbose
             )
 
             if self.system_simulator.stats is not None:
