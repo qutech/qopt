@@ -107,10 +107,9 @@ class Optimizer(ABC):
             use_jacobian_function=True):
         self.system_simulator = system_simulator
         self.use_jacobian_function = use_jacobian_function
-        if termination_cond is None:
-            self.termination_conditions = default_termination_conditions
-        else:
-            self.termination_conditions = termination_cond
+        self.termination_conditions = default_termination_conditions
+        if termination_cond is not None:
+            self.termination_conditions.update(**termination_cond)
 
         self.optim_iter_summary = None
         self.pulse_shape = ()
