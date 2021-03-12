@@ -314,14 +314,6 @@ class OperatorMatrix(ABC):
         """
         pass
 
-    @abstractmethod
-    def __truediv__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        pass
-
-    @abstractmethod
-    def __itruediv__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
-        pass
-
     @property
     def shape(self) -> Tuple:
         """Returns the shape of the matrix. """
@@ -750,17 +742,6 @@ class DenseOperator(OperatorMatrix):
         else:
             raise NotImplementedError(str(type(other)))
         return self
-
-    def __truediv__(self, other: 'DenseOperator') -> 'DenseOperator':
-        if isinstance(other, (np.ndarray, *VALID_SCALARS)):
-            return DenseOperator(self.data / other)
-        raise NotImplementedError(str(type(other)))
-
-    def __itruediv__(self, other: 'DenseOperator') -> 'DenseOperator':
-        if isinstance(other, (np.ndarray, *VALID_SCALARS)):
-            self.data /= other
-            return self
-        raise NotImplementedError(str(type(other)))
 
     def __getitem__(self, index: Tuple) -> np.complex128:
         """See base class. """
