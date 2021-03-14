@@ -526,7 +526,7 @@ class Solver(ABC):
         if self.filter_function_s_derivs is None:
             return None
         else:
-            return self.filter_function_s_derivs(self._opt_pars)
+            return self.filter_function_n_coeffs_deriv(self.transferred_parameters)
 
     @property
     def create_ff_h_n(self) -> list:
@@ -541,7 +541,7 @@ class Solver(ABC):
         if type(self._filter_function_h_n) == list:
             h_n = self._filter_function_h_n
         else:
-            h_n = self._filter_function_h_n(self._opt_pars)
+            h_n = self._filter_function_h_n(self.transferred_parameters)
 
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
