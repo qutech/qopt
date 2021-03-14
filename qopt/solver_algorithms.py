@@ -636,21 +636,17 @@ class Solver(ABC):
             basis = None
 
         if self.pulse_sequence is None:
-            h_n = self.create_ff_h_n
-            h_c = list(zip(
-                self.h_drift,
-                np.ones((len(self.h_drift), len(self.transferred_time))),
-                [f'Drift{i}' for i in range(len(self.h_drift))]
-            ))
+            h_c = [[self.h_drift[0],
+                    np.ones(len(self.transferred_time)),
+                    'Drift']]
             h_c += list(zip(
                 self.h_ctrl,
                 self._ctrl_amps.T,
                 [f'Control{i}' for i in range(len(self.h_ctrl))]
             ))
-            dt = self.transferred_time
-
-            self.pulse_sequence = pulse_sequence.PulseSequence(h_c, h_n, dt,
-                                                               basis)
+            self.pulse_sequence = pulse_sequence.PulseSequence(
+                h_c, self.create_ff_h_n, self.transferred_time, basis
+            )
         else:
             self.pulse_sequence.cleanup('all')
             self.pulse_sequence.c_coeffs = new_amps.T
