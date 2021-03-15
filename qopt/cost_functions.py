@@ -1073,7 +1073,7 @@ class OperationNoiseInfidelity(CostFunction):
             print('The systematic errors must be neglected if no target is '
                   'set!')
             self.neglect_systematic_errors = True
-    
+
     def _to_comp_space(self, dynamic_target: matrix.OperatorMatrix) -> matrix.OperatorMatrix:
         """Map an operator to the computational space"""
         if self.computational_states is not None:
@@ -1083,7 +1083,7 @@ class OperationNoiseInfidelity(CostFunction):
                 )
         else:
             return dynamic_target
-    
+
     def _effective_target(self) -> matrix.OperatorMatrix:
         if self.neglect_systematic_errors:
             return self._to_comp_space(self.solver.forward_propagators[-1])
@@ -1131,7 +1131,7 @@ class OperationNoiseInfidelity(CostFunction):
                 )
             if self.neglect_systematic_errors:
                 temp_target = self._to_comp_space(self.solver.forward_propagators_noise[i][-1])
-                
+
                 temp += derivative_entanglement_fidelity_with_du(
                     target=temp_target,
                     forward_propagators=self.solver.forward_propagators,
@@ -1156,39 +1156,28 @@ class OperatorFilterFunctionInfidelity(CostFunction):
     label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
-    noise_power_spec_density: Union[Sequence[float], Callable]
-        The two-sided noise power spectral density in units of inverse
-        frequencies as an array of shape (n_omega,), (n_nops, n_omega), or
-        (n_nops, n_nops, n_omega). In the first case, the same spectrum is
-        taken for all noise operators, in the second, it is assumed that there
-        are no correlations between different noise sources and thus there is
-        one spectrum for each noise operator. In the third and most general
-        case, there may be a spectrum for each pair of noise operators
-        corresponding to the correlations between them. n_nops is the number of
-        noise operators considered and should be equal to
-        ``len(n_oper_identifiers)``.
+    noise_power_spec_density: Callable
+        The noise power spectral density in units of inverse frequencies that
+        returns an array of shape (n_omega,) or (n_nops, n_omega). In the first
+        case, the same spectrum is taken for all noise operators, in the
+        second, it is assumed that there are no correlations between different
+        noise sources and thus there is one spectrum for each noise operator.
 
-    omega: Union[Sequence[float], Dict[str, Union[int, str]], None]
-        The frequencies at which the integration is to be carried out. If
-        *test_convergence* is ``True``, a dict with possible keys ('omega_IR',
-        'omega_UV', 'spacing', 'n_min', 'n_max', 'n_points'), where all
-        entries are integers except for ``spacing`` which should be a string,
-        either 'linear' or 'log'. 'n_points' controls how many steps are taken.
-        Note that the frequencies are assumed to be symmetric about zero.
+    omega: Sequence[float]
+        The frequencies at which the integration is to be carried out.
 
     """
     def __init__(self,
                  solver: solver_algorithms.Solver,
-                 noise_power_spec_density: Union[Sequence[float], Callable],
-                 omega: Union[
-                     Sequence[float], Dict[str, Union[int, str]], None],
+                 noise_power_spec_density: Callable,
+                 omega: Sequence[float],
                  label: Optional[List[str]] = None):
         if label is None:
             label = ['Infidelity Filter Function', ]
         super().__init__(solver=solver, label=label)
         self.noise_power_spec_density = noise_power_spec_density
         self._omega = omega
-    
+
     @property
     def omega(self):
         if self._omega is None:
@@ -1199,7 +1188,6 @@ class OperatorFilterFunctionInfidelity(CostFunction):
                 pulse=self.solver.pulse_sequence,
                 n_samples=200,
                 spacing='log',
-                symmetric=False
             )
         return self._omega
 
@@ -1219,7 +1207,9 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         infidelity = filter_functions.numeric.infidelity(
             pulse=self.solver.pulse_sequence,
             spectrum=self.noise_power_spec_density(self.omega),
-            omega=self.omega)
+            omega=self.omega,
+            cache_intermediates=True
+        )
         return infidelity
 
     def grad(self):
@@ -1240,10 +1230,10 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
         derivative = filter_functions.gradient.infidelity_derivative(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density(self.omega),
+            spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega,
             control_identifiers=c_id,
-            s_derivs=self.solver.filter_function_s_derivs_vals
+            n_coeffs_deriv=self.solver.filter_function_n_coeffs_deriv_vals
         )
         # what comes from ff:
         # num_noise_contribution, num_t, num_ctrls_direction
