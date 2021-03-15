@@ -640,6 +640,10 @@ class Solver(ABC):
         """
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
+        else:
+            if self.transferred_parameters is None:
+                raise ValueError('No optimization parameters set. '
+                                 'Please supply new_amps argument')
 
         if ff_basis is not None:
             basis = ff_basis
