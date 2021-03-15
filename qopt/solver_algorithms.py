@@ -63,7 +63,7 @@ from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 
-from filter_functions import pulse_sequence, plotting, basis, numeric, gradient
+from filter_functions import pulse_sequence, plotting, basis, numeric
 
 from qopt import noise, matrix, matrix as q_mat
 from qopt.transfer_function import TransferFunction, IdentityTF
@@ -598,10 +598,23 @@ class Solver(ABC):
         """
         pass
 
+    def _diagonalize_and_propagate_pulse_sequence(self) -> None:
+        """Manually set eigendecomposition of the PulseSequence.
+
+        Work around incompatibility of drift Hamiltonian
+        representations."""
+        ps = self.pulse_sequence
+        drift_hamiltonian = np.array([h.data for h in self.h_drift])
+        control_hamiltonian = np.einsum('ijk,il->ljk', ps.c_opers, ps.c_coeffs)
+        ps.eigvals, ps.eigvecs, ps.propagators = numeric.diagonalize(
+            drift_hamiltonian + control_hamiltonian, ps.dt
+        )
+        ps.total_propagator = ps.propagators[-1]
+
     def create_pulse_sequence(
             self, new_amps: Optional[np.array] = None,
             ff_basis: Optional[basis.Basis] = None
-    ) -> pulse_sequence:
+    ) -> pulse_sequence.PulseSequence:
         """
         Create a pulse sequence of the filter function package written by
         Tobias Hangleiter.
@@ -628,34 +641,39 @@ class Solver(ABC):
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
 
-        h_n = self.create_ff_h_n
-        h_c = []
-        for drift_operator in [self.h_drift[0], ]:
-            if type(drift_operator) == matrix.DenseOperator:
-                drift_operator = drift_operator.data
-            h_c += [[drift_operator, len(self.transferred_time) * [1], 'Drift'], ]
-        for i, control_operator in enumerate(self.h_ctrl):
-            h_c += [
-                [control_operator.data,
-                 self._ctrl_amps[:, i],
-                 'Control' + str(i)], ]
-
-        dt = self.transferred_time
-
         if ff_basis is not None:
-            self.pulse_sequence = pulse_sequence.PulseSequence(
-                h_c, h_n, dt, basis=ff_basis)
+            basis = ff_basis
         elif self.filter_function_basis is not None:
-
-            self.pulse_sequence = pulse_sequence.PulseSequence(
-                h_c, h_n, dt, basis=self.filter_function_basis)
+            basis = self.filter_function_basis
         else:
-            self.pulse_sequence = pulse_sequence.PulseSequence(h_c, h_n, dt)
+            basis = None
 
+        if self.pulse_sequence is None:
+            # We have to work around different interfaces for the drift
+            # operators. Since in qopt the drift can be arbitrary (incl.
+            # nonlinear coupling), but in filter_functions the form H =
+            # a(t) A is imposed, we don't tell the PulseSequence object
+            # about H_drift and set the eigendecomposition after the
+            # fact.
+            h_c = list(zip(
+                self.h_ctrl,
+                self._ctrl_amps.T,
+                [f'Control{i}' for i in range(len(self.h_ctrl))]
+            ))
+            self.pulse_sequence = pulse_sequence.PulseSequence(
+                h_c, self.create_ff_h_n, self.transferred_time, basis
+            )
+        else:
+            self.pulse_sequence.cleanup('all')
+            self.pulse_sequence.c_coeffs = new_amps.T
+            if basis is not None:
+                self.pulse_sequence.basis = basis
+
+        self._diagonalize_and_propagate_pulse_sequence()
         return self.pulse_sequence
 
     def plot_bloch_sphere(
-            self, new_amps=None, return_Bloch: bool=False) -> None:
+            self, new_amps=None, return_Bloch: bool = False) -> None:
         """
         Uses the pulse sequence to plot the systems evolution on the bloch
         sphere.
@@ -677,13 +695,9 @@ class Solver(ABC):
             Qutips Bloch object. Only returned if return_Bloch is set to True.
 
         """
-        if new_amps is not None:
-            self.set_optimization_parameters(new_amps)
-
-        if self.pulse_sequence is None:
-            self.create_pulse_sequence(new_amps=new_amps)
-
-        return plotting.plot_bloch_vector_evolution(self.pulse_sequence,
+        # Already takes care of updating and cleaning the PulseSequence object
+        pulse_sequence = self.create_pulse_sequence(new_amps=new_amps)
+        return plotting.plot_bloch_vector_evolution(pulse_sequence,
                                                     n_samples=500,
                                                     return_Bloch=return_Bloch)
 
