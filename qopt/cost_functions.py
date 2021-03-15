@@ -1224,7 +1224,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
     def grad(self):
         """
-        Not implemented in the current version.
+        The gradient of the infidelity is calculated with the filter function
+        package. See its documentation for more information.
 
         Raises
         ------
