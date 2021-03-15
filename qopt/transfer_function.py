@@ -367,7 +367,7 @@ class TransferFunction(ABC):
         if not isinstance(y_times, np.ndarray):
             raise Exception("times must be a list or np.array")
 
-        y_times = np.squeeze(y_times)
+        y_times = np.atleast_1d(np.squeeze(y_times))
 
         if len(y_times.shape) > 1:
             raise ValueError('The x_times should not have more than one '
@@ -1352,7 +1352,8 @@ class ExponentialMTF(MatrixTF):
 
         # for the padding at the beginning
         dudx[0:self.oversampling, 0] = one_minus_exp
-        dudx[self.oversampling:2 * self.oversampling, 0] = exp
+        if self.num_x > self.oversampling:
+            dudx[self.oversampling:2 * self.oversampling, 0] = exp
 
         # main part
         for i in range(1, self._num_y - 1):
