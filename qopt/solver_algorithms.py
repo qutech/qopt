@@ -63,7 +63,7 @@ from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 
-from filter_functions import pulse_sequence, plotting, basis, numeric, gradient
+from filter_functions import pulse_sequence, plotting, basis, numeric
 
 from qopt import noise, matrix, matrix as q_mat
 from qopt.transfer_function import TransferFunction, IdentityTF
@@ -598,6 +598,19 @@ class Solver(ABC):
         """
         pass
 
+    def _diagonalize_and_propagate_pulse_sequence(self) -> None:
+        """Manually set eigendecomposition of the PulseSequence.
+
+        Work around incompatibility of drift Hamiltonian
+        representations."""
+        ps = self.pulse_sequence
+        drift_hamiltonian = np.array([h.data for h in self.h_drift])
+        control_hamiltonian = np.einsum('ijk,il->ljk', ps.c_opers, ps.c_coeffs)
+        ps.eigvals, ps.eigvecs, ps.propagators = numeric.diagonalize(
+            drift_hamiltonian + control_hamiltonian, ps.dt
+        )
+        ps.total_propagator = ps.propagators[-1]
+
     def create_pulse_sequence(
             self, new_amps: Optional[np.array] = None,
             ff_basis: Optional[basis.Basis] = None
@@ -636,10 +649,13 @@ class Solver(ABC):
             basis = None
 
         if self.pulse_sequence is None:
-            h_c = [[self.h_drift[0],
-                    np.ones(len(self.transferred_time)),
-                    'Drift']]
-            h_c += list(zip(
+            # We have to work around different interfaces for the drift
+            # operators. Since in qopt the drift can be arbitrary (incl.
+            # nonlinear coupling), but in filter_functions the form H =
+            # a(t) A is imposed, we don't tell the PulseSequence object
+            # about H_drift and set the eigendecomposition after the
+            # fact.
+            h_c = list(zip(
                 self.h_ctrl,
                 self._ctrl_amps.T,
                 [f'Control{i}' for i in range(len(self.h_ctrl))]
@@ -653,6 +669,7 @@ class Solver(ABC):
             if basis is not None:
                 self.pulse_sequence.basis = basis
 
+        self._diagonalize_and_propagate_pulse_sequence()
         return self.pulse_sequence
 
     def plot_bloch_sphere(
