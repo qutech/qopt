@@ -640,6 +640,10 @@ class Solver(ABC):
         """
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
+        else:
+            if self.transferred_parameters is None:
+                raise ValueError('No optimization parameters set. '
+                                 'Please supply new_amps argument')
 
         if ff_basis is not None:
             basis = ff_basis
@@ -648,24 +652,30 @@ class Solver(ABC):
         else:
             basis = None
 
+        # We have to work around different interfaces for the drift
+        # operators. Since in qopt the drift can be arbitrary (incl.
+        # nonlinear coupling), but in filter_functions the form H =
+        # a(t) A is imposed, we don't tell the PulseSequence object
+        # about H_drift and set the eigendecomposition after the fact.
         if self.pulse_sequence is None:
-            # We have to work around different interfaces for the drift
-            # operators. Since in qopt the drift can be arbitrary (incl.
-            # nonlinear coupling), but in filter_functions the form H =
-            # a(t) A is imposed, we don't tell the PulseSequence object
-            # about H_drift and set the eigendecomposition after the
-            # fact.
             h_c = list(zip(
                 self.h_ctrl,
-                self._ctrl_amps.T,
+                self.transferred_parameters.T,
                 [f'Control{i}' for i in range(len(self.h_ctrl))]
             ))
             self.pulse_sequence = pulse_sequence.PulseSequence(
                 h_c, self.create_ff_h_n, self.transferred_time, basis
             )
         else:
+            # Clean up the caches and update coefficients
             self.pulse_sequence.cleanup('all')
-            self.pulse_sequence.c_coeffs = new_amps.T
+            self.pulse_sequence.c_coeffs = self.transferred_parameters.T
+            # Not the most elegant, but necessary for the current
+            # implementation.
+            self.pulse_sequence.n_coeffs = pulse_sequence._parse_Hamiltonian(
+                self._filter_function_h_n(self.transferred_parameters),
+                len(self.transferred_time), 'H_n')[2]
+
             if basis is not None:
                 self.pulse_sequence.basis = basis
 
