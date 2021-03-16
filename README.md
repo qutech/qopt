@@ -6,6 +6,13 @@ The documentation can be found on
 It features an API documentation and an introduction in the 
 form of jupyter notebooks demonstrating how to utilize the package.
 
+## Applications
+
+We set up another open-source repository named 
+[qopt-applications](https://github.com/qutech/qopt-applications) to save and 
+exchange quantum simulation and optimal control applications implemented using
+qopt.
+
 ## Version
 This is the open alpha version. The name might be changed in the future. The
 contend will be extended based on feedback concerning the needs and demands of

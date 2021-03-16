@@ -47,7 +47,7 @@ class RabiTestCase(unittest.TestCase):
             solver=tslot,
             target=rabi.x_half,
             fidelity_measure='entanglement',
-            index=['Entanglement Fidelity QS-Noise XY-Control']
+            label=['Entanglement Fidelity QS-Noise XY-Control']
         )
 
         tslot_noise = SchroedingerSMonteCarlo(
@@ -67,7 +67,7 @@ class RabiTestCase(unittest.TestCase):
             solver=tslot_noise,
             target=rabi.x_half,
             fidelity_measure='entanglement',
-            index=['Entanglement Fidelity QS-Noise XY-Control'],
+            label=['Entanglement Fidelity QS-Noise XY-Control'],
             neglect_systematic_errors=True
         )
 
@@ -137,7 +137,7 @@ class RabiTestCase(unittest.TestCase):
             solver=time_slot_comp_qs_noise_phase_control,
             target=rabi.x_half,
             fidelity_measure='entanglement',
-            index=['Entanglement Fidelity QS-Noise Phase Control'],
+            label=['Entanglement Fidelity QS-Noise Phase Control'],
             neglect_systematic_errors=True
         )
 
