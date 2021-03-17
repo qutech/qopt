@@ -22,4 +22,12 @@ otherwise you need one element for each transferred time step.
 Optimizer
 - scalar optimization algorithms available
 - gradient free nelder mead algorithm available
-- cost function weights must now be given in 
+- cost function weights must now be given in the optimizer class
+
+Matrix
+- implementation of the division by scalar values
+
+Documentation:
+- Rabi Driving in detail as example
+- Noise notebooks describing T1, T2-star and T2 in the case of Markoian
+and non-Markovian noise
