@@ -106,17 +106,17 @@ class CostFunction(ABC):
     solver : `Solver`
         Object that compute the forward/backward evolution and propagator.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
-                 index: Optional[List[str]] = None):
+                 label: Optional[List[str]] = None):
         self.solver = solver
-        if index is None:
-            self.index = ["Unspecified Cost Function"]
+        if label is None:
+            self.label = ["Unspecified Cost Function"]
         else:
-            self.index = index
+            self.label = label
 
     @abstractmethod
     def costs(self) -> Union[float, np.ndarray]:
@@ -146,8 +146,7 @@ class CostFunction(ABC):
         pass
 
 
-@needs_refactoring
-def angle_axis_representation(u: Union[np.ndarray, matrix.DenseOperator]) \
+def angle_axis_representation(u: np.ndarray) \
         -> (float, np.ndarray):
     """
     Calculates the representation of a 2x2 unitary matrix by a rotational axis
@@ -163,30 +162,48 @@ def angle_axis_representation(u: Union[np.ndarray, matrix.DenseOperator]) \
     beta, n: float, np.ndarray
         beta is the angle of the rotation and n the rotational axis.
 
-    TODO:
-        * implement for control matrices. Not only numpy arrays.
-
     """
+    if type(u) == matrix.DenseOperator:
+        u = np.copy(u.data)
+
     # check if u is unitary
     ident = u @ np.conjugate(np.transpose(u))
-    is_unitary = np.isclose(ident[0, 0], 1) and np.isclose(ident[1, 0], 0) and \
-        np.isclose(ident[0, 1], 0) and np.isclose(ident[0, 0], 1)
+    is_unitary = np.isclose(ident[0, 0], 1) \
+        and np.isclose(ident[1, 0], 0) \
+        and np.isclose(ident[0, 1], 0) \
+        and np.isclose(ident[0, 0], 1)
+
     if not is_unitary:
         raise ValueError("Your input matrix must be unitary to calculate a "
                          "angle axis representation!")
 
-    cos = .5 * (u[0, 0] + u[1, 1])
-    if np.isclose(cos, 1):
+    # there is an unphysical global phase alpha
+    cos_alpha = .5 * (u[0, 0] + u[1, 1])
+    # beta in [0, pi) so sin in [0, 1]
+    sin = np.sqrt(1 - np.abs(cos_alpha) ** 2)
+    if np.isclose(0, sin, atol=1e-6):
         return 0, np.array([1, 0, 0])
-    sin = np.sqrt(1 - cos ** 2)
-    n_1 = np.real((u[0, 1] + u[1, 0]) / 1j / sin / 2)
-    n_2 = np.real((u[0, 1] - u[1, 0]) / sin / 2)
-    n_3 = np.real((u[0, 0] - u[1, 1]) / 1j / sin / 2)
-    # beta = np.real(np.arccos(cos) * 2)
-    # It seems more coherent to neglect the factor of 2
-    beta = np.real(np.arccos(cos) * 2)
+    n_1_alpha = (u[0, 1] + u[1, 0]) / 1j / sin / 2
+    n_2_alpha = (u[0, 1] - u[1, 0]) / sin / 2
+    n_3_alpha = (u[0, 0] - u[1, 1]) / 1j / sin / 2
+    if not np.isclose(n_1_alpha, 0):
+        alpha = n_1_alpha / np.abs(n_1_alpha)
+    elif not np.isclose(n_2_alpha, 0):
+        alpha = n_2_alpha / np.abs(n_2_alpha)
+    elif not np.isclose(n_3_alpha, 0):
+        alpha = n_3_alpha / np.abs(n_3_alpha)
+    else:
+        return 0, np.array([1, 0, 0])
+
+    beta = np.arccos(np.real(cos_alpha / alpha)) * 2
+    n_1, n_2, n_3 = n_1_alpha / alpha, n_2_alpha / alpha, n_3_alpha / alpha
     assert np.isclose(np.linalg.norm(np.array([n_1, n_2, n_3])), 1, atol=1e-5)
-    return beta, np.array([n_1, n_2, n_3])
+
+    # to make this representation unique, we request that beta in [0, pi]
+    if beta > np.pi:
+        beta = 2 * np.pi - beta
+        n_1, n_2, n_3 = -1 * n_1, -1 * n_2, -1 * n_3
+    return beta, np.array([np.real(n_1), np.real(n_2), np.real(n_3)])
 
 
 class OperatorMatrixNorm(CostFunction):
@@ -229,25 +246,25 @@ class OperatorMatrixNorm(CostFunction):
     @needs_refactoring
     def __init__(self, solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix, mode: str = 'scalar',
-                 index: Optional[List[str]] = None):
+                 label: Optional[List[str]] = None):
         super().__init__()
         self.solver = solver
         self.target = target
         self.mode = mode
-        if index is not None:
-            self.index = index
+        if label is not None:
+            self.label = label
         elif mode == 'scalar':
-            self.index = ['Matrix Norm Distance']
+            self.label = ['Matrix Norm Distance']
         elif mode == 'vector':
             dim = target.shape[0]
-            self.index = ['redu' + str(i) + str(j)
+            self.label = ['redu' + str(i) + str(j)
                           for i in range(1, dim + 1)
                           for j in range(1, dim + 1)] + [
                              'imdu' + str(i) + str(j)
                              for i in range(1, dim + 1)
                              for j in range(1, dim + 1)]
         elif mode == 'rotation_axis':
-            self.index = ['n1 * phi', 'n2', 'n3']
+            self.label = ['n1 * phi', 'n2', 'n3']
         else:
             raise ValueError('Unknown fidelity computer mode: ' + str(mode)
                              + ' \n possible modes are: "scalar", "vector" '
@@ -738,17 +755,18 @@ class StateInfidelity(CostFunction):
     TODO:
         * support super operator formalism
         * handle leakage states?
+        * Docstring
     """
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
                  rescale_propagated_state: bool = False
                  ):
-        if index is None:
-            index = ['State Infidelity', ]
-        super().__init__(solver=solver, index=index)
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
         # assure target is a bra vector
 
         if target.shape[0] > target.shape[1]:
@@ -783,6 +801,75 @@ class StateInfidelity(CostFunction):
         return -1. * np.real(derivative_fid)
 
 
+class StateNoiseInfidelity(CostFunction):
+    """ Averages the state infidelity over noise traces.
+
+    TODO:
+        * support super operator formalism
+        * implement gradient
+        * docstring
+    """
+    def __init__(self,
+                 solver: solver_algorithms.SchroedingerSMonteCarlo,
+                 target: matrix.OperatorMatrix,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 rescale_propagated_state: bool = False,
+                 neglect_systematic_errors: bool = True
+                 ):
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
+        self.solver = solver
+
+        # assure target is a bra vector
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+
+        self.computational_states = computational_states
+        self.rescale_propagated_state = rescale_propagated_state
+
+        self.neglect_systematic_errors = neglect_systematic_errors
+        if target is None and not neglect_systematic_errors:
+            print('The systematic errors must be neglected if no target is '
+                  'set!')
+            self.neglect_systematic_errors = True
+
+    def costs(self) -> np.float64:
+        """See base class. """
+        n_traces = self.solver.noise_trace_generator.n_traces
+        infidelities = np.zeros((n_traces,))
+
+        if self.neglect_systematic_errors:
+            if self.computational_states is None:
+                target = self.solver.forward_propagators[-1]
+            else:
+                target = self.solver.forward_propagators[
+                    -1].truncate_to_subspace(
+                    self.computational_states,
+                    map_to_closest_unitary=self.rescale_propagated_state
+                )
+            target = target.dag()
+        else:
+            target = self.target
+
+        for i in range(n_traces):
+            final = self.solver.forward_propagators_noise[i][-1]
+            infidelities[i] = 1. - state_fidelity(
+                target=target,
+                propagated_state=final,
+                computational_states=self.computational_states,
+                rescale_propagated_state=self.rescale_propagated_state
+            )
+        return np.mean(infidelities)
+
+    def grad(self) -> np.ndarray:
+        """See base class. """
+        raise NotImplementedError
+
+
 class OperationInfidelity(CostFunction):
     """Calculates the infidelity of a quantum channel.
 
@@ -797,7 +884,7 @@ class OperationInfidelity(CostFunction):
     target: `ControlMatrix`
         Unitary target evolution.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     fidelity_measure: string, optional
@@ -851,17 +938,17 @@ class OperationInfidelity(CostFunction):
                  target: matrix.OperatorMatrix,
                  fidelity_measure: str = 'entanglement',
                  super_operator_formalism: bool = False,
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False
                  ):
-        if index is None:
+        if label is None:
             if fidelity_measure == 'entanglement':
-                index = ['Entanglement Infidelity', ]
+                label = ['Entanglement Infidelity', ]
             else:
-                index = ['Operator Infidelity', ]
+                label = ['Operator Infidelity', ]
 
-        super().__init__(solver=solver, index=index)
+        super().__init__(solver=solver, label=label)
         self.target = target
         self.computational_states = computational_states
         self.map_to_closest_unitary = map_to_closest_unitary
@@ -904,14 +991,16 @@ class OperationInfidelity(CostFunction):
                 forward_propagators=self.solver.forward_propagators,
                 target=self.target,
                 reversed_propagators=self.solver.reversed_propagators,
-                unitary_derivatives=self.solver.frechet_deriv_propagators
+                unitary_derivatives=self.solver.frechet_deriv_propagators,
+                computational_states=self.computational_states,
             )
         elif self.fidelity_measure == 'entanglement':
             derivative_fid = derivative_entanglement_fidelity_with_du(
                 forward_propagators=self.solver.forward_propagators,
                 target=self.target,
                 reversed_propagators=self.solver.reversed_propagators,
-                propagator_derivatives=self.solver.frechet_deriv_propagators
+                propagator_derivatives=self.solver.frechet_deriv_propagators,
+                computational_states=self.computational_states,
             )
         else:
             raise NotImplementedError('Only the average and entanglement'
@@ -932,7 +1021,7 @@ class OperationNoiseInfidelity(CostFunction):
     target: `ControlMatrix`
         Unitary target evolution.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     fidelity_measure: string, optional
@@ -964,14 +1053,14 @@ class OperationNoiseInfidelity(CostFunction):
     def __init__(self,
                  solver: solver_algorithms.SchroedingerSMonteCarlo,
                  target: Optional[matrix.OperatorMatrix],
-                 index: Optional[List[str]] = None,
+                 label: Optional[List[str]] = None,
                  fidelity_measure: str = 'entanglement',
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False,
                  neglect_systematic_errors: bool = True):
-        if index is None:
-            index = ['Operator Noise Infidelity']
-        super().__init__(solver=solver, index=index)
+        if label is None:
+            label = ['Operator Noise Infidelity']
+        super().__init__(solver=solver, label=label)
         self.solver = solver
         self.target = target
 
@@ -985,22 +1074,28 @@ class OperationNoiseInfidelity(CostFunction):
                   'set!')
             self.neglect_systematic_errors = True
 
+    def _to_comp_space(self, dynamic_target: matrix.OperatorMatrix) -> matrix.OperatorMatrix:
+        """Map an operator to the computational space"""
+        if self.computational_states is not None:
+            return dynamic_target.truncate_to_subspace(
+                subspace_indices=self.computational_states,
+                map_to_closest_unitary=self.map_to_closest_unitary,
+                )
+        else:
+            return dynamic_target
+
+    def _effective_target(self) -> matrix.OperatorMatrix:
+        if self.neglect_systematic_errors:
+            return self._to_comp_space(self.solver.forward_propagators[-1])
+        else:
+            return self.target
+
     def costs(self):
         """See base class. """
         n_traces = self.solver.noise_trace_generator.n_traces
         infidelities = np.zeros((n_traces,))
 
-        if self.neglect_systematic_errors:
-            if self.computational_states is None:
-                target = self.solver.forward_propagators[-1]
-            else:
-                target = self.solver.forward_propagators[
-                    -1].truncate_to_subspace(
-                    self.computational_states,
-                    map_to_closest_unitary=self.map_to_closest_unitary
-                )
-        else:
-            target = self.target
+        target = self._effective_target()
 
         if self.fidelity_measure == 'entanglement':
             for i in range(n_traces):
@@ -1019,10 +1114,7 @@ class OperationNoiseInfidelity(CostFunction):
 
     def grad(self):
         """See base class. """
-        if self.neglect_systematic_errors:
-            target = self.solver.forward_propagators[-1]
-        else:
-            target = self.target
+        target = self._effective_target()
 
         n_traces = self.solver.noise_trace_generator.n_traces
         num_t = len(self.solver.transferred_time)
@@ -1038,8 +1130,10 @@ class OperationNoiseInfidelity(CostFunction):
                 computational_states=self.computational_states
                 )
             if self.neglect_systematic_errors:
+                temp_target = self._to_comp_space(self.solver.forward_propagators_noise[i][-1])
+
                 temp += derivative_entanglement_fidelity_with_du(
-                    target=self.solver.forward_propagators_noise[i][-1],
+                    target=temp_target,
                     forward_propagators=self.solver.forward_propagators,
                     propagator_derivatives=
                     self.solver.frechet_deriv_propagators,
@@ -1059,52 +1153,43 @@ class OperatorFilterFunctionInfidelity(CostFunction):
     solver: `Solver`
         The time slot computer simulating the systems dynamics.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
-    noise_power_spec_density: Union[Sequence[float], Callable]
-        The two-sided noise power spectral density in units of inverse
-        frequencies as an array of shape (n_omega,), (n_nops, n_omega), or
-        (n_nops, n_nops, n_omega). In the first case, the same spectrum is
-        taken for all noise operators, in the second, it is assumed that there
-        are no correlations between different noise sources and thus there is
-        one spectrum for each noise operator. In the third and most general
-        case, there may be a spectrum for each pair of noise operators
-        corresponding to the correlations between them. n_nops is the number of
-        noise operators considered and should be equal to
-        ``len(n_oper_identifiers)``.
+    noise_power_spec_density: Callable
+        The noise power spectral density in units of inverse frequencies that
+        returns an array of shape (n_omega,) or (n_nops, n_omega). In the first
+        case, the same spectrum is taken for all noise operators, in the
+        second, it is assumed that there are no correlations between different
+        noise sources and thus there is one spectrum for each noise operator.
 
-    omega: Union[Sequence[float], Dict[str, Union[int, str]], None]
-        The frequencies at which the integration is to be carried out. If
-        *test_convergence* is ``True``, a dict with possible keys ('omega_IR',
-        'omega_UV', 'spacing', 'n_min', 'n_max', 'n_points'), where all
-        entries are integers except for ``spacing`` which should be a string,
-        either 'linear' or 'log'. 'n_points' controls how many steps are taken.
-        Note that the frequencies are assumed to be symmetric about zero.
+    omega: Sequence[float]
+        The frequencies at which the integration is to be carried out.
 
     """
     def __init__(self,
                  solver: solver_algorithms.Solver,
-                 noise_power_spec_density: Union[Sequence[float], Callable],
-                 omega: Union[
-                     Sequence[float], Dict[str, Union[int, str]], None],
-                 index: Optional[List[str]] = None):
-        if index is None:
-            index = ['Infidelity Filter Function', ]
-        super().__init__(solver=solver, index=index)
+                 noise_power_spec_density: Callable,
+                 omega: Sequence[float],
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ['Infidelity Filter Function', ]
+        super().__init__(solver=solver, label=label)
         self.noise_power_spec_density = noise_power_spec_density
-        if omega is None:
+        self._omega = omega
+
+    @property
+    def omega(self):
+        if self._omega is None:
             if self.solver.pulse_sequence is None:
                 self.solver.create_pulse_sequence()
 
-            self.omega = filter_functions.util.get_sample_frequencies(
+            self._omega = filter_functions.util.get_sample_frequencies(
                 pulse=self.solver.pulse_sequence,
                 n_samples=200,
                 spacing='log',
-                symmetric=False
             )
-        else:
-            self.omega = omega
+        return self._omega
 
     def costs(self) -> Union[float, np.ndarray]:
         """
@@ -1121,13 +1206,16 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             self.solver.create_pulse_sequence()
         infidelity = filter_functions.numeric.infidelity(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density(self.omega),
-            omega=self.omega)
+            spectrum=self.noise_power_spec_density(self.omega),
+            omega=self.omega,
+            cache_intermediates=True
+        )
         return infidelity
 
     def grad(self):
         """
-        Not implemented in the current version.
+        The gradient of the infidelity is calculated with the filter function
+        package. See its documentation for more information.
 
         Raises
         ------
@@ -1142,10 +1230,10 @@ class OperatorFilterFunctionInfidelity(CostFunction):
 
         derivative = filter_functions.gradient.infidelity_derivative(
             pulse=self.solver.pulse_sequence,
-            S=self.noise_power_spec_density(self.omega),
+            spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega,
-            c_id=c_id,
-            s_derivs=self.solver.filter_function_s_derivs_vals
+            control_identifiers=c_id,
+            n_coeffs_deriv=self.solver.filter_function_n_coeffs_deriv_vals
         )
         # what comes from ff:
         # num_noise_contribution, num_t, num_ctrls_direction
@@ -1171,16 +1259,16 @@ class LeakageError(CostFunction):
         List of indices marking the computational states of the propagator.
         These are all but the leakage states.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
                  computational_states: List[int],
-                 index: Optional[List[str]] = None):
-        if index is None:
-            index = ["Leakage Error", ]
-        super().__init__(solver=solver, index=index)
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ["Leakage Error", ]
+        super().__init__(solver=solver, label=label)
         self.computational_states = computational_states
 
     def costs(self):
@@ -1188,10 +1276,11 @@ class LeakageError(CostFunction):
         final_prop = self.solver.forward_propagators[-1]
         clipped_prop = final_prop.truncate_to_subspace(
             self.computational_states)
-        temp = clipped_prop.dag(copy_=True)
+        temp = clipped_prop.dag(do_copy=True)
         temp *= clipped_prop
 
-        return 1 - temp.tr().real / clipped_prop.shape[0]
+        # the result should always be positive within numerical accuracy
+        return max(0, 1 - temp.tr().real / clipped_prop.shape[0])
 
     def grad(self):
         """See base class. """
@@ -1234,17 +1323,20 @@ class IncoherentLeakageError(CostFunction):
         List of indices marking the computational states of the propagator.
         These are all but the leakage states.
 
-    index: list of str
+    label: list of str
         Indices of the returned infidelities for distinction in the analysis.
+
+    TODO:
+        * adjust docstring
 
     """
 
     def __init__(self, solver: solver_algorithms.SchroedingerSMonteCarlo,
                  computational_states: List[int],
-                 index: Optional[List[str]] = None):
-        if index is None:
-            index = ["Leakage Error", ]
-        super().__init__(solver=solver, index=index)
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ["Incoherent Leakage Error", ]
+        super().__init__(solver=solver, label=label)
         self.solver = solver
         self.computational_states = computational_states
 
@@ -1259,7 +1351,7 @@ class IncoherentLeakageError(CostFunction):
             for prop in final_props
         ]
         temp = [
-            c_prop.dag(copy_=True) * c_prop
+            c_prop.dag(do_copy=True) * c_prop
             for c_prop in clipped_props
         ]
         result = [

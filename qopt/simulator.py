@@ -166,7 +166,7 @@ class Simulator(object):
         """Indices of cost functions. """
         cost_indices = []
         for cost_fktn in self.cost_fktns:
-            cost_indices += cost_fktn.index
+            cost_indices += cost_fktn.label
         return cost_indices
 
     def wrapped_cost_functions(self, pulse=None):

@@ -1,6 +1,7 @@
 name: qopt
 
 channels:
+  - defaults
   - conda-forge
 
 dependencies:

@@ -6,6 +6,13 @@ The documentation can be found on
 It features an API documentation and an introduction in the 
 form of jupyter notebooks demonstrating how to utilize the package.
 
+## Applications
+
+We set up another open-source repository named 
+[qopt-applications](https://github.com/qutech/qopt-applications) to save and 
+exchange quantum simulation and optimal control applications implemented using
+qopt.
+
 ## Version
 This is the open alpha version. The name might be changed in the future. The
 contend will be extended based on feedback concerning the needs and demands of
@@ -37,7 +44,7 @@ package was written and tested using python 3.7.
     conda create --name qopt_env python=3.7
     conda activate qopt_env
 
-Start with all recommended dependencies: 
+Start with all recommended dependencies of QuTiP: 
 
     conda install numpy scipy cython matplotlib pytest pytest-cov jupyter
 
@@ -52,7 +59,7 @@ and install QuTiP:
 Then install two remaining dependencies and the 
 [filter_functions package](https://github.com/qutech/filter_functions) via pip:
 
-    conda install pandas simanneal
+    conda install simanneal
     pip install filter_functions
     
 And either install qopt via pip 

@@ -5,6 +5,5 @@ matplotlib
 nose
 spyder
 simanneal
-pandas
 qutip
 filter_functions

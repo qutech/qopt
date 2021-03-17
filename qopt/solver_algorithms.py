@@ -63,7 +63,7 @@ from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 
-from filter_functions import pulse_sequence, plotting, basis, numeric, gradient
+from filter_functions import pulse_sequence, plotting, basis, numeric
 
 from qopt import noise, matrix, matrix as q_mat
 from qopt.transfer_function import TransferFunction, IdentityTF
@@ -122,7 +122,7 @@ class Solver(ABC):
         cached filter functions cannot be retained since the GGM basis does not
         factor into tensor products. In this case a Pauli basis is preferable.
 
-    filter_function_s_derivs: Callable numpy array to numpy array
+    filter_function_n_coeffs_deriv: Callable numpy array to numpy array
         This function calculates the derivatives of the noise susceptibility in
         the filter function formalism. It receives the optimization parameters
         as array of shape (num_opt, num_t) and returns the derivatives as array
@@ -247,6 +247,8 @@ class Solver(ABC):
             * not coherent with the pulse sequence interface. Alternatively
             * amplitude=1?
         * transferred_time should be taken from the transfer function
+        * Use own plotting for the plotting
+        * Consequent try catches for the computation of the matrix exponential
 
     """
 
@@ -261,7 +263,7 @@ class Solver(ABC):
             filter_function_h_n: Union[
                 Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
-            filter_function_s_derivs: Optional[
+            filter_function_n_coeffs_deriv: Optional[
                 Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             is_skew_hermitian: bool = True,
@@ -297,7 +299,7 @@ class Solver(ABC):
         else:
             self._filter_function_h_n = filter_function_h_n
         self.filter_function_basis = filter_function_basis
-        self.filter_function_s_derivs = filter_function_s_derivs
+        self.filter_function_n_coeffs_deriv = filter_function_n_coeffs_deriv
 
         self._is_skew_hermitian = is_skew_hermitian
 
@@ -305,8 +307,9 @@ class Solver(ABC):
             self.transfer_function = IdentityTF(num_ctrls=len(h_ctrl))
         else:
             self.transfer_function = transfer_function
-        self.transfer_function.set_times(tau)
-        self.transferred_time = self.transfer_function.x_times
+
+        self.transferred_time = None
+        self.set_times(tau=tau)
 
         if type(h_drift) in [matrix.DenseOperator, matrix.SparseOperator]:
             self.h_drift = [h_drift, ] * self.transfer_function.num_x
@@ -323,6 +326,19 @@ class Solver(ABC):
         self.transferred_parameters = None
 
         self.consistency_checks(paranoia_level=paranoia_level)
+
+    def set_times(self, tau):
+        """ Set time values by passing them to the transfer function.
+
+        Parameters
+        ----------
+        tau: array of float, shape (num_t, )
+            Durations of the time slices.
+
+        """
+        self.transfer_function.set_times(tau)
+        self.transferred_time = self.transfer_function.x_times
+        self.reset_cached_propagators()
 
     def set_optimization_parameters(self, y: np.array) -> None:
         """
@@ -370,6 +386,10 @@ class Solver(ABC):
                              'correnct number of entries on the control axis!')
 
         self._ctrl_amps = u
+        self.reset_cached_propagators()
+
+    def reset_cached_propagators(self):
+        """ Resets all cached propagators. """
         self._prop = None
         self._fwd_prop = None
         self._derivative_prop = None
@@ -492,21 +512,21 @@ class Solver(ABC):
         return self._reversed_prop
 
     @property
-    def filter_function_s_derivs_vals(self) -> Optional[np.ndarray]:
+    def filter_function_n_coeffs_deriv_vals(self) -> Optional[np.ndarray]:
         """
         Calculates the derivatives of the noise susceptibilities from the filter
         function formalism.
 
         Returns
         -------
-        s_derivs: numpy array of shape (num_noise_op, n_ctrl, num_t)
+        n_coeffs_deriv: numpy array of shape (num_noise_op, n_ctrl, num_t)
             Derivatives of the noise susceptibilities by the control amplitudes.
 
         """
-        if self.filter_function_s_derivs is None:
+        if self.filter_function_n_coeffs_deriv is None:
             return None
         else:
-            return self.filter_function_s_derivs(self._opt_pars)
+            return self.filter_function_n_coeffs_deriv(self.transferred_parameters)
 
     @property
     def create_ff_h_n(self) -> list:
@@ -521,7 +541,7 @@ class Solver(ABC):
         if type(self._filter_function_h_n) == list:
             h_n = self._filter_function_h_n
         else:
-            h_n = self._filter_function_h_n(self._opt_pars)
+            h_n = self._filter_function_h_n(self.transferred_parameters)
 
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
@@ -578,10 +598,23 @@ class Solver(ABC):
         """
         pass
 
+    def _diagonalize_and_propagate_pulse_sequence(self) -> None:
+        """Manually set eigendecomposition of the PulseSequence.
+
+        Work around incompatibility of drift Hamiltonian
+        representations."""
+        ps = self.pulse_sequence
+        drift_hamiltonian = np.array([h.data for h in self.h_drift])
+        control_hamiltonian = np.einsum('ijk,il->ljk', ps.c_opers, ps.c_coeffs)
+        ps.eigvals, ps.eigvecs, ps.propagators = numeric.diagonalize(
+            drift_hamiltonian + control_hamiltonian, ps.dt
+        )
+        ps.total_propagator = ps.propagators[-1]
+
     def create_pulse_sequence(
             self, new_amps: Optional[np.array] = None,
             ff_basis: Optional[basis.Basis] = None
-    ) -> pulse_sequence:
+    ) -> pulse_sequence.PulseSequence:
         """
         Create a pulse sequence of the filter function package written by
         Tobias Hangleiter.
@@ -607,35 +640,50 @@ class Solver(ABC):
         """
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
-
-        h_n = self.create_ff_h_n
-        h_c = []
-        for drift_operator in [self.h_drift[0], ]:
-            if type(drift_operator) == matrix.DenseOperator:
-                drift_operator = drift_operator.data
-            h_c += [[drift_operator, len(self.transferred_time) * [1], 'Drift'], ]
-        for i, control_operator in enumerate(self.h_ctrl):
-            h_c += [
-                [control_operator.data,
-                 self._ctrl_amps[:, i],
-                 'Control' + str(i)], ]
-
-        dt = self.transferred_time
+        else:
+            if self.transferred_parameters is None:
+                raise ValueError('No optimization parameters set. '
+                                 'Please supply new_amps argument')
 
         if ff_basis is not None:
-            self.pulse_sequence = pulse_sequence.PulseSequence(
-                h_c, h_n, dt, basis=ff_basis)
+            basis = ff_basis
         elif self.filter_function_basis is not None:
-
-            self.pulse_sequence = pulse_sequence.PulseSequence(
-                h_c, h_n, dt, basis=self.filter_function_basis)
+            basis = self.filter_function_basis
         else:
-            self.pulse_sequence = pulse_sequence.PulseSequence(h_c, h_n, dt)
+            basis = None
 
+        # We have to work around different interfaces for the drift
+        # operators. Since in qopt the drift can be arbitrary (incl.
+        # nonlinear coupling), but in filter_functions the form H =
+        # a(t) A is imposed, we don't tell the PulseSequence object
+        # about H_drift and set the eigendecomposition after the fact.
+        if self.pulse_sequence is None:
+            h_c = list(zip(
+                self.h_ctrl,
+                self.transferred_parameters.T,
+                [f'Control{i}' for i in range(len(self.h_ctrl))]
+            ))
+            self.pulse_sequence = pulse_sequence.PulseSequence(
+                h_c, self.create_ff_h_n, self.transferred_time, basis
+            )
+        else:
+            # Clean up the caches and update coefficients
+            self.pulse_sequence.cleanup('all')
+            self.pulse_sequence.c_coeffs = self.transferred_parameters.T
+            # Not the most elegant, but necessary for the current
+            # implementation.
+            self.pulse_sequence.n_coeffs = pulse_sequence._parse_Hamiltonian(
+                self._filter_function_h_n(self.transferred_parameters),
+                len(self.transferred_time), 'H_n')[2]
+
+            if basis is not None:
+                self.pulse_sequence.basis = basis
+
+        self._diagonalize_and_propagate_pulse_sequence()
         return self.pulse_sequence
 
     def plot_bloch_sphere(
-            self, new_amps=None, return_Bloch: bool=False) -> None:
+            self, new_amps=None, return_Bloch: bool = False) -> None:
         """
         Uses the pulse sequence to plot the systems evolution on the bloch
         sphere.
@@ -657,10 +705,9 @@ class Solver(ABC):
             Qutips Bloch object. Only returned if return_Bloch is set to True.
 
         """
-        if self.pulse_sequence is None:
-            self.create_pulse_sequence(new_amps=new_amps)
-
-        return plotting.plot_bloch_vector_evolution(self.pulse_sequence,
+        # Already takes care of updating and cleaning the PulseSequence object
+        pulse_sequence = self.create_pulse_sequence(new_amps=new_amps)
+        return plotting.plot_bloch_vector_evolution(pulse_sequence,
                                                     n_samples=500,
                                                     return_Bloch=return_Bloch)
 
@@ -731,7 +778,7 @@ class SchroedingerSolver(Solver):
                  filter_function_h_n: Union[
                      Callable, List[List], None] = None,
                  filter_function_basis: Optional[basis.Basis] = None,
-                 filter_function_s_derivs: Optional[
+                 filter_function_n_coeffs_deriv: Optional[
                     Callable[[np.ndarray], np.ndarray]] = None,
                  exponential_method: Optional[str] = None,
                  frechet_deriv_approx_method: Optional[str] = None,
@@ -743,7 +790,7 @@ class SchroedingerSolver(Solver):
             tau=tau, ctrl_amps=ctrl_amps,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
-            filter_function_s_derivs=filter_function_s_derivs,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
             exponential_method=exponential_method,
             is_skew_hermitian=is_skew_hermitian,
             transfer_function=transfer_function,
@@ -760,8 +807,13 @@ class SchroedingerSolver(Solver):
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
-            self._dyn_gen = None
+            self.reset_cached_propagators()
         super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        self._dyn_gen = None
+        super().reset_cached_propagators()
 
     def _compute_dyn_gen(self) -> List[q_mat.OperatorMatrix]:
         """
@@ -816,11 +868,17 @@ class SchroedingerSolver(Solver):
                 for _2 in range(len(self.h_ctrl))]
             for t in range(len(self.transferred_time)):
                 for ctrl in range(len(self.h_ctrl)):
-                    self._prop[t], self._derivative_prop[ctrl][t] \
-                        = self._dyn_gen[t].dexp(
-                        derivative_directions[t][ctrl], self.transferred_time[t],
-                        compute_expm=True, method=self.exponential_method,
-                        is_skew_hermitian=self._is_skew_hermitian)
+                    try:
+                        self._prop[t], self._derivative_prop[ctrl][t] \
+                            = self._dyn_gen[t].dexp(
+                            derivative_directions[t][ctrl],
+                            self.transferred_time[t],
+                            compute_expm=True, method=self.exponential_method,
+                            is_skew_hermitian=self._is_skew_hermitian)
+                    except ValueError:
+                        raise ValueError('The computation has failed with '
+                                         'a value error. Try another '
+                                         'exponentiation method.')
         else:
             for t in range(len(self.transferred_time)):
                 self._prop[t] = self._dyn_gen[t].exp(
@@ -993,7 +1051,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             filter_function_h_n: Union[
                 Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
-            filter_function_s_derivs: Optional[
+            filter_function_n_coeffs_deriv: Optional[
                 Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
@@ -1010,7 +1068,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             tau=tau, ctrl_amps=ctrl_amps,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
-            filter_function_s_derivs=filter_function_s_derivs,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
             exponential_method=exponential_method,
             calculate_propagator_derivatives=calculate_propagator_derivatives,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
@@ -1032,12 +1090,18 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
-            self._dyn_gen_noise = None
-            self._prop_noise = None
-            self._derivative_prop_noise = None
-            self._fwd_prop_noise = None
-            self._reversed_prop_noise = None
+            self.reset_cached_propagators()
         super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        super().reset_cached_propagators()
+        self._dyn_gen_noise = None
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+
 
     @property
     def propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
@@ -1342,7 +1406,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             filter_function_h_n: Union[
                 Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
-            filter_function_s_derivs: Optional[
+            filter_function_n_coeffs_deriv: Optional[
                 Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
@@ -1391,7 +1455,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
             processes=processes,
             filter_function_h_n=filter_function_h_n,
             filter_function_basis=filter_function_basis,
-            filter_function_s_derivs=filter_function_s_derivs,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
             exponential_method=exponential_method,
             frechet_deriv_approx_method=frechet_deriv_approx_method,
             is_skew_hermitian=is_skew_hermitian,
@@ -1642,7 +1706,7 @@ class LindbladSolver(SchroedingerSolver):
             filter_function_h_n: Union[
                 Callable, List[List], None] = None,
             filter_function_basis: Optional[basis.Basis] = None,
-            filter_function_s_derivs: Optional[
+            filter_function_n_coeffs_deriv: Optional[
                 Callable[[np.ndarray], np.ndarray]] = None,
             exponential_method: Optional[str] = None,
             frechet_deriv_approx_method: Optional[str] = None,
@@ -1665,19 +1729,6 @@ class LindbladSolver(SchroedingerSolver):
             dim = h_ctrl[0].shape[0]
             initial_state = type(h_ctrl[0])(np.eye(dim ** 2))
 
-        super().__init__(
-            h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
-            tau=tau, ctrl_amps=ctrl_amps,
-            calculate_propagator_derivatives=calculate_unitary_derivatives,
-            filter_function_h_n=filter_function_h_n,
-            filter_function_basis=filter_function_basis,
-            filter_function_s_derivs=filter_function_s_derivs,
-            exponential_method=exponential_method,
-            frechet_deriv_approx_method=frechet_deriv_approx_method,
-            is_skew_hermitian=is_skew_hermitian,
-            transfer_function=transfer_function,
-            amplitude_function=amplitude_function)
-
         self._diss_sup_op = None
         self._diss_sup_op_deriv = None
 
@@ -1690,14 +1741,33 @@ class LindbladSolver(SchroedingerSolver):
         self._sup_op_deriv_func = super_operator_derivative_function
         self._is_hermitian = is_skew_hermitian
 
+        super().__init__(
+            h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
+            tau=tau, ctrl_amps=ctrl_amps,
+            calculate_propagator_derivatives=calculate_unitary_derivatives,
+            filter_function_h_n=filter_function_h_n,
+            filter_function_basis=filter_function_basis,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
+            exponential_method=exponential_method,
+            frechet_deriv_approx_method=frechet_deriv_approx_method,
+            is_skew_hermitian=is_skew_hermitian,
+            transfer_function=transfer_function,
+            amplitude_function=amplitude_function)
+
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
             super().set_optimization_parameters(y)
-            if self._prefactor_function is not None \
-                    or self._sup_op_func is not None:
-                self._diss_sup_op = None
-                self._diss_sup_op_deriv = None
+            self.reset_cached_propagators()
+
+    def reset_cached_propagators(self):
+        """ See base class. """
+        super().reset_cached_propagators()
+        if self._prefactor_function is not None \
+                or self._sup_op_func is not None:
+            self._diss_sup_op = None
+            self._diss_sup_op_deriv = None
+
 
     def _calc_diss_sup_op(self) -> List[q_mat.OperatorMatrix]:
         r"""

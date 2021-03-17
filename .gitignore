@@ -7,3 +7,5 @@ dist/
 qopt.egg-info/
 quantum_computer.egg-info/
 qopt/examples/ff_benchmarking/__pycache__/
+__pycache__/setup.cpython-37.pyc
+qopt/examples/rabi_driving/__pycache__/lab_frame_setup.cpython-37.pyc

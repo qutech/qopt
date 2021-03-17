@@ -94,9 +94,6 @@ class OperatorMatrix(ABC):
     ----------
     data
         The stored data. Its type is defined in subclasses.
-
-    `Todo`
-        * implement element wise division for scalars
     """
 
     def __init__(self) -> None:
@@ -317,6 +314,14 @@ class OperatorMatrix(ABC):
         """
         pass
 
+    @abstractmethod
+    def __truediv__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+        pass
+
+    @abstractmethod
+    def __itruediv__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+        pass
+
     @property
     def shape(self) -> Tuple:
         """Returns the shape of the matrix. """
@@ -329,12 +334,27 @@ class OperatorMatrix(ABC):
         Parameters
         ----------
         index: tuple of int, length: 2
-            Index describing an entry in the marix.
+            Index describing an entry in the matrix.
 
         Returns
         -------
         value: complex
             Matrix element at the position described by the index.
+
+        """
+        pass
+
+    @abstractmethod
+    def __setitem__(self, key, value) -> None:
+        """ Sets the value at the position key.
+
+        Parameters
+        ----------
+        key: tuple of int, length: 2
+            Index specifying an entry in the matrix.
+
+        value: complex
+            Value to be set at the position key.
 
         """
         pass
@@ -731,9 +751,28 @@ class DenseOperator(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return self
 
+    def __truediv__(self, other: 'DenseOperator') -> 'DenseOperator':
+        if isinstance(other, (np.ndarray, *VALID_SCALARS)):
+            return DenseOperator(self.data / other)
+        raise NotImplementedError(str(type(other)))
+
+    def __itruediv__(self, other: 'DenseOperator') -> 'DenseOperator':
+        if isinstance(other, (np.ndarray, *VALID_SCALARS)):
+            self.data /= other
+            return self
+        raise NotImplementedError(str(type(other)))
+
     def __getitem__(self, index: Tuple) -> np.complex128:
         """See base class. """
         return self.data[index]
+
+    def __setitem__(self, key, value) -> None:
+        """See base class. """
+        self.data.__setitem__(key, value)
+
+    def __repr__(self):
+        """Representation as numpy array. """
+        return 'DenseOperator with data: \n' + self.data.__repr__()
 
     def dag(self, do_copy: bool = True) -> Optional['DenseOperator']:
         """See base class. """
@@ -826,10 +865,10 @@ class DenseOperator(OperatorMatrix):
 
         """
         if is_skew_hermitian:
-            eig_val, eig_vec = la.eigh(-1j * self.data)
+            eig_val, eig_vec = np.linalg.eigh(-1j * self.data)
             eig_val = 1j * eig_val
         else:
-            eig_val, eig_vec = la.eig(self.data)
+            eig_val, eig_vec = np.linalg.eig(self.data)
 
         # apply the exponential function to the eigenvalues and invert the
         # diagonalization transformation
@@ -872,10 +911,10 @@ class DenseOperator(OperatorMatrix):
 
         """
         if is_skew_hermitian:
-            eig_val, eig_vec = la.eigh(-1j * self.data)
+            eig_val, eig_vec = np.linalg.eigh(-1j * self.data)
             eig_val = 1j * eig_val
         else:
-            eig_val, eig_vec = la.eig(self.data)
+            eig_val, eig_vec = np.linalg.eig(self.data)
 
         eig_vec_dag = eig_vec.conj().T
 
