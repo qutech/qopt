@@ -13,12 +13,6 @@ We set up another open-source repository named
 exchange quantum simulation and optimal control applications implemented using
 qopt.
 
-## Version
-This is the open alpha version. The name might be changed in the future. The
-contend will be extended based on feedback concerning the needs and demands of
-(possible) users. If you miss an important feature, you can request it by 
-opening a issue in the git repository or write me directly at 
-j.teske@fz-juelich.de.
 
 ## Introduction
 In current quantum computer prototypes information is stored an processed in 
