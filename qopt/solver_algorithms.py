@@ -420,11 +420,15 @@ class Solver(ABC):
                 raise ValueError("Tau must be a one dimensional numpy array or"
                                  "a list.")
             n_time_steps = self.transferred_time.shape[0]
+
+            if len(self.h_drift) == 1:
+                self.h_drift = self.h_drift * n_time_steps
+
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
                 raise ValueError("The drift hamiltonian must have exactly one "
                                  "entry for each transferred time step or no "
-                                 "entry at all.")
+                                 "entry at all or a single entry.")
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
@@ -526,7 +530,7 @@ class Solver(ABC):
         if self.filter_function_n_coeffs_deriv is None:
             return None
         else:
-            return self.filter_function_n_coeffs_deriv(self.transferred_parameters)
+            return self.filter_function_n_coeffs_deriv(self._ctrl_amps)
 
     @property
     def create_ff_h_n(self) -> list:
@@ -541,7 +545,7 @@ class Solver(ABC):
         if type(self._filter_function_h_n) == list:
             h_n = self._filter_function_h_n
         else:
-            h_n = self._filter_function_h_n(self.transferred_parameters)
+            h_n = self._filter_function_h_n(self._ctrl_amps)
 
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
@@ -641,7 +645,7 @@ class Solver(ABC):
         if new_amps is not None:
             self.set_optimization_parameters(new_amps)
         else:
-            if self.transferred_parameters is None:
+            if self._ctrl_amps is None:
                 raise ValueError('No optimization parameters set. '
                                  'Please supply new_amps argument')
 
@@ -660,7 +664,7 @@ class Solver(ABC):
         if self.pulse_sequence is None:
             h_c = list(zip(
                 self.h_ctrl,
-                self.transferred_parameters.T,
+                self._ctrl_amps.T,
                 [f'Control{i}' for i in range(len(self.h_ctrl))]
             ))
             self.pulse_sequence = pulse_sequence.PulseSequence(
@@ -669,11 +673,11 @@ class Solver(ABC):
         else:
             # Clean up the caches and update coefficients
             self.pulse_sequence.cleanup('all')
-            self.pulse_sequence.c_coeffs = self.transferred_parameters.T
+            self.pulse_sequence.c_coeffs = self._ctrl_amps.T
             # Not the most elegant, but necessary for the current
             # implementation.
             self.pulse_sequence.n_coeffs = pulse_sequence._parse_Hamiltonian(
-                self._filter_function_h_n(self.transferred_parameters),
+                self._filter_function_h_n(self._ctrl_amps),
                 len(self.transferred_time), 'H_n')[2]
 
             if basis is not None:
