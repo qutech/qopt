@@ -17,7 +17,7 @@ qopt.
 This is the open alpha version. The name might be changed in the future. The
 contend will be extended based on feedback concerning the needs and demands of
 (possible) users. If you miss an important feature, you can request it by 
-opening a issue in the git repository or write me directly at 
+opening an issue in the git repository or write me directly at 
 j.teske@fz-juelich.de.
 
 ## Introduction
