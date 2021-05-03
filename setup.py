@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='qopt',
-    version='1.0',
+    version='1.1',
     packages=['qopt'],
     url='https://git-ce.rwth-aachen.de/qutech/qopt',
     license='GLP3',

@@ -22,9 +22,15 @@ otherwise you need one element for each transferred time step.
 Optimizer
 - scalar optimization algorithms available
 - gradient free nelder mead algorithm available
-- cost function weights must now be given in 
+- cost function weights must now be given in the optimizer class
 
 ### Version 1.0 to 1.1
 
 Cost Functions
 - refactoring of the angle axis representation
+
+Matrix
+- implements the division by scalar by div operator
+
+Documentation
+- Extends the documentation by the notebook series examples
