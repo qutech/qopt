@@ -24,9 +24,6 @@ The package sets a focus on realistic noise models to enable noise mitigation
 through pulse tailoring. Imperfections of the control electronics can also be
 included in the simulations.
 
-The implementation was inspired by the optimal control package of 
-[QuTiP](http://qutip.org/).
-
 ## Installation
 The recommended way is to use conda for the installation.
 To avoid difficulties, QuTiP needs to be installed first. To do so, follow 
@@ -71,6 +68,17 @@ Either install qopt via pip
 or alternatively download the source code and use
 `python setup.py develop` to install using symlinks or 
 `python setup.py install` without.
+
+## Feature Requests
+
+If you require an additional feature for your work, then please open an issue
+on github or reach out to me via e-mail j.teske@fz-juelich.de.
+There is a list in markdown format with possible extensions in the package.
+
+## Patch Notes
+
+You can find the patch Notes in a markdown list in the package. Please be aware
+that the github repo is updated more frequently than the version on pypi.
 
 ## References
 [1]: Khaneja, N., Reiss, T., Kehlet, C., Schulte-Herbrüggen, T., Glaser, S.
