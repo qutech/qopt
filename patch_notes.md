@@ -34,3 +34,12 @@ Matrix
 
 Documentation
 - Extends the documentation by the notebook series examples
+
+### Version 1.1 to 1.2
+
+Imports
+- reduce the list of required imports. QuTiP and simanneal can only be used
+if they were installed.
+  
+Documentation
+- Improvement of the docstrings at module level and for the feature notebooks.

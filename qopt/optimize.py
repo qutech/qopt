@@ -25,10 +25,12 @@ themselves.
 Currently it supports interfacing to least squares and minimization algorithms
 of the scipy package. Conditionally, a simulated annealing is supported, if the
 simanneal package is included in the environment. (See installation
-instructions on https://github.com/qutech/qopt)
+instructions on https://github.com/qutech/qopt) The classes for simulated
+annealing are in an experimental state and not well tested!
 
 The `Optimizer` class uses the `Simulator` as interface to the cost functions
 evaluated after the simulation.
+
 
 Classes
 -------
@@ -38,8 +40,22 @@ Classes
 :class:`LeastSquaresOptimizer`
     An interface to scipy's least squares optimizer.
 
+:class:`ScalarMinimizingOptimizer`
+    An interface to scipy's minimize functions.
+
 :class:`WallTimeExceeded`
     Exception for exceeding the optimization's time limit.
+
+:class:`PulseAnnealer`
+    Helper class for `SimulatedAnnealing`.
+
+:class:`SimulatedAnnealing`
+    Simulated annealing as optimization. Experimental implementation. Not well
+    tested!
+
+:class:`SimulatedAnnealingScipy`
+    Simulated annealing based on scipy functions. Experimental implementation.
+    Not well tested!
 
 Notes
 -----
@@ -60,9 +76,19 @@ import scipy.optimize
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable, List, Union, Sequence
+from unittest import mock
+from warnings import warn
 
 from qopt import optimization_data, simulator, performance_statistics
-import simanneal
+
+
+try:
+    import simanneal
+except ImportError:
+    warn('simanneal not installed. '
+         'SimulatedAnnealing is not available')
+    simanneal = mock.Mock()
+
 
 default_termination_conditions = {
     "min_gradient_norm": 1e-7,
@@ -631,6 +657,9 @@ class SimulatedAnnealing(Optimizer):
     """
     This class uses simulated annealing for discrete optimization.
 
+    The use of this class requires the installation of the simanneal package
+    from pypi.
+
     Parameters
     ----------
     initial_temperature: float
@@ -660,6 +689,14 @@ class SimulatedAnnealing(Optimizer):
             bounds: Optional[np.ndarray] = None,
             updates: Optional[int] = None
     ):
+
+        try:
+            import simanneal
+        except ImportError as err:
+            raise RuntimeError(
+                'Requirements not fulfilled. Please install simanneal'
+            ) from err
+
         super().__init__(
             system_simulator=system_simulator,
             termination_cond=termination_cond,

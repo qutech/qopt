@@ -507,6 +507,7 @@ class OversamplingTF(TransferFunction):
 
     See Also
     --------
+
     Base Class
 
     """

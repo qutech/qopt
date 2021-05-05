@@ -1,9 +1,4 @@
 numpy
 scipy
-cython
 matplotlib
-nose
-spyder
-simanneal
-qutip
 filter_functions

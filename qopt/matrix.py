@@ -71,8 +71,14 @@ import scipy.linalg as la
 
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional, Union, Sequence
+from unittest import mock
+from warnings import warn
 
-from qutip import Qobj
+try:
+    from qutip import Qobj
+except ImportError:
+    warn('Qutip not installed. plot_bloch_vector_evolution() is not available')
+    Qobj = mock.Mock()
 
 
 VALID_SCALARS = [int, float, complex, np.int8, np.int16, np.int32, np.int64,

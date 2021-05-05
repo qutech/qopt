@@ -10,13 +10,11 @@ setup(
     author_email='j.teske@fz-juelich.de',
     description='Optimal Control for Quantum Systems',
     package_dir={'qopt': 'qopt'},
-    install_requires=['numpy', 'scipy', 'matplotlib', 'cython',
-                      'simanneal', 'pandas', 'spyder', 'jupyter', 'notebook',
-                      'filter_functions', 'qutip'],
+    install_requires=['numpy', 'scipy', 'matplotlib', 'filter_functions'],
     extras_require={
         'doc': ['ipython', 'ipykernel', 'nbsphinx', 'numpydoc', 'sphinx',
                 'jupyter_client', 'sphinx_rtd_theme'],
-        'tests': ['pytest'],
+        'qopt_tests': ['pytest'],
     },
     test_suite='qopt_tests',
     classifiers=[

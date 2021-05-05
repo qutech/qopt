@@ -1,5 +1,4 @@
 from qopt import noise, matrix, solver_algorithms
-import qutip
 import numpy as np
 import math
 import unittest
@@ -11,10 +10,8 @@ class TestTslots(unittest.TestCase):
         h_drift = [
             matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.DenseOperator(
-            qutip.sigmax()),
-                     .5 * matrix.DenseOperator(
-                          qutip.sigmaz())]
+        h_control = [.5 * matrix.DenseOperator.pauli_x(),
+                     .5 * matrix.DenseOperator.pauli_z()]
 
         ctrl_amps = np.asarray([[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * np.pi
         n_t = 4
@@ -60,7 +57,7 @@ class TestTslots(unittest.TestCase):
             np.testing.assert_array_almost_equal(reverse_propagators[i].data,
                                                  correct_rev_prop[i])
 
-        sx = matrix.DenseOperator(.5 * qutip.sigmax())
+        sx = .5 * matrix.DenseOperator.pauli_x()
         A = sx * -1j * .5 * 2 * math.pi
         B = sx * -1j
         prop, deriv = A.dexp(direction=B, tau=1, compute_expm=True)
@@ -74,10 +71,8 @@ class TestTslots(unittest.TestCase):
         h_drift = [
             matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.DenseOperator(
-            qutip.sigmax()), ]
-        h_noise = [.5 * matrix.DenseOperator(
-            qutip.sigmaz()), ]
+        h_control = [.5 * matrix.DenseOperator.pauli_x(), ]
+        h_noise = [.5 * matrix.DenseOperator.pauli_z(), ]
         ctrl_amps = np.asarray([[.5, 0, .25, .25], ]).T * 2 * math.pi
         tau = [1, 1, 1, 1]
         n_t = len(tau)
@@ -135,7 +130,7 @@ class TestTslots(unittest.TestCase):
             np.testing.assert_array_almost_equal(reverse_propagators[i].data,
                                                  correct_rev_prop[i].data)
 
-        sx = matrix.DenseOperator(.5 * qutip.sigmax())
+        sx = .5 * matrix.DenseOperator.pauli_x()
         A = sx * -1j * .5 * 2 * math.pi
         B = sx * -1j
         prop, deriv = A.dexp(direction=B, tau=1, compute_expm=True)
@@ -152,8 +147,8 @@ class TestTslots(unittest.TestCase):
         h_drift = [
             matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.DenseOperator(qutip.sigmax()),
-                     .5 * matrix.DenseOperator(qutip.sigmaz())]
+        h_control = [.5 * matrix.DenseOperator.pauli_x(),
+                     .5 * matrix.DenseOperator.pauli_z()]
         ctrl_amps = np.asarray(
             [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
         tau = [1, 1, 1, 1]
@@ -203,8 +198,8 @@ class TestTslots(unittest.TestCase):
         h_drift = [
             matrix.DenseOperator(np.zeros((2, 2), dtype=complex))
             for _ in range(4)]
-        h_control = [.5 * matrix.DenseOperator(qutip.sigmax()),
-                     .5 * matrix.DenseOperator(qutip.sigmaz())]
+        h_control = [.5 * matrix.DenseOperator.pauli_x(),
+                     .5 * matrix.DenseOperator.pauli_z()]
         ctrl_amps = np.asarray(
             [[.5, 0, .25, .25], [0, .5, 0, 0]]).T * 2 * math.pi
         tau = [1, 1, 1, 1]

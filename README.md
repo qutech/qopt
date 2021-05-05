@@ -37,9 +37,17 @@ package was written and tested using python 3.7.
     conda create --name qopt_env python=3.7
     conda activate qopt_env
 
-Start with all recommended dependencies of QuTiP: 
+Start with all required dependencies including 
+[filter_functions package](https://github.com/qutech/filter_functions): 
 
-    conda install numpy scipy cython matplotlib pytest pytest-cov jupyter
+    conda install numpy scipy matplotlib
+    pip install filter_functions
+
+### Optional packages
+
+If you wish to use the plotting features of QuTiP, then install additionally:
+
+    conda install cython pytest pytest-cov jupyter
 
 Then open a conda forge channel:
 
@@ -49,13 +57,14 @@ and install QuTiP:
 
     conda install qutip
 
-Then install two remaining dependencies and the 
-[filter_functions package](https://github.com/qutech/filter_functions) via pip:
+Another optional package is simanneal for the use of simulated annealing for
+discrete optimization:
 
     conda install simanneal
-    pip install filter_functions
+
+### qopt installation
     
-And either install qopt via pip 
+Either install qopt via pip 
 
     pip install qopt
 
