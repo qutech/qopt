@@ -19,11 +19,11 @@
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
 """
-This file contains a matrix class which implements the computationally
-expensive numeric calculations.
+This file contains an operator / matrix class which encapsulates the
+numeric operations.
 
-The matrices can be stored and handled either as dense or sparse
-matrices for the sake of encapsulation of the numeric methods.
+The operators can be stored as dense matrices and a sparse representation
+is planed.
 The most frequently used and computationally expensive function is
 the matrix exponential and its derivative. These operations are required to
 calculate the analytic solution of the Schroedinger and Lindblad master

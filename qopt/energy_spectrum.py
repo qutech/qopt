@@ -18,7 +18,11 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-"""This file serves to plot energy spectra of Hamiltonians.
+"""This file serves to plot energy spectra of a Hamiltonian.
+
+The convenience functions implemented in this module can be used to plot the
+eigenvalues and eigenvectors of the Hamiltonian as function of a parameter.
+This is especially useful to analyse the theoretical properties of a system.
 
 Functions
 ---------

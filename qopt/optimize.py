@@ -19,14 +19,16 @@
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
 """
-Optimization algorithms.
+This module contains interfaces to optimization algorithms or the algorithms
+themselves.
 
-This module implements the optimization algorithms for the optimal control
-problem.
+Currently it supports interfacing to least squares and minimization algorithms
+of the scipy package. Conditionally, a simulated annealing is supported, if the
+simanneal package is included in the environment. (See installation
+instructions on https://github.com/qutech/qopt)
 
-Currently supported are:
-
-    LS-TRF - Least squares, Trust Region Reflective
+The `Optimizer` class uses the `Simulator` as interface to the cost functions
+evaluated after the simulation.
 
 Classes
 -------

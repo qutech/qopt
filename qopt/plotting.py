@@ -1,3 +1,42 @@
+# -*- coding: utf-8 -*-
+# =============================================================================
+#     filter_functions
+#     Copyright (C) 2020 Julian Teske, Forschungszentrum Juelich
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+#     Contact email: j.teske@fz-juelich.de
+# =============================================================================
+""" Plotting functions.
+
+The function `plot_bloch_vector_evolution` can be used to plot the evolution
+under a series of propagators on the bloch sphere. It uses QuTiP and is only
+available if QuTiP is installed in the environment. (See installation
+instructions on https://github.com/qutech/qopt)
+
+Functions
+---------
+:func:`plot_bloch_vector_evolution`
+    Plots the evolution of the forward propagators of the initial state on the
+    bloch sphere.
+
+Notes
+-----
+The implementation was adapted from the filter_functions package.
+
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d

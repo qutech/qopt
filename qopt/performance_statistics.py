@@ -20,6 +20,10 @@
 # =============================================================================
 """Statistics of the use of computational resources.
 
+The class `PerformanceStatistics` gathers information about the wall time
+spend for the calculation of each cost function and its gradient. It can be
+used to evaluate the consumption of computational resources.
+
 Notes
 -----
 The implementation was inspired by the optimal control package of QuTiP [1]_

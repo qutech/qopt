@@ -19,10 +19,17 @@
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
 """
-Cost functions which can be minimised in the control optimization.
+Cost functions which can be minimised as figure of merit in the control
+optimization.
 
-These classes evaluate the cost function which describe the quantum system
-under simulation. This can be for example the infidelity of a quantum channel.
+Each `CostFunction` calculates a commonly used quantity for errors occurring
+during a quantum gate or algorithm. These include state and gate fidelities or
+leakages. These are also implemented in variations for the description of noise
+like the averaging in a Monte Carlo method or the compatibility with a
+linearized master equation in lindblad form. One cost function interfaces to
+the estimation of infidelities by generalized filter functions.
+
+
 To support gradient based optimization algorithms such as quasi-Newton type
 algorithms the classes also calculate the gradients of the cost functions.
 (Jacobians in case of vector valued cost functions.)

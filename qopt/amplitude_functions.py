@@ -37,6 +37,8 @@ parameters:
 
     u_k(t) = u_k(x(t))
 
+The `AmplitudeFunction` class is used as attribute of the `Solver` class.
+
 Classes
 -------
 :class:`AmplitudeFunction`

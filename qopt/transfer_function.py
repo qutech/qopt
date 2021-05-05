@@ -42,6 +42,9 @@ for small pulses with a lot of correlations.
 The matrix based transfer function have their own classes for concatenation
 and parallel application.
 
+See Also
+--------
+
 Optimal control methods for rapidly time-varying Hamiltonians, 2011
 Motzoi, F. and Gambetta, J. M. and Merkel, S. T. and Wilhelm, F. K.
 PhysRevA.84.022307, https://link.aps.org/doi/10.1103/PhysRevA.84.022307

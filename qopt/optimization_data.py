@@ -20,6 +20,12 @@
 # =============================================================================
 """This module stores information about the optimization and its result.
 
+The `OptimizationResult` is generated with the final properties and initial
+optimization parameter values of each optimization run. The
+`OptimizationSummary` is only created when requested and stores the properties
+of each step in the optimization algorithm. This information is valuable for
+the choice of the best optimization algorithm.
+
 Classes
 -------
 :class:`OptimizationResult`

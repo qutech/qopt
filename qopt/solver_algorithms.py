@@ -18,13 +18,20 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-"""
-The Solver calculates the propagators as solutions to Schroedinger's
-equation or a master equation in Lindblad form.
+""" Implements the algorithms to solve differential equations like
+Schroedinger's equation or a master equation.
+
+The `Solver` class is the central piece of the actual simulation. It calculates
+propagators from the differential equations describing the quantum dynamics.
+The abstract base class inherits among other things an interface to the
+`PulseSequence` class of the filter_functions package.
+
+The `Solver` classes can have an amplitude and a transfer function as attribute
+and automate their use. The Monte Carlo solvers also hold an instance of a
+noise trace generator.
 
 If requested, also derivatives of the propagators by the control amplitudes are
-calculated or approximated. Please note that this Docstring only documents the
-classes currently supported.
+calculated or approximated.
 
 Classes
 -------

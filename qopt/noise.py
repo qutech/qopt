@@ -19,8 +19,13 @@
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
 """
-This file contains classes and helper functions for the generation of noise
-traces.
+This file contains classes and helper functions for the sampling of noise
+distributions.
+
+The `NoiseTraceGenerator` class and its children are used by the `Solver` class
+to generate noise samples. They use various helper functions for the respective
+sampling methods. In the current version, the sampling of a quasi static
+distribution and the spectral noise density of fast noise is supported.
 
 Classes
 -------

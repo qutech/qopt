@@ -73,6 +73,14 @@ optimize module
    :undoc-members:
    :show-inheritance:
 
+qopt.parallel module
+-----------------------------------
+
+.. automodule:: qopt.parallel
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 qopt.performance\_statistics module
 -----------------------------------
 
@@ -80,6 +88,13 @@ qopt.performance\_statistics module
    :members:
    :undoc-members:
    :show-inheritance:
+
+qopt.plotting module
+-----------------------------------
+
+.. automodule:: qopt.plotting
+   :members:
+   :undoc-members:
 
 simulator module
 ------------------------------

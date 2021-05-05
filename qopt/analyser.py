@@ -18,7 +18,14 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-"""This file contains some functions for the analysis of the optimization.
+"""The `Analyser` class operates on an instance of the `DataContainer` class
+and offers various convenience functions for the visualization and analysis
+of data acquired during the optimizations.
+
+These features include the plotting of cost functions, either for a single
+optimization run or for a multitude. Also functions for the calculation of
+computational time for the various cost functions and if given their gradients
+are included.
 
 Classes
 -------

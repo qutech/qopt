@@ -20,6 +20,14 @@
 # =============================================================================
 """Implements data storage.
 
+The `DataContainer` class stores the contend of multiple `Result` class
+instances. Each 'Result' class instance holds the information gathered in
+an optimization run.
+
+The `DataContainer` interfaces to the `Analyser` class, which visualizes the
+stored data. It has also the functionalities for writing data to and loading
+it from the hard drive.
+
 Classes
 -------
 :class:`DataContainer`

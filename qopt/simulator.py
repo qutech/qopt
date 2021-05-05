@@ -18,25 +18,25 @@
 #
 #     Contact email: j.teske@fz-juelich.de
 # =============================================================================
-"""The Dynamics class provides the interface between the optimizer and the
+"""The `Simulator` class provides the interface between the optimizer and the
 actual simulation.
+
+The clean interface between the simulation and the optimization algorithm
+allows qopt to interface with a wide class of optimization algorithms. A
+special focus is set on gradient based optimization algorithms and analytic
+gradients are also wrapped by the `Simulator` class.
+
+The correct setup of the entire simulation might contain the
+implementation of functions and their derivatives. This a common place for
+mistakes and therefore the `Simulator` class offers convenience functions to
+check the integrated calculation of gradients based on analytic results with
+finite differences.
 
 Classes
 -------
 :class:`Simulator`
     Base class.
 
-Notes
------
-The current implementation is intended as minimal working requirement.
-Especially the interface for the user is still object of discussion.
-
-Regarding the construction of class instance at run time:
-    This construction can be encapsulated by set functions working as an
-    internal builder pattern.
-    Or by explicit construction by the user and sharing the class instance.
-    This might be extended by convenience function as in pulseoptim of qutip
-    control.
 
 Notes
 -----
@@ -64,7 +64,7 @@ class Simulator(object):
     """
     The Dynamics class provides the interface for the Optimizer class.
 
-    It wraps the infidelity and optionally the gradient of the infidelity.
+    It wraps the cost functions and optionally the gradient of the infidelity.
 
     Parameters
     ----------
@@ -109,7 +109,6 @@ class Simulator(object):
         * is the pulse attribute useful?
         * check attributes for duplication: should num_ctrl and num_times be
             saved at this level?
-        * move cost function weights to the optimizer
 
     """
 
