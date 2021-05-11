@@ -1,3 +1,9 @@
+"""
+Test Dense operators:
+- multiplication
+- addition
+- matrix exponential
+"""
 from qopt import matrix
 
 import unittest

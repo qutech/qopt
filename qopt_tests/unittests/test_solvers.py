@@ -1,3 +1,7 @@
+"""
+Test the calculation of propagators.
+"""
+
 from qopt import noise, matrix, solver_algorithms
 import numpy as np
 import math

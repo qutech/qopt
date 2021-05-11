@@ -1,7 +1,12 @@
+"""
+- entanglement vs average gate infidelity
+- state fidelity errors and correct calculation
+- test for angle_axis_representation
+"""
 import math
 import unittest
 from qopt import matrix, cost_functions as q_fc, solver_algorithms, \
-    transfer_function, DenseOperator
+    transfer_function
 from qopt import *
 import numpy as np
 

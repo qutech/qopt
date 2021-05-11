@@ -1,3 +1,7 @@
+"""
+Test the entanglement fidelity of quasi static noise vs the analytic result
+for pure dephasing.
+"""
 import numpy as np
 import unittest
 

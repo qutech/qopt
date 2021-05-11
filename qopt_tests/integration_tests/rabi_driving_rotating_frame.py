@@ -1,3 +1,6 @@
+"""
+Compares T2 decay vs analytic result.
+"""
 from qopt.matrix import DenseOperator
 from qopt.noise import NTGQuasiStatic
 from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver

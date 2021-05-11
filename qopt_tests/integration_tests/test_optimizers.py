@@ -1,5 +1,6 @@
-# Covers testing the scipy.minimize wrapper vs the scipy.least_squares_wrapper
-
+"""
+Integration test: optimizing xy-Rabi problem with various optimizers.
+"""
 from qopt import *
 from qopt.examples.rabi_driving import setup as rabi_setup
 import unittest

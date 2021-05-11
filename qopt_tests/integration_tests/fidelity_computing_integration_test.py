@@ -1,3 +1,6 @@
+"""
+Test the derivative of the state fidelity.
+"""
 import numpy as np
 import unittest
 

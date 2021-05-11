@@ -16,16 +16,10 @@ Automatically estimate the lindblad operators when handling noise on the control
 hamiltonian. Also provide a way to automate the calculation of derivatives from
 the resulting amplitudes.
 
-
-### Parallelization by noise traces 
-Multi processing to decrease run time.
-
 ### Propagate only initial State
 To use the package only for simulation or for the optimization of a state
 fidelity.
 
-### Handle the time steps
-Avoid setting time steps twice. i. e. for the solver and the transfer function.
 
 ### Dynamically change between lab and rotating frame
 (priority low) In the special case of Rabi driving change between two frames 

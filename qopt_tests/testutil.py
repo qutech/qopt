@@ -1,4 +1,6 @@
-""" Utility functions for the unit tests. """
+"""
+Utility functions for the unit tests.
+"""
 
 import numpy as np
 from typing import Callable

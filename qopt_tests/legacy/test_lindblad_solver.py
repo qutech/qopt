@@ -1,3 +1,7 @@
+"""
+Not a real test. Should test lindblad solver gradient vs finite diff.
+"""
+
 import numpy as np
 
 from qopt.matrix import DenseOperator

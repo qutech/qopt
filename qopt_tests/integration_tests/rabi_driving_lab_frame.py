@@ -1,3 +1,7 @@
+"""
+Plots a t2-star decay and verifies its shape.
+"""
+
 from qopt.matrix import DenseOperator
 from qopt.noise import NTGQuasiStatic
 from qopt.solver_algorithms import SchroedingerSMonteCarlo, LindbladSolver, \

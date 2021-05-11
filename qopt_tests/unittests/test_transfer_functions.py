@@ -1,3 +1,7 @@
+"""
+Tests for most transfer function.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import unittest

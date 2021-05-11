@@ -1,3 +1,6 @@
+"""
+Test fast noise generators vs their periodogram.
+"""
 import unittest
 import numpy as np
 

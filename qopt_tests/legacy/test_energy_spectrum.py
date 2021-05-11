@@ -1,3 +1,6 @@
+"""
+Not a real test but example application of the energy spectrum plotter.
+"""
 import numpy as np
 
 from qopt.matrix import DenseOperator
