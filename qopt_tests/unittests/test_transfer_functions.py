@@ -515,6 +515,43 @@ class TestTransferFunctions(unittest.TestCase):
         np.testing.assert_array_almost_equal(
             np.expand_dims(grad_numeric, axis=2), grad_analytic)
 
+    def test_convolution(self):
+
+        kernel = np.asarray([.3, .5, .3])
+
+        conv_tf = transfer_function.ConvolutionTF(
+            kernel=kernel,
+            num_ctrls=1
+        )
+        conv_tf.set_times(np.ones(5))
+
+        x0 = np.asarray([[1, 2, 0, 4, 5]], dtype=np.float64).T
+
+        result = conv_tf(x0)
+
+        theoretical_result = np.asarray([[1.4],
+                                         [1.3],
+                                         [1.8],
+                                         [3.5],
+                                         [5.2]])
+
+        np.testing.assert_array_almost_equal(result, theoretical_result)
+
+        def test_function(x):
+            y = conv_tf(x)
+            return quadratic_sum(y)
+
+        def analytic_grad(x):
+            y = deriv_quadratic_sum(x)
+            return conv_tf.gradient_chain_rule(y)
+
+        grad_numeric = testutil.calculate_jacobian(
+            test_function, x0=x0, delta_x=1e-6)
+        grad_analytic = analytic_grad(conv_tf(x0))
+
+        np.testing.assert_array_almost_equal(
+            np.expand_dims(grad_numeric, axis=2), grad_analytic, 1e-5)
+
     def test_gaussian_convolution(self):
 
         ef_ov_tf = transfer_function.OversamplingTF(

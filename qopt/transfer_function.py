@@ -603,6 +603,100 @@ class OversamplingTF(TransferFunction):
         return deriv_by_opt_par
 
 
+class ConvolutionTF(TransferFunction):
+    """ A convolution as filter function.
+
+    This implementation uses the function scipy.ndimage.convolve. For
+    oversampling and boundaries use this TransferFunction in combination with
+    EfficientOversamplingTF and ConcatenateTF.
+
+    Parameters
+    ----------
+
+    """
+
+    def __init__(self,
+                 kernel: np.ndarray,
+                 mode: str = 'nearest',
+                 num_ctrls: int = 1,
+                 cval: float = 0.0):
+        super().__init__(num_ctrls=num_ctrls)
+        if len(kernel.shape) == 1:
+            kernel = np.expand_dims(kernel, axis=1)
+        assert len(kernel.shape) == 2
+        self.kernel = kernel
+        self.mode = mode
+        self.cval = cval
+
+    def __call__(self, y: np.array) -> np.array:
+        """ See base class.
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+        """
+        shape = y.shape
+        assert len(shape) == 2
+        assert shape[0] == self._num_y
+        assert shape[1] == self.num_ctrls
+        assert y.dtype in [np.float64, np.float32]
+
+        return scipy.ndimage.convolve(
+            y, weights=self.kernel, mode=self.mode, cval=self.cval
+        )
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: np.array) -> np.array:
+        """ See base class.
+
+        The application of the chain rule is another convolution.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+        assert deriv_by_transferred_par.dtype in [np.float64, np.float32]
+
+        return scipy.ndimage.convolve(
+            deriv_by_transferred_par,
+            weights=np.expand_dims(self.kernel, axis=1),
+            cval=self.cval
+        )
+
+    @property
+    def transfer_matrix(self) -> np.array:
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+
 class GaussianConvolution(TransferFunction):
     """ A gaussian convolution is applied as filter function.
 

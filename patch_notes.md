@@ -43,3 +43,6 @@ if they were installed.
   
 Documentation
 - Improvement of the docstrings at module level and for the feature notebooks.
+
+Transfer Function:
+- adds the custom ConvolutionTF
