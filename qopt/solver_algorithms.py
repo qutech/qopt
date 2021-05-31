@@ -380,8 +380,8 @@ class Solver(ABC):
             u = self.transferred_parameters
 
         if len(u.shape) != 2:
-            raise ValueError('The new control amplitudes set to the time slot'
-                             'computer must have two dimensions! '
+            raise ValueError('The new control amplitudes must have two '
+                             'dimensions! '
                              '(time, control operator)')
 
         if u.shape[0] != len(self.transferred_time):
