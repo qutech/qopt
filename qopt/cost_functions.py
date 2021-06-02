@@ -485,7 +485,7 @@ def derivative_state_fidelity(
             # here we need to take the real part.
             if computational_states:
                 derivative_fidelity[t, ctrl] = 2 * np.real(
-                    scalar_prod * (
+                    (scalar_prod * (
                             target * (
                             reversed_propagators[::-1][t + 1]
                             * propagator_derivatives[ctrl][t]
@@ -494,7 +494,7 @@ def derivative_state_fidelity(
                         subspace_indices=computational_states,
                         map_to_closest_unitary=rescale_propagated_state
                     )
-                    )[0, 0])
+                    ))[0, 0])
             else:
                 derivative_fidelity[t, ctrl] = 2 * np.real(
                     (scalar_prod * (target * reversed_propagators[::-1][t + 1]

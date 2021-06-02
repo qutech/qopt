@@ -587,8 +587,12 @@ class OversamplingTF(TransferFunction):
         padding_start, padding_end = self.num_padding_elements
 
         # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
-        cropped_derivs = deriv_by_transferred_par[
-                         padding_start:-padding_end, :, :]
+        if padding_end > 0:
+            cropped_derivs = deriv_by_transferred_par[
+                             padding_start:-padding_end, :, :]
+        else:
+            cropped_derivs = deriv_by_transferred_par[
+                             padding_start:, :, :]
 
         cropped_derivs = np.expand_dims(cropped_derivs, axis=1)
         cropped_derivs = np.reshape(

@@ -107,8 +107,8 @@ class Simulator(object):
         * properly implement check method as parser
         * flags controlling how much data is saved
         * is the pulse attribute useful?
-        * check attributes for duplication: should num_ctrl and num_times be
-            saved at this level?
+        * check attributes for duplication: should times, num_ctrl and
+            num_times be saved at this level?
 
     """
 
