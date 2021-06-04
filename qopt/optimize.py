@@ -108,6 +108,31 @@ class WallTimeExceeded(Exception):
 class Optimizer(ABC):
     """ Abstract base class for the optimizer.
 
+    Parameters
+    ----------
+    system_simulator : Simulator
+        The simulator is the interface to the simulation.
+
+    termination_cond: dict, optional
+        The termination conditions of the optimization.
+
+    save_intermediary_steps: bool, optional
+        If True, then the results from intermediary steps are stored. Defaults
+        to True.
+
+    cost_fktn_weights: list of float, optional
+        The cost functions are multiplied with these weights during the
+        optimisation.
+
+    use_jacobian_function: bool, optional
+        If set to true, then the jacobians are calculated analytically.
+        Defaults to False.
+
+    store_optimizer: bool, optional
+        If True, then the optimizer stores itself in the result class.
+        Defaults to False
+
+
     Attributes
     ----------
     system_simulator : Simulator
@@ -124,6 +149,10 @@ class Optimizer(ABC):
     use_jacobian_function: bool, optional
         If set to true, then the jacobians are calculated analytically.
 
+    store_optimizer: bool, optional
+        If True, then the optimizer stores itself in the result class.
+        Defaults to False
+
     """
 
     def __init__(
@@ -132,7 +161,9 @@ class Optimizer(ABC):
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = True,
             cost_fktn_weights: Optional[Sequence[float]] = None,
-            use_jacobian_function=True):
+            use_jacobian_function=True,
+            store_optimizer: bool = False
+    ):
         self.system_simulator = system_simulator
         self.use_jacobian_function = use_jacobian_function
         self.termination_conditions = default_termination_conditions
@@ -150,6 +181,7 @@ class Optimizer(ABC):
 
         # flags:
         self.save_intermediary_steps = save_intermediary_steps
+        self.store_optimizer = store_optimizer
 
         self.cost_fktn_weights = cost_fktn_weights
 
@@ -313,6 +345,11 @@ class Optimizer(ABC):
         else:
             jac_norm = 0
 
+        if self.store_optimizer:
+            storage_opt = self
+        else:
+            storage_opt = None
+
         optim_result = optimization_data.OptimizationResult(
             final_cost=self._min_costs,
             indices=self.system_simulator.cost_indices,
@@ -321,7 +358,7 @@ class Optimizer(ABC):
             num_iter=self._n_cost_fkt_eval,
             termination_reason='Maximum Wall Time Exceeded',
             status=5,
-            optimizer=self,
+            optimizer=storage_opt,
             optim_summary=self.optim_iter_summary,
             optimization_stats=self.system_simulator.stats
         )
@@ -361,12 +398,14 @@ class LeastSquaresOptimizer(Optimizer):
             method: str = 'trf',
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,
-            cost_fktn_weights: Optional[Sequence[float]] = None):
+            cost_fktn_weights: Optional[Sequence[float]] = None,
+            store_optimizer: bool = False):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
                          cost_fktn_weights=cost_fktn_weights,
-                         use_jacobian_function=use_jacobian_function)
+                         use_jacobian_function=use_jacobian_function,
+                         store_optimizer=store_optimizer)
         self.method = method
         self.bounds = bounds
 
@@ -398,6 +437,11 @@ class LeastSquaresOptimizer(Optimizer):
             if self.system_simulator.stats is not None:
                 self.system_simulator.stats.end_t_opt = time.time()
 
+            if self.store_optimizer:
+                storage_opt = self
+            else:
+                storage_opt = None
+
             optim_result = optimization_data.OptimizationResult(
                 final_cost=result.fun,
                 indices=self.system_simulator.cost_indices,
@@ -407,7 +451,7 @@ class LeastSquaresOptimizer(Optimizer):
                 num_iter=result.nfev,
                 termination_reason=result.message,
                 status=result.status,
-                optimizer=self,
+                optimizer=storage_opt,
                 optim_summary=self.optim_iter_summary,
                 optimization_stats=self.system_simulator.stats
             )
@@ -435,13 +479,15 @@ class ScalarMinimizingOptimizer(Optimizer):
             method: str = 'L-BFGS-B',
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,
-            cost_fktn_weights: Optional[Sequence[float]] = None
+            cost_fktn_weights: Optional[Sequence[float]] = None,
+            store_optimizer: bool = False
     ):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
                          cost_fktn_weights=cost_fktn_weights,
-                         use_jacobian_function=use_jacobian_function)
+                         use_jacobian_function=use_jacobian_function,
+                         store_optimizer=store_optimizer)
         self.method = method
         self.bounds = bounds
 
@@ -498,6 +544,11 @@ class ScalarMinimizingOptimizer(Optimizer):
                     }
                 )
 
+                if self.store_optimizer:
+                    storage_opt = self
+                else:
+                    storage_opt = None
+
                 optim_result = optimization_data.OptimizationResult(
                     final_cost=result.fun,
                     indices=self.system_simulator.cost_indices,
@@ -507,7 +558,7 @@ class ScalarMinimizingOptimizer(Optimizer):
                     num_iter=result.nfev,
                     termination_reason=result.message,
                     status=result.status,
-                    optimizer=self,
+                    optimizer=storage_opt,
                     optim_summary=self.optim_iter_summary,
                     optimization_stats=self.system_simulator.stats
                 )
@@ -526,6 +577,11 @@ class ScalarMinimizingOptimizer(Optimizer):
                             "max_iterations"]},
                 )
 
+                if self.store_optimizer:
+                    storage_opt = self
+                else:
+                    storage_opt = None
+
                 optim_result = optimization_data.OptimizationResult(
                     final_cost=result.fun,
                     indices=self.system_simulator.cost_indices,
@@ -534,7 +590,7 @@ class ScalarMinimizingOptimizer(Optimizer):
                     num_iter=result.nfev,
                     termination_reason=result.message,
                     status=result.status,
-                    optimizer=self,
+                    optimizer=storage_opt,
                     optim_summary=self.optim_iter_summary,
                     optimization_stats=self.system_simulator.stats
                 )
@@ -682,6 +738,7 @@ class SimulatedAnnealing(Optimizer):
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
+            store_optimizer: bool = False,
             initial_temperature: float = 1.,
             final_temperature: float = 1e-6,
             step_size: int = 1,
@@ -700,7 +757,8 @@ class SimulatedAnnealing(Optimizer):
         super().__init__(
             system_simulator=system_simulator,
             termination_cond=termination_cond,
-            save_intermediary_steps=save_intermediary_steps
+            save_intermediary_steps=save_intermediary_steps,
+            store_optimizer=store_optimizer
         )
 
         self.annealer = PulseAnnealer(
@@ -726,11 +784,16 @@ class SimulatedAnnealing(Optimizer):
         if self.system_simulator.stats is not None:
             self.system_simulator.stats.end_t_opt = time.time()
 
+        if self.store_optimizer:
+            storage_opt = self
+        else:
+            storage_opt = None
+
         optim_result = optimization_data.OptimizationResult(
             final_cost=costs,
             indices=self.system_simulator.cost_indices,
             final_parameters=pulse,
-            optimizer=self,
+            optimizer=storage_opt,
             optim_summary=self.optim_iter_summary,
             optimization_stats=self.system_simulator.stats
         )
@@ -769,6 +832,7 @@ class SimulatedAnnealingScipy(Optimizer):
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = False,
+            store_optimizer: bool = False,
             temperature: float = 1.,
             step_size: int = 1,
             interval: int = 50,
@@ -777,7 +841,8 @@ class SimulatedAnnealingScipy(Optimizer):
         super().__init__(
             system_simulator=system_simulator,
             termination_cond=termination_cond,
-            save_intermediary_steps=save_intermediary_steps
+            save_intermediary_steps=save_intermediary_steps,
+            store_optimizer=store_optimizer
         )
         self.temperature = temperature
         self.step_size = step_size
@@ -790,6 +855,11 @@ class SimulatedAnnealingScipy(Optimizer):
 
         super().prepare_optimization(
             initial_optimization_parameters=initial_control_amplitudes)
+
+        if self.store_optimizer:
+            storage_opt = self
+        else:
+            storage_opt = None
 
         try:
             result = scipy.optimize.basinhopping(
@@ -814,7 +884,7 @@ class SimulatedAnnealingScipy(Optimizer):
                 num_iter=result.nfev,
                 termination_reason=result.message,
                 status=result.status,
-                optimizer=self,
+                optimizer=storage_opt,
                 optim_summary=self.optim_iter_summary,
                 optimization_stats=self.system_simulator.stats
             )
@@ -830,7 +900,7 @@ class SimulatedAnnealingScipy(Optimizer):
                 num_iter=self._n_cost_fkt_eval,
                 termination_reason='Maximum Wall Time Exceeded',
                 status=5,
-                optimizer=self,
+                optimizer=storage_opt,
                 optim_summary=self.optim_iter_summary,
                 optimization_stats=self.system_simulator.stats
             )

@@ -46,3 +46,6 @@ Documentation
 
 Transfer Function:
 - adds the custom ConvolutionTF
+
+Optimizer:
+- improve storage. The optimizer is only stored in the result on request.
