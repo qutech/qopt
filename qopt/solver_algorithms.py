@@ -684,7 +684,7 @@ class Solver(ABC):
             # Not the most elegant, but necessary for the current
             # implementation.
             self.pulse_sequence.n_coeffs = pulse_sequence._parse_Hamiltonian(
-                self._filter_function_h_n(self._ctrl_amps),
+                self.create_ff_h_n,
                 len(self.transferred_time), 'H_n')[2]
 
             if basis is not None:

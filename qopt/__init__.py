@@ -42,7 +42,7 @@ from .optimize import LeastSquaresOptimizer, ScalarMinimizingOptimizer
 from .performance_statistics import PerformanceStatistics
 from .simulator import Simulator
 from .solver_algorithms import SchroedingerSolver, SchroedingerSMonteCarlo, \
-    SchroedingerSMCControlNoise, LindbladSolver, LindbladSControlNoise
+    SchroedingerSMCControlNoise, LindbladSolver
 from .transfer_function import IdentityTF, OversamplingTF, \
     GaussianConvolution, ConcatenateTF, ParallelTF, ParallelMTF, CustomMTF, \
     ExponentialMTF, OversamplingMTF, ConcatenateMTF, ConvolutionTF
@@ -60,7 +60,7 @@ __all__ = [
     'LeastSquaresOptimizer', 'ScalarMinimizingOptimizer',
     'PerformanceStatistics', 'Simulator', 'SchroedingerSolver',
     'SchroedingerSMonteCarlo', 'SchroedingerSMCControlNoise', 'LindbladSolver',
-    'LindbladSControlNoise', 'IdentityTF', 'OversamplingTF', 'ConvolutionTF',
+    'IdentityTF', 'OversamplingTF', 'ConvolutionTF',
     'GaussianConvolution', 'OversamplingMTF', 'ConcatenateMTF',
     'ConcatenateTF', 'ParallelTF', 'ParallelMTF', 'CustomMTF',
     'ExponentialMTF', 'IncoherentLeakageError',
