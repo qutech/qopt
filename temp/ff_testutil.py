@@ -1,5 +1,5 @@
 # =============================================================================
-#     filter_functions
+#     qopt
 #     Copyright (C) 2019 Quantum Technology Group, RWTH Aachen University
 #
 #     This program is free software: you can redistribute it and/or modify
