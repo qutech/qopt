@@ -208,11 +208,7 @@ class Simulator(object):
                 self.stats.cost_func_eval_times[-1].append(t_end - t_start)
 
                 # reimplement the block below
-                if hasattr(cost, "__len__"):
-                    for c in costs:
-                        costs.append(np.asarray(c).flatten())
-                else:
-                    costs.append(cost)
+                costs.append(np.asarray(cost).flatten())
 
                 """
                 I do not understand this block anymore. The cost can be an 
@@ -227,11 +223,7 @@ class Simulator(object):
             for i, cost_fktn in enumerate(self.cost_fktns):
                 cost = cost_fktn.costs()
 
-                if hasattr(cost, "__len__"):
-                    for c in costs:
-                        costs.append(np.asarray(c).flatten())
-                else:
-                    costs.append(cost)
+                costs.append(np.asarray(cost).flatten())
                 """
                 if hasattr(cost, "__len__"):
                     costs.append(cost)
