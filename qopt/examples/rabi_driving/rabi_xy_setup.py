@@ -186,14 +186,14 @@ entanglement_infid_xy = OperationInfidelity(
     solver=solver_qs_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity XY-Control']
+    label=['Entanglement Fidelity XY-Control']
 )
 
 entanglement_infid_qs_noise_xy = OperationNoiseInfidelity(
     solver=solver_qs_noise_xy,
     target=y_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity QS-Noise XY-Control'],
+    label=['Entanglement Fidelity QS-Noise XY-Control'],
     neglect_systematic_errors=True
 )
 
@@ -201,7 +201,7 @@ entanglement_infid_colored_noise_xy = OperationNoiseInfidelity(
     solver=solver_colored_noise_xy,
     target=x_half,
     fidelity_measure='entanglement',
-    index=['Entanglement Fidelity 1-over-f-Noise XY-Control'],
+    label=['Entanglement Fidelity 1-over-f-Noise XY-Control'],
     neglect_systematic_errors=True
 )
 
@@ -230,7 +230,7 @@ fast_infid = entanglement_infid_colored_noise_xy
 def simulate_propagation(initial_pulse):
     simulator = Simulator(
         solvers=[qs_solver, fast_mc_solver],
-        cost_fktns=[syst_infid, qs_infid, fast_infid]
+        cost_funcs=[syst_infid, qs_infid, fast_infid]
     )
     infid = simulator.wrapped_cost_functions(pulse=initial_pulse)
     return infid
@@ -238,12 +238,12 @@ def simulate_propagation(initial_pulse):
 
 simulator = Simulator(
         solvers=[qs_solver],
-        cost_fktns=[syst_infid, qs_infid,]
+        cost_funcs=[syst_infid, qs_infid,]
 )
 
 optimizer = LeastSquaresOptimizer(
     system_simulator=simulator,
     bounds=bounds_xy_least_sq,
-    cost_fktn_weights=[1, 1e2]
+    cost_func_weights=[1, 1e2]
 )
 

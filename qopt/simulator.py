@@ -72,7 +72,7 @@ class Simulator(object):
         This object calculates the evolution of the system under
         consideration.
 
-    cost_fktns: List[FidelityComputer]
+    cost_funcs: List[FidelityComputer]
         These are the parameters which are optimized.
 
     optimization_parameters: numpy array, optional
@@ -97,7 +97,7 @@ class Simulator(object):
     solvers: list of `Solver`
         Instances of the time slot computers used by the cost functions.
 
-    cost_fktns: list of `CostFunction`
+    cost_funcs: list of `CostFunction`
         Instances of the cost functions which are to be optimized.
 
     stats: Stats
@@ -115,7 +115,7 @@ class Simulator(object):
     def __init__(
             self,
             solvers: Optional[Sequence[solver_algorithms.Solver]],
-            cost_fktns: Optional[Sequence[cost_functions.CostFunction]],
+            cost_funcs: Optional[Sequence[cost_functions.CostFunction]],
             optimization_parameters=None,
             num_ctrl=None,
             times=None,
@@ -129,7 +129,7 @@ class Simulator(object):
         self._times = times
 
         self.solvers = solvers
-        self.cost_fktns = cost_fktns
+        self.cost_funcs = cost_funcs
 
         self.stats = (performance_statistics.PerformanceStatistics()
                       if record_performance_statistics else None)
@@ -164,8 +164,8 @@ class Simulator(object):
     def cost_indices(self):
         """Indices of cost functions. """
         cost_indices = []
-        for cost_fktn in self.cost_fktns:
-            cost_indices += cost_fktn.label
+        for cost_func in self.cost_funcs:
+            cost_indices += cost_func.label
         return cost_indices
 
     def wrapped_cost_functions(self, pulse=None):
@@ -201,9 +201,9 @@ class Simulator(object):
 
         if self.stats:
             self.stats.cost_func_eval_times.append([])
-            for i, cost_fktn in enumerate(self.cost_fktns):
+            for i, cost_func in enumerate(self.cost_funcs):
                 t_start = time.time()
-                cost = cost_fktn.costs()
+                cost = cost_func.costs()
                 t_end = time.time()
                 self.stats.cost_func_eval_times[-1].append(t_end - t_start)
 
@@ -220,8 +220,8 @@ class Simulator(object):
                 """
             costs = np.concatenate(costs, axis=0)
         else:
-            for i, cost_fktn in enumerate(self.cost_fktns):
-                cost = cost_fktn.costs()
+            for i, cost_func in enumerate(self.cost_funcs):
+                cost = cost_func.costs()
 
                 costs.append(np.asarray(cost).flatten())
                 """
@@ -266,20 +266,20 @@ class Simulator(object):
         if record_evaluation_times:
             self.stats.grad_func_eval_times.append([])
 
-        for i, cost_fktn in enumerate(self.cost_fktns):
+        for i, cost_func in enumerate(self.cost_funcs):
             if record_evaluation_times:
                 t_start = time.time()
-            jac_u = cost_fktn.grad()
+            jac_u = cost_func.grad()
 
             # if the cost function is scalar, an extra dimension is inserted
             if len(jac_u.shape) == 2:
                 jac_u = np.expand_dims(jac_u, axis=1)
 
             # apply the chain rule to the derivatives
-            jac_x = cost_fktn.solver.amplitude_function.derivative_by_chain_rule(
-                jac_u, cost_fktn.solver.transfer_function(pulse))
+            jac_x = cost_func.solver.amplitude_function.derivative_by_chain_rule(
+                jac_u, cost_func.solver.transfer_function(pulse))
             jac_x_transferred = \
-                cost_fktn.solver.transfer_function.gradient_chain_rule(
+                cost_func.solver.transfer_function.gradient_chain_rule(
                     jac_x
                 )
             jacobians.append(jac_x_transferred)

@@ -120,7 +120,7 @@ class Optimizer(ABC):
         If True, then the results from intermediary steps are stored. Defaults
         to True.
 
-    cost_fktn_weights: list of float, optional
+    cost_func_weights: list of float, optional
         The cost functions are multiplied with these weights during the
         optimisation.
 
@@ -142,7 +142,7 @@ class Optimizer(ABC):
         The shape of the control amplitudes is saved and used for the
         cost functions while the optimization function might need them flatted.
 
-    cost_fktn_weights: list of float, optional
+    cost_func_weights: list of float, optional
         The cost functions are multiplied with these weights during the
         optimisation.
 
@@ -160,7 +160,7 @@ class Optimizer(ABC):
             system_simulator: Optional[simulator.Simulator] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = True,
-            cost_fktn_weights: Optional[Sequence[float]] = None,
+            cost_func_weights: Optional[Sequence[float]] = None,
             use_jacobian_function=True,
             store_optimizer: bool = False
     ):
@@ -183,19 +183,19 @@ class Optimizer(ABC):
         self.save_intermediary_steps = save_intermediary_steps
         self.store_optimizer = store_optimizer
 
-        self.cost_fktn_weights = cost_fktn_weights
+        self.cost_func_weights = cost_func_weights
 
-        if self.cost_fktn_weights is not None:
-            self.cost_fktn_weights = np.asarray(
-                self.cost_fktn_weights).flatten()
-            if len(self.cost_fktn_weights) == 0:
-                self.cost_fktn_weights = None
-            elif not len(self.system_simulator.cost_fktns) == len(
-                    self.cost_fktn_weights):
+        if self.cost_func_weights is not None:
+            self.cost_func_weights = np.asarray(
+                self.cost_func_weights).flatten()
+            if len(self.cost_func_weights) == 0:
+                self.cost_func_weights = None
+            elif not len(self.system_simulator.cost_funcs) == len(
+                    self.cost_func_weights):
                 raise ValueError('A cost function weight must be specified for'
                                  'each cost function or for none at all.')
 
-    def cost_fktn_wrapper(self, optimization_parameters):
+    def cost_func_wrapper(self, optimization_parameters):
         """Wraps the cost function given by the simulator class.
 
         The relevant information for the analysis is saved.
@@ -230,8 +230,8 @@ class Optimizer(ABC):
                 self.pulse_shape[::-1]).T
 
         # apply the cost function weights after saving the values.
-        if self.cost_fktn_weights is not None:
-            costs *= self.cost_fktn_weights
+        if self.cost_func_weights is not None:
+            costs *= self.cost_func_weights
 
         self._n_cost_fkt_eval += 1
         return costs
@@ -264,9 +264,9 @@ class Optimizer(ABC):
             (jacobian.shape[0], jacobian.shape[1] * jacobian.shape[2]))
 
         # apply the cost function weights after saving the values.
-        if self.cost_fktn_weights is not None:
+        if self.cost_func_weights is not None:
             jacobian = np.einsum('ab, a -> ab', jacobian,
-                                 self.cost_fktn_weights)
+                                 self.cost_func_weights)
 
         self._n_jac_fkt_eval += 1
         return jacobian
@@ -398,12 +398,12 @@ class LeastSquaresOptimizer(Optimizer):
             method: str = 'trf',
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,
-            cost_fktn_weights: Optional[Sequence[float]] = None,
+            cost_func_weights: Optional[Sequence[float]] = None,
             store_optimizer: bool = False):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
-                         cost_fktn_weights=cost_fktn_weights,
+                         cost_func_weights=cost_func_weights,
                          use_jacobian_function=use_jacobian_function,
                          store_optimizer=store_optimizer)
         self.method = method
@@ -422,7 +422,7 @@ class LeastSquaresOptimizer(Optimizer):
 
         try:
             result = scipy.optimize.least_squares(
-                fun=super().cost_fktn_wrapper,
+                fun=super().cost_func_wrapper,
                 x0=initial_control_amplitudes.T.flatten(),
                 jac=jac,
                 bounds=self.bounds,
@@ -479,25 +479,25 @@ class ScalarMinimizingOptimizer(Optimizer):
             method: str = 'L-BFGS-B',
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,
-            cost_fktn_weights: Optional[Sequence[float]] = None,
+            cost_func_weights: Optional[Sequence[float]] = None,
             store_optimizer: bool = False
     ):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
-                         cost_fktn_weights=cost_fktn_weights,
+                         cost_func_weights=cost_func_weights,
                          use_jacobian_function=use_jacobian_function,
                          store_optimizer=store_optimizer)
         self.method = method
         self.bounds = bounds
 
-    def cost_fktn_wrapper(self, optimization_parameters):
+    def cost_func_wrapper(self, optimization_parameters):
         """ Evalutes the cost function.
 
          The total cost function is defined as the sum of cost functions.
 
          """
-        costs = super().cost_fktn_wrapper(optimization_parameters)
+        costs = super().cost_func_wrapper(optimization_parameters)
         scalar_costs = np.sum(costs)
         return scalar_costs
 
@@ -531,7 +531,7 @@ class ScalarMinimizingOptimizer(Optimizer):
         if self.method == 'L-BFGS-B':
             try:
                 result = scipy.optimize.minimize(
-                    fun=self.cost_fktn_wrapper,
+                    fun=self.cost_func_wrapper,
                     x0=initial_control_amplitudes.T.flatten(),
                     jac=jac,
                     bounds=self.bounds,
@@ -568,7 +568,7 @@ class ScalarMinimizingOptimizer(Optimizer):
         elif self.method == 'Nelder-Mead':
             try:
                 result = scipy.optimize.minimize(
-                    fun=self.cost_fktn_wrapper,
+                    fun=self.cost_func_wrapper,
                     x0=initial_control_amplitudes.T.flatten(),
                     bounds=self.bounds,
                     method=self.method,
@@ -600,7 +600,7 @@ class ScalarMinimizingOptimizer(Optimizer):
         else:
             try:
                 result = scipy.optimize.minimize(
-                    fun=self.cost_fktn_wrapper,
+                    fun=self.cost_func_wrapper,
                     x0=initial_control_amplitudes.T.flatten(),
                     bounds=self.bounds,
                     method=self.method
@@ -728,8 +728,8 @@ class SimulatedAnnealing(Optimizer):
         Number of optimization iterations before the step size is reduced.
 
     bounds: array of boundaries, shape: (2, num_t, num_ctrl)
-        The boundary conditions for the pulse optimizations. bounds[0] should be
-        the lower bounds, and bounds[1] the upper ones.
+        The boundary conditions for the pulse optimizations. bounds[0] should
+        be the lower bounds, and bounds[1] the upper ones.
 
     """
 
@@ -764,7 +764,7 @@ class SimulatedAnnealing(Optimizer):
         self.annealer = PulseAnnealer(
             state=0,
             bounds=bounds,
-            energy_function=self.cost_fktn_wrapper,
+            energy_function=self.cost_func_wrapper,
             step_size=step_size,
             step_ratio=step_ratio,
             Tmax=initial_temperature,
@@ -863,7 +863,7 @@ class SimulatedAnnealingScipy(Optimizer):
 
         try:
             result = scipy.optimize.basinhopping(
-                func=self.cost_fktn_wrapper,
+                func=self.cost_func_wrapper,
                 x0=initial_control_amplitudes.T.flatten(),
                 niter=self.termination_conditions["max_iterations"],
                 T=self.temperature,
