@@ -17,6 +17,12 @@ know about qopt to simulate qubits and apply optimal control techniques. You
 can find the source code and install instructions on
 https://github.com/qutech/qopt.
 
+A complementary publication about the software can be found at
+https://arxiv.org/abs/2110.05873. This paper gives a sound introduction to the
+topic of qubit simulation and quantum optimal control. It also provides a
+systematic theoretical introduction of simulation methods to give a profound
+understanding of each method's capabilities.
+
 Abstract
 ========
 
@@ -188,6 +194,13 @@ overview of the class structure, I advise you to read through these
 descriptions. During the implementation of a simulation using qopt, you can
 frequently jump to the classes and functions your are using to look up the
 signatures.
+
+Citing
+======
+
+If you are using qopt for your work then please cite the qopt paper
+(https://arxiv.org/abs/2110.05873 ) as the funding of the development depends
+on the public impact.
 
 
 .. toctree::

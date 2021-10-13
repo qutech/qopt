@@ -4,7 +4,9 @@
 The documentation can be found on 
 [readthedocs](https://qopt.readthedocs.io/en/latest/index.html). 
 It features an API documentation and an introduction in the 
-form of jupyter notebooks demonstrating how to utilize the package.
+form of jupyter notebooks demonstrating how to utilize the package. A 
+complementary theoretical introduction is given in the
+[qopt paper](https://arxiv.org/abs/2110.05873).
 
 ## Applications
 
@@ -79,6 +81,12 @@ There is a list in markdown format with possible extensions in the package.
 
 You can find the patch Notes in a markdown list in the package. Please be aware
 that the github repo is updated more frequently than the version on pypi.
+
+## Citing
+
+If you are using qopt for your work then please cite the 
+[qopt paper](https://arxiv.org/abs/2110.05873), as the funding of the 
+development depends on the public impact.
 
 ## References
 [1]: Khaneja, N., Reiss, T., Kehlet, C., Schulte-Herbrüggen, T., Glaser, S.
