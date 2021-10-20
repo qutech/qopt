@@ -1293,7 +1293,6 @@ class LeakageError(CostFunction):
         """See base class. """
         num_ctrls = len(self.solver.frechet_deriv_propagators)
         num_time_steps = len(self.solver.frechet_deriv_propagators[0])
-        d = self.solver.propagators[-1].shape[0]
 
         derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
                                        dtype=np.float64)
@@ -1301,6 +1300,7 @@ class LeakageError(CostFunction):
         final = self.solver.forward_propagators[-1]
         final_leak_dag = final.dag(do_copy=True).truncate_to_subspace(
             self.computational_states)
+        d = final_leak_dag.shape[0]
 
         for ctrl in range(num_ctrls):
             for t in range(num_time_steps):
