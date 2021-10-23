@@ -397,6 +397,38 @@ class OperatorMatrix(ABC):
         return 0j
 
     @abstractmethod
+    def ptrace(self,
+               dims: Sequence[int],
+               remove: Sequence[int],
+               do_copy: bool = True) -> 'OperatorMatrix':
+        """
+        Partial trace of the matrix.
+
+        If the matrix describes a ket, the corresponding density matrix is
+        calculated and used for the partial trace.
+        Parameters
+        ----------
+        dims : list of int
+            Dimensions of the subspaces making up the total space on which
+            the matrix operates. The product of elements in 'dims' must be
+            equal to the matrix' dimension.
+        remove : list of int
+            The selected subspaces over which the partial trace is formed.
+            The given indices correspond to the ordering of subspaces that
+            are specified via the 'dim' argument.
+        do_copy : bool, optional
+            If false, the operation is executed inplace. Otherwise returns
+            a new instance. Defaults to True.
+
+        Returns
+        -------
+        pmat : OperatorMatrix
+            The partially traced OperatorMatrix.
+
+        """
+        pass
+
+    @abstractmethod
     def conj(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
         r"""
         Complex conjugate of the matrix.
@@ -838,6 +870,93 @@ class DenseOperator(OperatorMatrix):
     def tr(self) -> complex:
         """See base class. """
         return self.data.trace()
+
+    def ptrace(self,
+               dims: Sequence[int],
+               remove: Sequence[int],
+               do_copy: bool = True) -> 'DenseOperator':
+        """
+        Partial trace of the matrix.
+
+        If the matrix describes a ket, the corresponding density matrix is
+        calculated and used for the partial trace.
+
+        This implementation closely follows that of QuTip's qobj._ptrace_dense.
+        Parameters
+        ----------
+        dims : list of int
+            Dimensions of the subspaces making up the total space on which
+            the matrix operates. The product of elements in 'dims' must be
+            equal to the matrix' dimension.
+        remove : list of int
+            The selected subspaces as indices over which the partial trace is
+            formed. The given indices correspond to the ordering of
+            subspaces specified in the 'dim' argument.
+        do_copy : bool, optional
+            If false, the operation is executed inplace. Otherwise returns
+            a new instance. Defaults to True.
+
+        Returns
+        -------
+        pmat : OperatorMatrix
+            The partially traced OperatorMatrix.
+
+        Raises
+        ------
+        AssertionError:
+            If matrix dimension does not match specified dimensions.
+
+        Examples
+        --------
+         ghz_ket = DenseOperator(np.array([[1,0,0,0,0,0,0,1]]).T) / np.sqrt(2)
+         ghz_rho = ghz_ket * ghz_ket.dag()
+         ghz_rho.ptrace(dims=[2,2,2], remove=[0,2])
+        DenseOperator with data:
+        array([[0.5+0.j, 0. +0.j],
+               [0. +0.j, 0.5+0.j]])
+        """
+
+        if self.shape[1] == 1:
+            mat = (self * self.dag()).data
+        else:
+            mat = self.data
+        if mat.shape[0] != np.prod(dims):
+            raise AssertionError("Specified dimensions do not match "
+                                 "matrix dimension.")
+        n_dim = len(dims)  # number of subspaces
+        dims = np.asarray(dims, dtype=int)
+
+        remove = list(np.sort(remove))
+        # indices of subspace that are kept
+        keep = list(set(np.arange(n_dim)) - set(remove))
+
+        dims_rm = (dims[remove]).tolist()
+        dims_keep = (dims[keep]).tolist()
+        dims = list(dims)
+
+        # 1. Reshape: Split matrix into subspaces
+        # 2. Transpose: Change subspace/index ordering such that the subspaces
+        # over which is traced correspond to the first axes
+        # 3. Reshape: Merge each, subspaces to be removed (A) and to be kept
+        # (B), common spaces/axes.
+        # The trace of the merged spaces (A \otimes B) can then be
+        # calculated as Tr_A(mat) using np.trace for input with
+        # more than two axes effectively resulting in
+        # pmat[j,k] = Sum_i mat[i,i,j,k] for all j,k = 0..prod(dims_keep)
+        pmat = np.trace(mat.reshape(dims + dims)
+                           .transpose(remove + [n_dim + q for q in remove] +
+                                      keep + [n_dim + q for q in keep])
+                           .reshape([np.prod(dims_rm),
+                                    np.prod(dims_rm),
+                                    np.prod(dims_keep),
+                                    np.prod(dims_keep)])
+                        )
+
+        if do_copy:
+            return DenseOperator(pmat)
+        else:
+            self.data = pmat
+            return self
 
     def kron(self, other: 'DenseOperator') -> 'DenseOperator':
         """See base class. """
