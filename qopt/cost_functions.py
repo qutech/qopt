@@ -464,6 +464,42 @@ def derivative_state_fidelity(
     computational_states: Optional[List[int]] = None,
     rescale_propagated_state: bool = False
 ) -> np.ndarray:
+    """
+    Derivative of the state fidelity.
+
+    Leakage states can be defined and the propagator is projected onto the
+    computational states.
+
+    Parameters
+    ----------
+    target: OperatorMatrix
+        The target state as bra vector.
+
+    forward_propagators: list of OperatorMatrix
+        Forward propagated initial state.
+
+    propagator_derivatives: list of OperatorMatrix
+        Frechet derivatives of the matrix exponential used to calculate the
+        propagators.
+
+    reversed_propagators: list of OperatorMatrix
+        Backward passed propagators.
+
+    computational_states: list of int
+        States used for the qubit implementation. If this is not None, then all
+        other inides are eliminated, by projection into the computational
+        space.
+
+    rescale_propagated_state: bool
+        If set to Ture, then the propagated state is rescaled after leakage
+        states are eliminated.
+
+    Returns
+    -------
+    Derivative: numpy array, shape: (num_time_steps, num_ctrls)
+        The derivatives of the state fidelity by the
+
+    """
 
     if computational_states is not None:
         scalar_prod = target * forward_propagators[-1].truncate_to_subspace(
@@ -500,6 +536,137 @@ def derivative_state_fidelity(
                     (scalar_prod * (target * reversed_propagators[::-1][t + 1]
                                     * propagator_derivatives[ctrl][t]
                                     * forward_propagators[t]))[0, 0])
+
+    return derivative_fidelity
+
+
+def state_fidelity_subspace(
+    target: Union[np.ndarray, matrix.OperatorMatrix],
+    propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
+    dims: List[int],
+    remove: List[int]
+) -> np.float64:
+    r"""
+    Quantum state fidelity on a subspace.
+
+    We assume that the target state is defined only on a subspace of the total
+    simulated hilbert space. Thus we calculate the partial trace over our
+    simulated state, rendering it into the density matrix of a potentially
+    mixed state.
+
+    The quantum state fidelity between a pure $\psi$ and a mixed quantum state
+    $\rho$ is calculated as
+
+    .. math::
+
+        F =  \langle \psi \vert \rho \vert \psi \rangle
+
+    Parameters
+    ----------
+    target: numpy array or operator matrix of shape (1, d)
+        The target state is assumed to be given as bra-vector.
+
+    propagated_state: numpy array or operator matrix of shape (d, 1)
+        The target state is assumed to be given as ket-vector.
+
+    dims: list of int,
+        The dimensions of the subspaces. (Compare to the ptrace function of
+        the MatrixOperator class.)
+
+    remove: list of int,
+        The indices of the dims list corresponding to the subspaces that are to
+        be eliminated. (Compare to the ptrace function of the MatrixOperator
+        class.)
+
+    Returns
+    -------
+    quantum_state_fidelity: float
+        The quantum state fidelity between the propagated and the target state.
+
+    TODO:
+        * functions should not change type of input arrays
+
+    """
+    if type(target) == np.ndarray:
+        target = matrix.DenseOperator(target)
+    if type(propagated_state) == np.ndarray:
+        propagated_state = matrix.DenseOperator(propagated_state)
+
+    rho = propagated_state.ptrace(dims=dims, remove=remove)
+
+    scalar_prod = target * rho * target.dag()
+
+    if scalar_prod.shape != (1, 1):
+        raise ValueError('The scalar product is not a scalar. This means that'
+                         'either the target is not a bra vector or the the '
+                         'propagated state not a ket, or both!')
+    scalar_prod = scalar_prod[0, 0]
+    scalar_prod_real = scalar_prod.real
+    assert np.abs(scalar_prod - scalar_prod_real) < 1e-5
+    return scalar_prod_real
+
+
+def derivative_state_fidelity_subspace(
+    target: matrix.OperatorMatrix,
+    forward_propagators: List[matrix.OperatorMatrix],
+    propagator_derivatives: List[List[matrix.OperatorMatrix]],
+    reversed_propagators: List[matrix.OperatorMatrix],
+    dims: List[int],
+    remove: List[int]
+) -> np.ndarray:
+    """
+    Derivative of the state fidelity on a subspace.
+
+    The unused subspace is traced out.
+
+    Parameters
+    ----------
+    target: OperatorMatrix
+        The target state as bra vector.
+
+    forward_propagators: list of OperatorMatrix
+        Forward propagated initial state.
+
+    propagator_derivatives: list of OperatorMatrix
+        Frechet derivatives of the matrix exponential used to calculate the
+        propagators.
+
+    reversed_propagators: list of OperatorMatrix
+        Backward passed propagators.
+
+    dims: list of int,
+        The dimensions of the subspaces. (Compare to the ptrace function of
+        the MatrixOperator class.)
+
+    remove: list of int,
+        The indices of the dims list corresponding to the subspaces that are to
+        be eliminated. (Compare to the ptrace function of the MatrixOperator
+        class.)
+
+    Returns
+    -------
+    Derivative: numpy array, shape: (num_time_steps, num_ctrls)
+        The derivatives of the state fidelity by the
+
+    """
+
+    num_ctrls = len(propagator_derivatives)
+    num_time_steps = len(propagator_derivatives[0])
+
+    derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+                                   dtype=float)
+    final_state_dag = forward_propagators[-1].dag()
+    for ctrl in range(num_ctrls):
+        for t in range(num_time_steps):
+            # here we need to take the real part.
+            derivative_fidelity[t, ctrl] = 2 * np.real((
+                target * (
+                        reversed_propagators[::-1][t + 1]
+                        * propagator_derivatives[ctrl][t]
+                        * forward_propagators[t]
+                        * final_state_dag
+                ).ptrace(dims=dims, remove=remove) * target.dag())[0, 0]
+            )
 
     return derivative_fidelity
 
@@ -762,7 +929,6 @@ class StateInfidelity(CostFunction):
     TODO:
         * support super operator formalism
         * handle leakage states?
-        * Docstring
     """
     def __init__(self,
                  solver: solver_algorithms.Solver,
@@ -806,6 +972,73 @@ class StateInfidelity(CostFunction):
             rescale_propagated_state=self.rescale_propagated_state
         )
         return -1. * np.real(derivative_fid)
+
+
+class StateInfidelitySubspace(CostFunction):
+    """ Quantum state infidelity on a subspace.
+
+    Assume that the simulated system operates on a product space and the
+    target states is described only on a subspace. This class then calculates
+    the partial derivative over the neglected subspace.
+
+    Parameters
+    ----------
+    dims: list of int,
+        The dimensions of the subspaces. (Compare to the ptrace function of
+        the MatrixOperator class.)
+
+    remove: list of int,
+        The indices of the dims list corresponding to the subspaces that are to
+        be eliminated. (Compare to the ptrace function of the MatrixOperator
+        class.)
+
+    TODO:
+        * support super operator formalism
+        * handle leakage states?
+        * Docstring
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 dims: List[int],
+                 remove: List[int],
+                 label: Optional[List[str]] = None
+                 ):
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
+        # assure target is a bra vector
+
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+
+        self.dims = dims
+        self.remove = remove
+
+    def costs(self) -> np.float64:
+        """See base class. """
+        final = self.solver.forward_propagators[-1]
+        infid = 1. - state_fidelity_subspace(
+            target=self.target,
+            propagated_state=final,
+            dims=self.dims,
+            remove=self.remove
+        )
+        return infid
+
+    def grad(self) -> np.ndarray:
+        """See base class. """
+        derivative_fid = derivative_state_fidelity_subspace(
+            forward_propagators=self.solver.forward_propagators,
+            target=self.target,
+            reversed_propagators=self.solver.reversed_propagators,
+            propagator_derivatives=self.solver.frechet_deriv_propagators,
+            dims=self.dims,
+            remove=self.remove
+        )
+        return -1. * derivative_fid
 
 
 class StateNoiseInfidelity(CostFunction):

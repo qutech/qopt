@@ -31,7 +31,7 @@ from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
     OperationNoiseInfidelity, OperatorFilterFunctionInfidelity, LeakageError, \
     state_fidelity, angle_axis_representation, entanglement_fidelity, \
     entanglement_fidelity_super_operator, StateInfidelity, \
-    StateNoiseInfidelity, IncoherentLeakageError
+    StateNoiseInfidelity, IncoherentLeakageError, StateInfidelitySubspace
 from .data_container import DataContainer
 from .energy_spectrum import plot_energy_spectrum
 from .matrix import DenseOperator, convert_unitary_to_super_operator, \
@@ -64,7 +64,7 @@ __all__ = [
     'GaussianConvolution', 'OversamplingMTF', 'ConcatenateMTF',
     'ConcatenateTF', 'ParallelTF', 'ParallelMTF', 'CustomMTF',
     'ExponentialMTF', 'IncoherentLeakageError',
-    'run_optimization_parallel'
+    'run_optimization_parallel', 'StateInfidelitySubspace'
 ]
 
 try:
