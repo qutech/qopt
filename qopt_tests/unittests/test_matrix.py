@@ -113,3 +113,13 @@ class TestMatrix(unittest.TestCase):
 
         norm = sigma_x.norm()
         self.assertAlmostEqual(norm, np.sqrt(2))
+
+    def test_dense_partial_trace(self):
+        a = .5 * matrix.DenseOperator.pauli_0().kron(
+            matrix.DenseOperator.pauli_y())
+        trace_1 = a.ptrace([2, 2], [0])
+        trace_2 = a.ptrace([2, 2], [1])
+        np.testing.assert_array_almost_equal(
+            trace_1.data, matrix.DenseOperator.pauli_y().data)
+        np.testing.assert_array_almost_equal(
+            trace_2.data, np.zeros([2, 2]))
