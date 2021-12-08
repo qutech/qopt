@@ -31,11 +31,12 @@ from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
     OperationNoiseInfidelity, OperatorFilterFunctionInfidelity, LeakageError, \
     state_fidelity, angle_axis_representation, entanglement_fidelity, \
     entanglement_fidelity_super_operator, StateInfidelity, \
-    StateNoiseInfidelity, IncoherentLeakageError, StateInfidelitySubspace
+    StateNoiseInfidelity, IncoherentLeakageError, StateInfidelitySubspace, \
+    LeakageLiouville
 from .data_container import DataContainer
 from .energy_spectrum import plot_energy_spectrum
 from .matrix import DenseOperator, convert_unitary_to_super_operator, \
-    closest_unitary
+    closest_unitary, ket_vectorize_density_matrix
 from .noise import NTGColoredNoise, NTGQuasiStatic
 from .optimization_data import OptimizationResult, OptimizationSummary
 from .optimize import LeastSquaresOptimizer, ScalarMinimizingOptimizer
@@ -64,7 +65,8 @@ __all__ = [
     'GaussianConvolution', 'OversamplingMTF', 'ConcatenateMTF',
     'ConcatenateTF', 'ParallelTF', 'ParallelMTF', 'CustomMTF',
     'ExponentialMTF', 'IncoherentLeakageError',
-    'run_optimization_parallel', 'StateInfidelitySubspace'
+    'run_optimization_parallel', 'StateInfidelitySubspace',
+    'ket_vectorize_density_matrix', 'LeakageLiouville'
 ]
 
 try:
