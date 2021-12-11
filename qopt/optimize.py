@@ -126,7 +126,7 @@ class Optimizer(ABC):
 
     use_jacobian_function: bool, optional
         If set to true, then the jacobians are calculated analytically.
-        Defaults to True.
+        Defaults to False.
 
     store_optimizer: bool, optional
         If True, then the optimizer stores itself in the result class.

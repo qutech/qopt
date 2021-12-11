@@ -1446,11 +1446,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
                 Control amplitudes.
 
             """
-            # noise_amplitudes = np.zeros_like(noise_samples, dtype=complex)
-            noise_amplitudes = np.zeros(
-                (noise_samples.shape[0], noise_samples.shape[1],
-                    control_amplitudes.shape[1]), dtype=complex)
-
+            noise_amplitudes = np.zeros((noise_samples.shape[0],noise_samples.shape[1],control_amplitudes.shape[1]), dtype=complex)
             # complex values were requested.
             for trace_num in range(noise_samples.shape[1]):
                 noise_amplitudes[:, trace_num, :] = self.amplitude_function(
@@ -1782,6 +1778,7 @@ class LindbladSolver(SchroedingerSolver):
                 or self._sup_op_func is not None:
             self._diss_sup_op = None
             self._diss_sup_op_deriv = None
+
 
     def _calc_diss_sup_op(self) -> List[q_mat.OperatorMatrix]:
         r"""

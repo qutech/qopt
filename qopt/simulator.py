@@ -534,6 +534,7 @@ class Simulator(object):
 
         for n_time in range(n_times):
             for n_operator in range(n_operators):
+                delta = np.zeros_like(test_pulse)
                 delta[n_time, n_operator] = delta_eps
                 fwd_val = self.wrapped_cost_functions(test_pulse + delta)
                 if symmetric:
