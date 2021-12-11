@@ -103,6 +103,8 @@ import filter_functions.numeric
 from qopt import matrix, solver_algorithms
 from qopt.util import needs_refactoring, deprecated
 
+#TESTTEST
+from qopt.matrix import DenseOperator
 
 class CostFunction(ABC):
     r"""
@@ -800,6 +802,90 @@ def derivative_entanglement_fidelity_with_du(
 
     return derivative_fidelity
 
+#TESTTEST
+
+def derivative_entanglement_fidelity_with_dfreq(
+        target: matrix.OperatorMatrix,
+        target_der: matrix.OperatorMatrix,
+        forward_propagators: List[matrix.OperatorMatrix],
+        computational_states: Optional[List[int]] = None,
+        map_to_closest_unitary: bool = False
+) -> np.ndarray:
+    """
+    Derivative of the entanglement fidelity using the derivatives of the
+    propagators.
+
+    Parameters
+    ----------
+    forward_propagators: List[ControlMatrix], len: num_t +1
+        The forward propagators calculated in the systems simulation.
+        forward_propagators[i] is the ordered sum of the propagators i..0 in
+        descending order.
+
+    propagator_derivatives: List[List[ControlMatrix]],
+                         shape: [[] * num_t] * num_ctrl
+        Frechet derivatives of the propagators by the control amplitudes.
+
+    target: ControlMatrix
+        The target propagator.
+
+    reversed_propagators: List[ControlMatrix]
+        The reversed propagators calculated in the systems simulation.
+        reversed_propagators[i] is the ordered sum of the propagators n-i..n in
+        ascending order where n is the total number of time steps.
+
+    computational_states: Optional[List[int]]
+        If set, the entanglement fidelity is only calculated for the specified
+        subspace.
+
+    map_to_closest_unitary: bool
+        If True, then the final propagator is mapped to the closest unitary
+        before the infidelity is evaluated.
+
+    Returns
+    -------
+    derivative_fidelity: np.ndarray, shape: (num_t, num_ctrl)
+        The derivatives of the entanglement fidelity.
+
+    """
+    target_unitary_dag = target.dag(do_copy=True)
+    if computational_states:
+        trace = np.conj(
+            ((forward_propagators[-1].truncate_to_subspace(
+                computational_states,
+                map_to_closest_unitary=map_to_closest_unitary)
+              * target_unitary_dag).tr())
+        )
+    else:
+        trace = np.conj(((forward_propagators[-1] * target_unitary_dag).tr()))
+    #oONE CTRL: FREQ
+    num_ctrls = 1
+    #LAST TIMESTEP
+    num_time_steps = 1
+    d = target.shape[0]
+
+    derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+                                   dtype=float)
+    
+    target_unitary_dag = target_der.dag(do_copy=True)
+    
+    ctrl=0
+    t=-1
+    # here we need to take the real part.
+    if computational_states:
+        derivative_fidelity[t, ctrl] = 2 / d / d * np.real(
+            trace * (forward_propagators[t].truncate_to_subspace(
+                subspace_indices=computational_states,
+                map_to_closest_unitary=map_to_closest_unitary
+            )
+                     * target_unitary_dag).tr())
+    else:
+        derivative_fidelity[t, ctrl] = 2 / d / d * np.real(
+            trace * (forward_propagators[t]
+                     * target_unitary_dag).tr())
+
+    return derivative_fidelity
+
 
 def entanglement_fidelity_super_operator(
         target: Union[np.ndarray, matrix.OperatorMatrix],
@@ -1180,7 +1266,8 @@ class OperationInfidelity(CostFunction):
                  super_operator_formalism: bool = False,
                  label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
-                 map_to_closest_unitary: bool = False
+                 map_to_closest_unitary: bool = False,
+                 total_ang_time = None, #TESTTEST
                  ):
         if label is None:
             if fidelity_measure == 'entanglement':
@@ -1199,8 +1286,17 @@ class OperationInfidelity(CostFunction):
                                       'currently supported.')
 
         self.super_operator = super_operator_formalism
-
-    def costs(self) -> float:
+        
+        #TESTTEST
+        
+        if total_ang_time is None:
+            self.total_ang_time = 0
+        elif total_ang_time <0:
+            self.total_ang_time = sum(solver.transferred_time)-0.5*solver.transferred_time[-1]
+        else:
+            self.total_ang_time = total_ang_time
+        
+    def costs_original(self) -> float:
         """Calculates the costs by the selected fidelity measure. """
         final = self.solver.forward_propagators[-1]
 
@@ -1223,9 +1319,12 @@ class OperationInfidelity(CostFunction):
                                       'implemented in this version.')
         return np.real(infid)
 
-    def grad(self) -> np.ndarray:
+    def grad_original(self) -> np.ndarray:
         """Calculates the derivatives of the selected fidelity measure with
         respect to the control amplitudes. """
+        
+        
+        
         if self.fidelity_measure == 'entanglement' and self.super_operator:
             derivative_fid = deriv_entanglement_fid_sup_op_with_du(
                 forward_propagators=self.solver.forward_propagators,
@@ -1248,6 +1347,92 @@ class OperationInfidelity(CostFunction):
                                       'version.')
         return -1 * np.real(derivative_fid)
 
+    #TESTTEST
+
+    def costs(self,freq=0) -> float:
+        """Calculates the costs by the selected fidelity measure. """
+        final = self.solver.forward_propagators[-1]
+        
+        #TESTTEST
+        r = DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,np.exp(-1j*freq/2*self.total_ang_time)]]))
+        
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            infid = 1 - entanglement_fidelity_super_operator(
+                propagator=final,
+                target=self.target,
+                computational_states=self.computational_states,
+                map_to_closest_unitary=self.map_to_closest_unitary
+            )
+        elif self.fidelity_measure == 'entanglement':
+            infid = 1 - entanglement_fidelity(
+                propagator=final,
+                target=r.dag()*self.target, #TESTTEST
+                computational_states=self.computational_states,
+                map_to_closest_unitary=self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'implemented in this version.')
+        return np.real(infid)
+
+    def grad(self,freq=0) -> np.ndarray:
+        """Calculates the derivatives of the selected fidelity measure with
+        respect to the control amplitudes. """
+        
+        #TESTTEST
+        r = DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,np.exp(-1j*freq/2*self.total_ang_time)]]))
+        
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            derivative_fid = deriv_entanglement_fid_sup_op_with_du(
+                forward_propagators=self.solver.forward_propagators,
+                target=self.target,
+                reversed_propagators=self.solver.reversed_propagators,
+                unitary_derivatives=self.solver.frechet_deriv_propagators,
+                computational_states=self.computational_states,
+            )
+        elif self.fidelity_measure == 'entanglement':
+            derivative_fid = derivative_entanglement_fidelity_with_du(
+                forward_propagators=self.solver.forward_propagators,
+                target=r.dag()*self.target,
+                reversed_propagators=self.solver.reversed_propagators,
+                propagator_derivatives=self.solver.frechet_deriv_propagators,
+                computational_states=self.computational_states,
+            )
+        else:
+            raise NotImplementedError('Only the average and entanglement'
+                                      'fidelity is implemented in this '
+                                      'version.')
+        return -1 * np.real(derivative_fid)
+
+    def der_freq_test(self,freq):
+        
+        #TESTTEST
+        r_der = 1j*self.total_ang_time/2*DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,-np.exp(-1j*freq/2*self.total_ang_time)]]))
+        r = DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,np.exp(-1j*freq/2*self.total_ang_time)]]))
+        # if self.fidelity_measure == 'entanglement' and self.super_operator:
+        #     derivative_fid = deriv_entanglement_fid_sup_op_with_du(
+        #         forward_propagators=self.solver.forward_propagators,
+        #         target=self.target,
+        #         reversed_propagators=self.solver.reversed_propagators,
+        #         unitary_derivatives=self.solver.frechet_deriv_propagators,
+        #         computational_states=self.computational_states,
+        #     )
+        if self.fidelity_measure == 'entanglement' and not self.super_operator:
+            derivative_fid = derivative_entanglement_fidelity_with_dfreq(
+                forward_propagators=self.solver.forward_propagators,
+                target_der = r_der.dag()*self.target,
+                target=r.dag()*self.target,
+                computational_states=self.computational_states,
+            )
+        #ONLY AT LAST TIMESTEP
+            
+        else:
+            raise NotImplementedError('Only the average and entanglement'
+                                      'fidelity is implemented in this '
+                                      'version.')
+        return -1 * np.real(derivative_fid)
+        
+        
 
 class OperationNoiseInfidelity(CostFunction):
     """
@@ -1297,7 +1482,9 @@ class OperationNoiseInfidelity(CostFunction):
                  fidelity_measure: str = 'entanglement',
                  computational_states: Optional[List[int]] = None,
                  map_to_closest_unitary: bool = False,
-                 neglect_systematic_errors: bool = True):
+                 neglect_systematic_errors: bool = True,
+                 total_ang_time = None, #TESTTEST
+                 ):
         if label is None:
             label = ['Operator Noise Infidelity']
         super().__init__(solver=solver, label=label)
@@ -1313,7 +1500,16 @@ class OperationNoiseInfidelity(CostFunction):
             print('The systematic errors must be neglected if no target is '
                   'set!')
             self.neglect_systematic_errors = True
-
+        
+        #TESTTEST
+        
+        if total_ang_time is None:
+            self.total_ang_time = 0
+        elif total_ang_time <0:
+            self.total_ang_time = sum(solver.transferred_time)-0.5*solver.transferred_time[-1]
+        else:
+            self.total_ang_time = total_ang_time
+        
     def _to_comp_space(self, dynamic_target: matrix.OperatorMatrix) -> matrix.OperatorMatrix:
         """Map an operator to the computational space"""
         if self.computational_states is not None:
@@ -1324,18 +1520,28 @@ class OperationNoiseInfidelity(CostFunction):
         else:
             return dynamic_target
 
-    def _effective_target(self) -> matrix.OperatorMatrix:
+    def _effective_target(self,freq=0) -> matrix.OperatorMatrix:
         if self.neglect_systematic_errors:
             return self._to_comp_space(self.solver.forward_propagators[-1])
         else:
-            return self.target
-
-    def costs(self):
+            #TESTTEST
+            r = DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,np.exp(-1j*freq/2*self.total_ang_time)]]))
+            return r.dag()*self.target
+        
+    def _effective_target_der(self,freq=0) -> matrix.OperatorMatrix:
+        if self.neglect_systematic_errors:
+            return 0
+        else:
+            #TESTTEST
+            r = 1j*self.total_ang_time/2*DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,-np.exp(-1j*freq/2*self.total_ang_time)]]))
+            return r.dag()*self.target
+        
+    def costs(self,freq=0):
         """See base class. """
         n_traces = self.solver.noise_trace_generator.n_traces
         infidelities = np.zeros((n_traces,))
 
-        target = self._effective_target()
+        target = self._effective_target(freq=freq)
 
         if self.fidelity_measure == 'entanglement':
             for i in range(n_traces):
@@ -1352,9 +1558,9 @@ class OperationNoiseInfidelity(CostFunction):
 
         return np.mean(np.real(infidelities))
 
-    def grad(self):
+    def grad(self,freq=0):
         """See base class. """
-        target = self._effective_target()
+        target = self._effective_target(freq)
 
         n_traces = self.solver.noise_trace_generator.n_traces
         num_t = len(self.solver.transferred_time)
@@ -1382,7 +1588,44 @@ class OperationNoiseInfidelity(CostFunction):
                 )
             derivative[:, :, i] = np.real(temp)
         return np.mean(-derivative, axis=2)
+    
+    def der_freq_test(self,freq):
+        
+        #TESTTEST
+        
+        target_der = self._effective_target_der(freq)
+        target = self._effective_target(freq)
 
+        n_traces = self.solver.noise_trace_generator.n_traces
+        # num_t = len(self.solver.transferred_time)
+        num_t=1 #HARDCODE
+        num_ctrl = 1 #HARDCODE
+        derivative = np.zeros((num_t, num_ctrl, n_traces, ))
+        for i in range(n_traces):
+            temp = derivative_entanglement_fidelity_with_dfreq(
+                target_der=target_der,
+                target=target,
+                forward_propagators=self.solver.forward_propagators_noise[i],
+                propagator_derivatives=
+                self.solver.frechet_deriv_propagators_noise[i],
+                reversed_propagators=self.solver.reversed_propagators_noise[i],
+                computational_states=self.computational_states
+                )
+            #??? WHAT DOES THIS DO??
+            # if self.neglect_systematic_errors:
+            #     temp_target = self._to_comp_space(self.solver.forward_propagators_noise[i][-1])
+
+            #     temp += derivative_entanglement_fidelity_with_dfreq(
+            #         target=temp_target,
+            #         forward_propagators=self.solver.forward_propagators,
+            #         propagator_derivatives=
+            #         self.solver.frechet_deriv_propagators,
+            #         reversed_propagators=self.solver.reversed_propagators,
+            #         computational_states=self.computational_states
+            #     )
+            derivative[:, :, i] = np.real(temp)
+        return np.mean(-derivative, axis=2)
+    
 
 class OperatorFilterFunctionInfidelity(CostFunction):
     """

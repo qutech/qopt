@@ -1436,7 +1436,7 @@ class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
 
             Parameters
             ----------
-            noise_samples: np.array, shape()
+            noise_samples: np.array
                 Noise samples calculated by the noise trace generator.
 
             transferred_parameters: np.array
