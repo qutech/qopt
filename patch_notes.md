@@ -37,6 +37,10 @@ Documentation
 
 ### Version 1.1 to 1.2
 
+General:
+- Updates in the README, including paper reference and bug fixes
+- changed the URL from git-ce to github
+
 Imports
 - reduce the list of required imports. QuTiP and simanneal can only be used
 if they were installed.
@@ -46,6 +50,14 @@ Documentation
 
 Transfer Function:
 - adds the custom ConvolutionTF
+
+OperatorMatrix:
+- adds a function to vectorize density matrices
+- Adds the calculation of the partial trace
+
+CostFunction:
+- Implements leakage and entanglement fidelity with truncation to computational
+states in Liouville space
 
 Optimizer:
 - improve storage. The optimizer is only stored in the result on request.

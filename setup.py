@@ -2,9 +2,9 @@ from setuptools import setup
 
 setup(
     name='qopt',
-    version='1.1',
+    version='1.2',
     packages=['qopt'],
-    url='https://git-ce.rwth-aachen.de/qutech/qopt',
+    url='https://github.com/qutech/qopt',
     license='GLP3',
     author='Julian Teske',
     author_email='j.teske@fz-juelich.de',
