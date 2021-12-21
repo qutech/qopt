@@ -422,7 +422,10 @@ class Simulator(object):
             # if the cost function is scalar, an extra dimension is inserted
             if len(jac_u.shape) == 2:
                 jac_u = np.expand_dims(jac_u, axis=1)
-
+            
+            # else:
+            #     raise RuntimeError(str(cost_func.__name__))
+            
             # apply the chain rule to the derivatives
             #TESTTEST CAREFUL ONLY IF OVERSAMPLING
             jac_x = cost_func.solver.amplitude_function.derivative_by_chain_rule(
@@ -435,7 +438,8 @@ class Simulator(object):
             #TESTTEST ONLY IF OVERSAMPLING
             #INDEX 1 IS FREQ INDEX?
             if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
-                jac_x_transferred[0,i,1] += cost_func.der_freq_test(pulse[0][1])[0,0]
+                #last edit: changes i in axis 1 to 0; correct?
+                jac_x_transferred[0,0,1] += cost_func.der_freq_test(pulse[0][1])[0,0]
             elif type(cost_func).__name__ != "LeakageError":
                 raise RuntimeWarning
             

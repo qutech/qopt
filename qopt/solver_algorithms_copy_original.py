@@ -77,7 +77,6 @@ from qopt.transfer_function import TransferFunction, IdentityTF
 from qopt.amplitude_functions import AmplitudeFunction, IdentityAmpFunc
 from qopt.util import needs_refactoring
 
-from jax import grad, jit
 
 class Solver(ABC):
     r"""
@@ -484,8 +483,7 @@ class Solver(ABC):
 
         """
         if self._fwd_prop is None:
-            # self._compute_forward_propagation()
-            jit(self._compute_forward_propagation)()
+            self._compute_forward_propagation()
         return self._fwd_prop
 
     @property
@@ -501,8 +499,7 @@ class Solver(ABC):
 
         """
         if self._derivative_prop is None:
-            # self._compute_propagation_derivatives()
-            jit(self._compute_propagation_derivatives)()
+            self._compute_propagation_derivatives()
         return self._derivative_prop
 
     @property
@@ -1153,8 +1150,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
         """
         if self._fwd_prop_noise is None:
-            # self._compute_forward_propagation()
-            jit(self._compute_forward_propagation)()
+            self._compute_forward_propagation()
         return self._fwd_prop_noise
 
     @property
@@ -1172,8 +1168,7 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
 
         """
         if self._derivative_prop_noise is None:
-            # self._compute_propagation_derivatives()
-            jit(self._compute_propagation_derivatives)()
+            self._compute_propagation_derivatives()
         return self._derivative_prop_noise
 
     @property

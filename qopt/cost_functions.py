@@ -1530,7 +1530,7 @@ class OperationNoiseInfidelity(CostFunction):
         
     def _effective_target_der(self,freq=0) -> matrix.OperatorMatrix:
         if self.neglect_systematic_errors:
-            return 0
+            return 0*self.target
         else:
             #TESTTEST
             r = 1j*self.total_ang_time/2*DenseOperator(np.array([[np.exp(1j*freq/2*self.total_ang_time),0],[0,-np.exp(-1j*freq/2*self.total_ang_time)]]))
@@ -1606,9 +1606,6 @@ class OperationNoiseInfidelity(CostFunction):
                 target_der=target_der,
                 target=target,
                 forward_propagators=self.solver.forward_propagators_noise[i],
-                propagator_derivatives=
-                self.solver.frechet_deriv_propagators_noise[i],
-                reversed_propagators=self.solver.reversed_propagators_noise[i],
                 computational_states=self.computational_states
                 )
             #??? WHAT DOES THIS DO??
