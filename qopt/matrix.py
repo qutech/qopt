@@ -1335,7 +1335,7 @@ def convert_unitary_to_super_operator(
     Returns
     -------
     unitary_super_operator:
-        The unitary propagator in the Lindblad formalism.
+        The unitary propagator in the Lindblad formalism. Same type as input.
 
     Raises
     ------
@@ -1347,6 +1347,45 @@ def convert_unitary_to_super_operator(
         return unitary.conj(do_copy=True).kron(unitary)
     elif isinstance(unitary, np.ndarray):
         return np.kron(np.conj(unitary), unitary)
+    else:
+        raise ValueError('The target must be given as dense control matrix or '
+                         'numpy array!')
+
+
+def ket_vectorize_density_matrix(
+        density_matrix: Union['OperatorMatrix', np.array]):
+    r"""
+    Vectorizes a density matrix column-wise as ket vector.
+
+    Parameters
+    ----------
+    density_matrix: OperatorMatrix or numpy array
+        The density matrix.
+
+    Returns
+    -------
+    density_ket_vector:
+        The density matrix as ket vector for the Liouville formalism.
+
+    Raises
+    ------
+    ValueError:
+        If the operation is not defined for the input type.
+
+    ValueError:
+        If the density matrix is not given in square shape.
+
+    """
+    if not density_matrix.shape[0] == density_matrix.shape[1]:
+        raise ValueError('The density matrix must be of square shape. ')
+    if type(density_matrix) in (DenseOperator, SparseOperator):
+        vectorized_matrix = density_matrix.copy()
+        vectorized_matrix.data = vectorized_matrix.data.T.reshape(
+            [vectorized_matrix.data.size, 1]
+        )
+        return vectorized_matrix
+    elif isinstance(density_matrix, np.ndarray):
+        return density_matrix.T.reshape([density_matrix.size, 1])
     else:
         raise ValueError('The target must be given as dense control matrix or '
                          'numpy array!')

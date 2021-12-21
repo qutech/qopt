@@ -96,12 +96,13 @@ References
 import numpy as np
 
 from abc import ABC, abstractmethod
-from typing import Sequence, Union, List, Optional, Callable, Dict
+from typing import Sequence, Union, List, Optional, Callable
 
 import filter_functions.numeric
 
 from qopt import matrix, solver_algorithms
 from qopt.util import needs_refactoring, deprecated
+from qopt.matrix import ket_vectorize_density_matrix
 
 #TESTTEST
 from qopt.matrix import DenseOperator
@@ -891,7 +892,6 @@ def entanglement_fidelity_super_operator(
         target: Union[np.ndarray, matrix.OperatorMatrix],
         propagator: Union[np.ndarray, matrix.OperatorMatrix],
         computational_states: Optional[List[int]] = None,
-        map_to_closest_unitary: bool = False
 ) -> np.float64:
     """
     The entanglement fidelity between a simulated Propagator and target
@@ -899,7 +899,8 @@ def entanglement_fidelity_super_operator(
 
     The entanglement fidelity between a propagator in the super operator
     formalism of dimension d^2 x d^2 and a target unitary operator of dimension
-    d x d.
+    d x d. If the system incorporates leakage states, the propagator is
+    projected onto the computational space [1].
 
     Parameters
     ----------
@@ -913,31 +914,70 @@ def entanglement_fidelity_super_operator(
         If set, the entanglement fidelity is only calculated for the specified
         subspace.
 
-    map_to_closest_unitary: bool
-        If True, then the final propagator is mapped to the closest unitary
-        before the infidelity is evaluated.
-
     Returns
     -------
     fidelity: float
         The entanglement fidelity of target_unitary.dag * unitary.
+
+    Notes
+    -----
+    [1] Quantification and characterization of leakage errors, Christopher J.
+    Wood and Jay M. Gambetta, Phys. Rev. A 97, 032306 - Published 8 March 2018
 
     """
     if type(propagator) == np.ndarray:
         propagator = matrix.DenseOperator(propagator)
     if type(target) == np.ndarray:
         target = matrix.DenseOperator(target)
-    d = target.shape[0]
-    target_super_operator = \
-        matrix.convert_unitary_to_super_operator(
-            target.dag())
+    dim_comp = target.shape[0]
+
     if computational_states is None:
-        trace = (target_super_operator * propagator).tr().real
+        target_super_operator_inv = \
+            matrix.convert_unitary_to_super_operator(
+                target.dag())
+        trace = (target_super_operator_inv * propagator).tr().real
     else:
-        trace = (target_super_operator * propagator.truncate_to_subspace(
-            computational_states,
-            map_to_closest_unitary=map_to_closest_unitary)).tr().real
-    return trace / d / d
+        # Here we assume that the full Hilbertspace is the outer sum of a
+        # computational and a leakage space.
+
+        # Thus the dimension of the propagator is (d_comp + d_leak) ** 2
+        d_leakage = int(np.sqrt(propagator.shape[0])) - dim_comp
+
+        # We fill zeros to the target on the leakage space. We will project
+        # onto the computational space anyway.
+
+        target_inv = target.dag()
+        target_inv_full_space = matrix.DenseOperator(
+            np.zeros((d_leakage, d_leakage)))
+
+        for i, row in enumerate(computational_states):
+            for k, column in enumerate(computational_states):
+                target_inv_full_space[row, column] = target_inv[i, k]
+
+        target_inv_full_space = matrix.DenseOperator(np.eye(d_leakage)).kron(
+            target.dag()
+            )
+
+        # Then convert the target unitary into Liouville space.
+        target_super_operator_inv = \
+            matrix.convert_unitary_to_super_operator(
+                target_inv_full_space)
+
+        # We start the projector with a zero matrix of dimension
+        # (d_comp + d_leak).
+        projector_comp_state = 0 * target_inv_full_space.identity_like()
+        for state in computational_states:
+            projector_comp_state[state, state] = 1
+
+        # Then convert the projector into liouville space.
+        projector_comp_state = matrix.convert_unitary_to_super_operator(
+            projector_comp_state
+        )
+
+        trace = (
+            projector_comp_state * target_super_operator_inv * propagator
+        ).tr().real
+    return trace / dim_comp / dim_comp
 
 
 def deriv_entanglement_fid_sup_op_with_du(
@@ -945,8 +985,7 @@ def deriv_entanglement_fid_sup_op_with_du(
         forward_propagators: List[matrix.OperatorMatrix],
         unitary_derivatives: List[List[matrix.OperatorMatrix]],
         reversed_propagators: List[matrix.OperatorMatrix],
-        computational_states: Optional[List[int]] = None,
-        map_to_closest_unitary: bool = False
+        computational_states: Optional[List[int]] = None
 ):
     """
     Derivative of the entanglement fidelity of a super operator.
@@ -979,10 +1018,6 @@ def deriv_entanglement_fid_sup_op_with_du(
         subspace.s only calculated for the specified
         subspace.
 
-    map_to_closest_unitary: bool
-        If True, then the final propagator is mapped to the closest unitary
-        before the infidelity is evaluated.
-
     Returns
     -------
     derivative_fidelity: np.ndarray, shape: (num_t, num_ctrl)
@@ -1004,8 +1039,7 @@ def deriv_entanglement_fid_sup_op_with_du(
                     propagator=reversed_propagators[::-1][t + 1] *
                     unitary_derivatives[ctrl][t] *
                     forward_propagators[t],
-                    computational_states=computational_states,
-                    map_to_closest_unitary=map_to_closest_unitary)
+                    computational_states=computational_states)
     return derivative_fidelity
 
 
@@ -1279,6 +1313,7 @@ class OperationInfidelity(CostFunction):
         self.target = target
         self.computational_states = computational_states
         self.map_to_closest_unitary = map_to_closest_unitary
+
         if fidelity_measure == 'entanglement':
             self.fidelity_measure = fidelity_measure
         else:
@@ -1304,8 +1339,7 @@ class OperationInfidelity(CostFunction):
             infid = 1 - entanglement_fidelity_super_operator(
                 propagator=final,
                 target=self.target,
-                computational_states=self.computational_states,
-                map_to_closest_unitary=self.map_to_closest_unitary
+                computational_states=self.computational_states
             )
         elif self.fidelity_measure == 'entanglement':
             infid = 1 - entanglement_fidelity(
@@ -1845,6 +1879,81 @@ class IncoherentLeakageError(CostFunction):
         """See base class. """
         raise NotImplementedError('Derivatives only implemented for the '
                                   'coherent leakage.')
+
+
+class LeakageLiouville(CostFunction):
+    r"""This class measures leakage in Liouville space.
+
+    The leakage is calculated in Liouville space as matrix element. In pseudo
+    Code:
+
+        L = < projector leakage space | Propagator | projector comp. space >
+
+    Parameters
+    ----------
+    solver : TimeSlotComputer
+        The time slot computer computing the propagation of the system.
+
+    computational_states : list of int
+        List of indices marking the computational states of the propagator.
+        These are all but the leakage states.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    verbose: int
+        Additional printed output for debugging.
+
+    """
+    def __init__(self, solver: solver_algorithms.Solver,
+                 computational_states: List[int],
+                 label: Optional[List[str]] = None,
+                 verbose: int = 0):
+        if label is None:
+            label = ["Leakage Error Lindblad", ]
+        super().__init__(solver=solver, label=label)
+        self.computational_states = computational_states
+        dim = self.solver.h_ctrl[0].shape[0]
+        self.dim_comp = len(self.computational_states)
+        self.verbose = verbose
+        operator_class = type(self.solver.h_ctrl[0])
+
+        # create projectors
+        projector_comp = operator_class(
+            np.diag(np.ones([dim, ], dtype=complex)))
+        projector_leakage = operator_class(
+            np.diag(np.ones([dim, ], dtype=complex)))
+
+        for state in computational_states:
+            projector_leakage[state, state] = 0
+        projector_comp -= projector_leakage
+
+        # vectorize projectors
+        self.projector_leakage_bra = ket_vectorize_density_matrix(
+            projector_leakage).transpose()
+
+        self.projector_comp_ket = ket_vectorize_density_matrix(projector_comp)
+
+    def costs(self):
+        """See base class. """
+        leakage = (1 / self.dim_comp) * (
+                self.projector_leakage_bra
+                * self.solver.forward_propagators[-1]
+                * self.projector_comp_ket
+        )
+
+        if self.verbose > 0:
+            print('leakage:')
+            print(leakage[0, 0])
+
+        # the result should always be positive within numerical accuracy
+        return leakage.data.real[0]
+
+    def grad(self):
+        """See base class. """
+        raise NotImplementedError('The derivative of the cost function '
+                                  'LeakageLiouville has not been implemented'
+                                  'yet.')
 
 
 @deprecated
