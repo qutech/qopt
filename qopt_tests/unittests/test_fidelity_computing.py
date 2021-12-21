@@ -328,3 +328,21 @@ class TestMatrixDistance(unittest.TestCase):
                     numeric_gradient[1].T - analytic_gradient.squeeze(1)[
                                             :, k])), 1e-6)
     """
+
+
+class TestEntanglementFidelitySuperoperator(unittest.TestCase):
+    def test_entanglement_fid_leakage_superoperator(self):
+        np.random.seed(0)
+        # we consider a 2x2 system with 4 dof in total. the first angle is the
+        # angle of the qubit levels, the other one in the additional dof.
+        phi1 = .6 * np.pi
+
+        target = (.5 * DenseOperator.pauli_x()).exp(1j * phi1, method='Frechet')
+        total_propagator = np.random.rand(4, 4) + 1j * np.random.rand(4, 4)
+
+        total_propagator[0:2, 0:2] = target.data
+        total_propagator_sup = convert_unitary_to_super_operator(total_propagator)
+
+        fid = entanglement_fidelity_super_operator(
+            target, total_propagator_sup, computational_states=[0, 1])
+        self.assertAlmostEqual(fid, 1)

@@ -862,15 +862,16 @@ def entanglement_fidelity_super_operator(
 
         target_inv = target.dag()
         target_inv_full_space = matrix.DenseOperator(
-            np.zeros((d_leakage, d_leakage)))
+            np.zeros((d_leakage + dim_comp, d_leakage + dim_comp)))
 
         for i, row in enumerate(computational_states):
             for k, column in enumerate(computational_states):
                 target_inv_full_space[row, column] = target_inv[i, k]
 
-        target_inv_full_space = matrix.DenseOperator(np.eye(d_leakage)).kron(
-            target.dag()
-            )
+        # this seems to be wrong
+        # target_inv_full_space = matrix.DenseOperator(np.eye(d_leakage)).kron(
+        #    target.dag()
+        #    )
 
         # Then convert the target unitary into Liouville space.
         target_super_operator_inv = \

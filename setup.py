@@ -8,7 +8,7 @@ setup(
     license='GLP3',
     author='Julian Teske',
     author_email='j.teske@fz-juelich.de',
-    description='Optimal Control for Quantum Systems',
+    description='Qubit Simulation and Optimal Control for Quantum Systems',
     package_dir={'qopt': 'qopt'},
     install_requires=['numpy', 'scipy', 'matplotlib', 'filter_functions'],
     extras_require={
