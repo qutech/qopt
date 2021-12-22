@@ -1523,7 +1523,7 @@ class LeakageError(CostFunction):
     The resulting infidelity is measured by truncating the leakage states of
     the propagator U yielding the Propagator V on the computational basis. The
     infidelity is then given as the distance from unitarity:
-    infid = 1 - trace(V^\dag V) / 4
+    infid = 1 - trace(V^\dag V) / d
 
     Parameters
     ----------
@@ -1587,7 +1587,7 @@ class IncoherentLeakageError(CostFunction):
     The resulting infidelity is measured by truncating the leakage states of
     the propagator U yielding the Propagator V on the computational basis. The
     infidelity is then given as the distance from unitarity:
-    infid = 1 - trace(V^\dag V) / 4
+    infid = 1 - trace(V^\dag V) / d
 
     Parameters
     ----------
