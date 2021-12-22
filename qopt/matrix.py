@@ -1391,6 +1391,47 @@ def ket_vectorize_density_matrix(
                          'numpy array!')
 
 
+def convert_ket_vectorized_density_matrix_to_square(
+        vectorized_density_matrix: Union['OperatorMatrix', np.array]):
+    r"""
+    Bring vectorized density matrix back into square form.
+
+    Parameters
+    ----------
+    vectorized_density_matrix: OperatorMatrix or numpy array
+        The density matrix.
+
+    Returns
+    -------
+    density_ket_vector:
+        The density matrix as ket vector for the Liouville formalism.
+
+    Raises
+    ------
+    ValueError:
+        If the operation is not defined for the input type.
+
+    ValueError:
+        If the density matrix is not given as ket vector.
+
+    """
+    if not vectorized_density_matrix.shape[1] == 1:
+        raise ValueError('The density matrix must be vectorized as ket. ')
+    if type(vectorized_density_matrix) in (DenseOperator, SparseOperator):
+        d = int(np.sqrt(vectorized_density_matrix.data.size))
+        vectorized_matrix = vectorized_density_matrix.copy()
+        vectorized_matrix.data = vectorized_matrix.data.reshape(
+            [d, d]
+        ).T
+        return vectorized_matrix
+    elif isinstance(vectorized_density_matrix, np.ndarray):
+        d = int(np.sqrt(vectorized_density_matrix.size))
+        return vectorized_density_matrix.reshape([d, d]).T
+    else:
+        raise ValueError('The target must be given as dense control matrix or '
+                         'numpy array!')
+
+
 def closest_unitary(matrix: OperatorMatrix):
     """
     Calculate the unitary matrix U that is closest with respect to the

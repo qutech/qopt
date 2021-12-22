@@ -36,7 +36,8 @@ from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
 from .data_container import DataContainer
 from .energy_spectrum import plot_energy_spectrum
 from .matrix import DenseOperator, convert_unitary_to_super_operator, \
-    closest_unitary, ket_vectorize_density_matrix
+    closest_unitary, ket_vectorize_density_matrix, \
+    convert_ket_vectorized_density_matrix_to_square
 from .noise import NTGColoredNoise, NTGQuasiStatic
 from .optimization_data import OptimizationResult, OptimizationSummary
 from .optimize import LeastSquaresOptimizer, ScalarMinimizingOptimizer
@@ -66,7 +67,8 @@ __all__ = [
     'ConcatenateTF', 'ParallelTF', 'ParallelMTF', 'CustomMTF',
     'ExponentialMTF', 'IncoherentLeakageError',
     'run_optimization_parallel', 'StateInfidelitySubspace',
-    'ket_vectorize_density_matrix', 'LeakageLiouville'
+    'ket_vectorize_density_matrix', 'LeakageLiouville',
+    'convert_ket_vectorized_density_matrix_to_square'
 ]
 
 try:

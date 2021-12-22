@@ -123,3 +123,19 @@ class TestMatrix(unittest.TestCase):
             trace_1.data, matrix.DenseOperator.pauli_y().data)
         np.testing.assert_array_almost_equal(
             trace_2.data, np.zeros([2, 2]))
+
+    def test_vectorization(self):
+        # test vectorization
+        a = matrix.DenseOperator(np.arange(4).reshape(2, 2))
+        rho = matrix.ket_vectorize_density_matrix(a)
+        reference_rho = np.asarray([[0], [2], [1], [3]])
+        np.testing.assert_array_almost_equal(rho.data, reference_rho)
+
+        # test inverse operation
+        a_large = matrix.DenseOperator(np.arange(25).reshape(5, 5))
+        np.testing.assert_array_almost_equal(
+            a_large.data,
+            (matrix.convert_ket_vectorized_density_matrix_to_square(
+                matrix.ket_vectorize_density_matrix(a_large)
+            )).data
+        )
