@@ -102,7 +102,8 @@ import filter_functions.numeric
 
 from qopt import matrix, solver_algorithms
 from qopt.util import needs_refactoring, deprecated
-from qopt.matrix import ket_vectorize_density_matrix
+from qopt.matrix import ket_vectorize_density_matrix, \
+    convert_ket_vectorized_density_matrix_to_square
 
 #TESTTEST
 from qopt.matrix import DenseOperator
@@ -120,6 +121,7 @@ class CostFunction(ABC):
         Indices of the returned infidelities for distinction in the analysis.
 
     """
+
     def __init__(self, solver: solver_algorithms.Solver,
                  label: Optional[List[str]] = None):
         self.solver = solver
@@ -179,9 +181,9 @@ def angle_axis_representation(u: np.ndarray) \
     # check if u is unitary
     ident = u @ np.conjugate(np.transpose(u))
     is_unitary = np.isclose(ident[0, 0], 1) \
-        and np.isclose(ident[1, 0], 0) \
-        and np.isclose(ident[0, 1], 0) \
-        and np.isclose(ident[0, 0], 1)
+                 and np.isclose(ident[1, 0], 0) \
+                 and np.isclose(ident[0, 1], 0) \
+                 and np.isclose(ident[0, 0], 1)
 
     if not is_unitary:
         raise ValueError("Your input matrix must be unitary to calculate a "
@@ -372,20 +374,22 @@ class OperatorMatrixNorm(CostFunction):
                         propagators_future)):
                 # here i applied the grape approximations
                 complex_jac = (
-                    -1j * tau * future_prop * self.solver.h_ctrl[j]
-                    * fwd_prop).flatten()
+                        -1j * tau * future_prop * self.solver.h_ctrl[j]
+                        * fwd_prop).flatten()
                 jacobian_complex_full[:, i, j] = complex_jac.data
 
         dphi_by_du = (
-            np.imag(jacobian_complex_full[0, :, :]) * np.real(final[0, 0]) -
-            np.real(jacobian_complex_full[0, :, :]) * np.imag(final[0, 0])
-            ) / ((np.abs(final[0, 0])) ** 2)
+                             np.imag(jacobian_complex_full[0, :, :]) * np.real(
+                         final[0, 0]) -
+                             np.real(jacobian_complex_full[0, :, :]) * np.imag(
+                         final[0, 0])
+                     ) / ((np.abs(final[0, 0])) ** 2)
         final.flatten()
 
-        dphi_by_du_times_u = np.concatenate\
+        dphi_by_du_times_u = np.concatenate \
             ([np.reshape(dphi_by_du, (1, dphi_by_du.shape[0],
                                       dphi_by_du.shape[1])) * fin
-             for fin in final.data])
+              for fin in final.data])
 
         jacobian_complex_full = (jacobian_complex_full -
                                  1j * dphi_by_du_times_u) * (1 / exp_iphi)
@@ -398,10 +402,10 @@ class OperatorMatrixNorm(CostFunction):
 
 
 def state_fidelity(
-    target: Union[np.ndarray, matrix.OperatorMatrix],
-    propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
-    computational_states: Optional[List[int]] = None,
-    rescale_propagated_state: bool = False
+        target: Union[np.ndarray, matrix.OperatorMatrix],
+        propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
+        computational_states: Optional[List[int]] = None,
+        rescale_propagated_state: bool = False
 ) -> np.float64:
     r"""
     Quantum state fidelity.
@@ -460,12 +464,12 @@ def state_fidelity(
 
 
 def derivative_state_fidelity(
-    target: matrix.OperatorMatrix,
-    forward_propagators: List[matrix.OperatorMatrix],
-    propagator_derivatives: List[List[matrix.OperatorMatrix]],
-    reversed_propagators: List[matrix.OperatorMatrix],
-    computational_states: Optional[List[int]] = None,
-    rescale_propagated_state: bool = False
+        target: matrix.OperatorMatrix,
+        forward_propagators: List[matrix.OperatorMatrix],
+        propagator_derivatives: List[List[matrix.OperatorMatrix]],
+        reversed_propagators: List[matrix.OperatorMatrix],
+        computational_states: Optional[List[int]] = None,
+        rescale_propagated_state: bool = False
 ) -> np.ndarray:
     """
     Derivative of the state fidelity.
@@ -549,10 +553,10 @@ def derivative_state_fidelity(
 
 
 def state_fidelity_subspace(
-    target: Union[np.ndarray, matrix.OperatorMatrix],
-    propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
-    dims: List[int],
-    remove: List[int]
+        target: Union[np.ndarray, matrix.OperatorMatrix],
+        propagated_state: Union[np.ndarray, matrix.OperatorMatrix],
+        dims: List[int],
+        remove: List[int]
 ) -> np.float64:
     r"""
     Quantum state fidelity on a subspace.
@@ -574,8 +578,9 @@ def state_fidelity_subspace(
     target: numpy array or operator matrix of shape (1, d)
         The target state is assumed to be given as bra-vector.
 
-    propagated_state: numpy array or operator matrix of shape (d, 1)
-        The target state is assumed to be given as ket-vector.
+    propagated_state: numpy array or operator matrix
+        The target state is assumed to be given as density matrix of
+        shape(d, d) or shape (d^2, 1), or as ket-vector of shape (d, 1).
 
     dims: list of int,
         The dimensions of the subspaces. (Compare to the ptrace function of
@@ -596,13 +601,30 @@ def state_fidelity_subspace(
 
     """
     if type(target) == np.ndarray:
-        target = matrix.DenseOperator(target)
+        local_target = matrix.DenseOperator(target)
+    else:
+        local_target = target
     if type(propagated_state) == np.ndarray:
-        propagated_state = matrix.DenseOperator(propagated_state)
+        local_propagated_state = matrix.DenseOperator(propagated_state)
+    else:
+        local_propagated_state = propagated_state
 
-    rho = propagated_state.ptrace(dims=dims, remove=remove)
+    leakage_total_dimension = 1
+    for ind in remove:
+        leakage_total_dimension *= dims[ind]
 
-    scalar_prod = target * rho * target.dag()
+    if local_propagated_state.data.size >= \
+            (local_target.data.size * leakage_total_dimension) ** 2:
+        # propagated state given as density matrix
+        if local_propagated_state.shape[1] == 1:
+            # the density matrix is vectorized
+            local_propagated_state = \
+                convert_ket_vectorized_density_matrix_to_square(
+                    local_propagated_state)
+
+    rho = local_propagated_state.ptrace(dims=dims, remove=remove)
+
+    scalar_prod = local_target * rho * local_target.dag()
 
     if scalar_prod.shape != (1, 1):
         raise ValueError('The scalar product is not a scalar. This means that'
@@ -615,12 +637,12 @@ def state_fidelity_subspace(
 
 
 def derivative_state_fidelity_subspace(
-    target: matrix.OperatorMatrix,
-    forward_propagators: List[matrix.OperatorMatrix],
-    propagator_derivatives: List[List[matrix.OperatorMatrix]],
-    reversed_propagators: List[matrix.OperatorMatrix],
-    dims: List[int],
-    remove: List[int]
+        target: matrix.OperatorMatrix,
+        forward_propagators: List[matrix.OperatorMatrix],
+        propagator_derivatives: List[List[matrix.OperatorMatrix]],
+        reversed_propagators: List[matrix.OperatorMatrix],
+        dims: List[int],
+        remove: List[int]
 ) -> np.ndarray:
     """
     Derivative of the state fidelity on a subspace.
@@ -945,7 +967,7 @@ def entanglement_fidelity_super_operator(
         )
 
         trace = (
-            projector_comp_state * target_super_operator_inv * propagator
+                projector_comp_state * target_super_operator_inv * propagator
         ).tr().real
     return trace / dim_comp / dim_comp
 
@@ -1046,6 +1068,7 @@ class StateInfidelity(CostFunction):
         * support super operator formalism
         * handle leakage states?
     """
+
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
@@ -1183,6 +1206,7 @@ class StateInfidelitySubspace(CostFunction):
         * handle leakage states?
         * Docstring
     """
+
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
@@ -1235,6 +1259,7 @@ class StateNoiseInfidelity(CostFunction):
         * implement gradient
         * docstring
     """
+
     def __init__(self,
                  solver: solver_algorithms.SchroedingerSMonteCarlo,
                  target: matrix.OperatorMatrix,
@@ -1359,6 +1384,7 @@ class OperationInfidelity(CostFunction):
         * gradient does not truncate to the subspace.
 
     """
+
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  target: matrix.OperatorMatrix,
@@ -1574,6 +1600,7 @@ class OperationNoiseInfidelity(CostFunction):
         target propagator.
 
     """
+
     def __init__(self,
                  solver: solver_algorithms.SchroedingerSMonteCarlo,
                  target: Optional[matrix.OperatorMatrix],
@@ -1609,13 +1636,15 @@ class OperationNoiseInfidelity(CostFunction):
         else:
             self.total_ang_time = total_ang_time
         
-    def _to_comp_space(self, dynamic_target: matrix.OperatorMatrix) -> matrix.OperatorMatrix:
+
+    def _to_comp_space(self,
+                       dynamic_target: matrix.OperatorMatrix) -> matrix.OperatorMatrix:
         """Map an operator to the computational space"""
         if self.computational_states is not None:
             return dynamic_target.truncate_to_subspace(
                 subspace_indices=self.computational_states,
                 map_to_closest_unitary=self.map_to_closest_unitary,
-                )
+            )
         else:
             return dynamic_target
 
@@ -1664,7 +1693,7 @@ class OperationNoiseInfidelity(CostFunction):
         n_traces = self.solver.noise_trace_generator.n_traces
         num_t = len(self.solver.transferred_time)
         num_ctrl = len(self.solver.h_ctrl)
-        derivative = np.zeros((num_t, num_ctrl, n_traces, ))
+        derivative = np.zeros((num_t, num_ctrl, n_traces,))
         for i in range(n_traces):
             temp = derivative_entanglement_fidelity_with_du(
                 target=target,
@@ -1673,9 +1702,10 @@ class OperationNoiseInfidelity(CostFunction):
                 self.solver.frechet_deriv_propagators_noise[i],
                 reversed_propagators=self.solver.reversed_propagators_noise[i],
                 computational_states=self.computational_states
-                )
+            )
             if self.neglect_systematic_errors:
-                temp_target = self._to_comp_space(self.solver.forward_propagators_noise[i][-1])
+                temp_target = self._to_comp_space(
+                    self.solver.forward_propagators_noise[i][-1])
 
                 temp += derivative_entanglement_fidelity_with_du(
                     target=temp_target,
@@ -1746,6 +1776,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         The frequencies at which the integration is to be carried out.
 
     """
+
     def __init__(self,
                  solver: solver_algorithms.Solver,
                  noise_power_spec_density: Callable,
@@ -1842,6 +1873,7 @@ class LeakageError(CostFunction):
         Indices of the returned infidelities for distinction in the analysis.
 
     """
+
     def __init__(self, solver: solver_algorithms.Solver,
                  computational_states: List[int],
                  label: Optional[List[str]] = None):
@@ -1970,6 +2002,7 @@ class LeakageLiouville(CostFunction):
         Additional printed output for debugging.
 
     """
+
     def __init__(self, solver: solver_algorithms.Solver,
                  computational_states: List[int],
                  label: Optional[List[str]] = None,
@@ -2175,7 +2208,8 @@ def default_set_orthorgonal(dim: int) -> List[matrix.OperatorMatrix]:
 
 @deprecated
 def derivative_average_gate_fidelity(control_hamiltonians, propagators,
-                                     propagators_past, delta_t, target_unitary):
+                                     propagators_past, delta_t,
+                                     target_unitary):
     """
     The derivative of the average gate fidelity.
     """
@@ -2194,13 +2228,13 @@ def derivative_average_gate_fidelity(control_hamiltonians, propagators,
                                    dtype=complex)
     for ctrl in range(num_ctrls):
         for t in range(num_time_steps):
-            bkwd_prop_target = propagators_future[t+1].dag() * target_unitary
+            bkwd_prop_target = propagators_future[t + 1].dag() * target_unitary
             temp = 0
             for ort in orthogonal_operators:
                 lambda_ = bkwd_prop_target * ort.dag(do_copy=True)
                 lambda_ *= bkwd_prop_target.dag()
-                rho = propagators_past[t+1] * ort
-                rho *= propagators_past[t+1].dag()
+                rho = propagators_past[t + 1] * ort
+                rho *= propagators_past[t + 1].dag()
                 # everything rewritten to operate in place
                 temp_mat2 = control_hamiltonians[t, ctrl] * rho
                 temp_mat2 -= rho * control_hamiltonians[t, ctrl]
