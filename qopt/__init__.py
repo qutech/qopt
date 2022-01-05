@@ -32,7 +32,8 @@ from .cost_functions import OperatorMatrixNorm, OperationInfidelity, \
     state_fidelity, angle_axis_representation, entanglement_fidelity, \
     entanglement_fidelity_super_operator, StateInfidelity, \
     StateNoiseInfidelity, IncoherentLeakageError, StateInfidelitySubspace, \
-    LeakageLiouville, state_fidelity_subspace
+    LeakageLiouville, state_fidelity_subspace, \
+    LiouvilleMonteCarloEntanglementInfidelity
 from .data_container import DataContainer
 from .energy_spectrum import plot_energy_spectrum
 from .matrix import DenseOperator, convert_unitary_to_super_operator, \
@@ -69,7 +70,7 @@ __all__ = [
     'run_optimization_parallel', 'StateInfidelitySubspace',
     'ket_vectorize_density_matrix', 'LeakageLiouville',
     'convert_ket_vectorized_density_matrix_to_square',
-    'state_fidelity_subspace'
+    'state_fidelity_subspace', 'LiouvilleMonteCarloEntanglementInfidelity'
 ]
 
 try:
