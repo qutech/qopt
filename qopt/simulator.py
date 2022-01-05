@@ -332,7 +332,7 @@ class Simulator(object):
                 #SECOND ARGUMENT IS FREQUENCY [[amp,freq,phase],...,]
                 if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
                     cost = cost_func.costs(pulse[0][1])
-                elif type(cost_func).__name__ == "LeakageError":
+                elif type(cost_func).__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
                     cost = cost_func.costs()
                 else:
                     raise RuntimeError
@@ -358,7 +358,7 @@ class Simulator(object):
                 #TESTTEST
                 if cost_func.__name__ == "OperationInfidelity" or cost_func.__name__ == "OperationNoiseInfidelity" :
                     cost = cost_func.costs(pulse[0][1])
-                elif cost_func.__name__ == "LeakageError":
+                elif cost_func.__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
                     cost = cost_func.costs()
                 else:
                     raise RuntimeError
@@ -413,7 +413,7 @@ class Simulator(object):
             #TESTTEST
             if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
                 jac_u = cost_func.grad(pulse[0][1])
-            elif type(cost_func).__name__ == "LeakageError":
+            elif type(cost_func).__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
                 jac_u = cost_func.grad()
             else:
                 raise RuntimeError
@@ -439,8 +439,9 @@ class Simulator(object):
             #INDEX 1 IS FREQ INDEX?
             if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
                 #last edit: changes i in axis 1 to 0; correct?
+                # pass
                 jac_x_transferred[0,0,1] += cost_func.der_freq_test(pulse[0][1])[0,0]
-            elif type(cost_func).__name__ != "LeakageError":
+            elif type(cost_func).__name__ != "LeakageError" and type(cost_func).__name__ != "LeakageLiouville" and type(cost_func).__name__ != "StateInfidelity2":
                 raise RuntimeWarning
             
             jacobians.append(jac_x_transferred)

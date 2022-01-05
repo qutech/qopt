@@ -315,7 +315,7 @@ class Optimizer(ABC):
         self._n_cost_fkt_eval += 1
         return costs
 
-    def cost_jacobian_wrapper_global(self, optimization_parameters):
+    def cost_jacobian_wrapper_global(self, optimization_parameters, scale_ind=[]):
         """Wraps the cost Jacobian function given by the simulator class.
 
         The relevant information for the analysis is saved.
@@ -336,7 +336,10 @@ class Optimizer(ABC):
 
         if self.save_intermediary_steps:
             self.optim_iter_summary.gradients.append(jacobian)
-
+        
+        #TEST
+        jacobian[:,:,scale_ind] = jacobian[:,:,scale_ind]/(1+self._n_jac_fkt_eval)
+        
         # jacobian shape (num_t, num_f, num_ctrl) -> (num_f, num_t * num_ctrl)
         jacobian = jacobian.transpose([1, 2, 0])
         jacobian = jacobian.reshape(
@@ -582,7 +585,8 @@ class LeastSquaresOptimizerGlobal(Optimizer):
             bounds: Union[np.ndarray, List, None] = None,
             use_jacobian_function=True,
             cost_func_weights: Optional[Sequence[float]] = None,
-            store_optimizer: bool = False):
+            store_optimizer: bool = False,
+            scale_down_grad_ind = []):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
@@ -593,6 +597,12 @@ class LeastSquaresOptimizerGlobal(Optimizer):
         self.bounds = bounds
         self.n_time_steps_ctrl = n_time_steps_ctrl
         
+        self.scale_down_grad_ind = scale_down_grad_ind
+        
+    def cost_jacobian_wrapper_test(self,optimization_parameters):
+        
+        return super().cost_jacobian_wrapper_global(optimization_parameters,self.scale_down_grad_ind)
+
     def run_optimization(self, initial_control_amplitudes: np.array,
                          verbose: int = 0) -> optimization_data.OptimizationResult:
         """See base class.
@@ -601,7 +611,7 @@ class LeastSquaresOptimizerGlobal(Optimizer):
             initial_optimization_parameters=initial_control_amplitudes)
 
         if self.use_jacobian_function:
-            jac = super().cost_jacobian_wrapper_global
+            jac = self.cost_jacobian_wrapper_test
         else:
             jac = '2-point'
 
@@ -616,7 +626,8 @@ class LeastSquaresOptimizerGlobal(Optimizer):
                 xtol=self.termination_conditions["min_amplitude_change"],
                 gtol=self.termination_conditions["min_gradient_norm"],
                 max_nfev=self.termination_conditions["max_iterations"],
-                verbose=verbose
+                verbose=verbose,
+                x_scale="jac"
             )
 
             if self.system_simulator.stats is not None:
