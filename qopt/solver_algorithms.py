@@ -1790,10 +1790,10 @@ class LindbladSolver(SchroedingerSolver):
 
         Returns
         -------
-        diss_sup_op: List[ControlMatrix], len num_l
-            Dissipation super operator; Where num_l is the number of Lindblad
-            terms.
-
+        diss_sup_op: List[ControlMatrix], len num_t
+            Dissipation super operator; Where num_t is the number of time
+            steps.
+        
         """
         if self._sup_op_func is None:
             # use Lindblad operators
