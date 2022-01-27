@@ -77,6 +77,12 @@ from qopt.transfer_function import TransferFunction, IdentityTF
 from qopt.amplitude_functions import AmplitudeFunction, IdentityAmpFunc
 from qopt.util import needs_refactoring
 
+import jax.numpy as jnp
+from jax import grad, jit, vmap
+import jax
+# from itertools import accumulate
+# from functools import partial
+
 
 class Solver(ABC):
     r"""
@@ -2106,3 +2112,1939 @@ class LindbladSControlNoise(LindbladSolver):
             self._fwd.append(self._prop[t] * self._fwd[t])
 
         self.prop_calculated = True
+
+
+###############################################################################
+
+import cProfile, pstats, io
+
+def profile(fnc):
+    
+    """A decorator that uses cProfile to profile a function"""
+    
+    def inner(*args, **kwargs):
+        
+        pr = cProfile.Profile()
+        pr.enable()
+        retval = fnc(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+        return retval
+
+    return inner
+
+
+def _compute_propagation_expm_both_loop(transferred_time,dyn_gen,derivative_directions):
+    return jax.scipy.linalg.expm_frechet(dyn_gen*transferred_time,derivative_directions*transferred_time,compute_expm=True)
+
+#from profiling with simple optimization example: (could be different for complex problems)
+#here all the runtime is (probably) in, but no faster way seems available
+@jit
+def _compute_propagation_expm_both(transferred_time,dyn_gen,derivative_directions):
+    return vmap(vmap(_compute_propagation_expm_both_loop,in_axes=(0,0,None)),in_axes=(None,None,0))(
+        transferred_time,dyn_gen,derivative_directions)
+
+#TODO: check if correct
+@jit
+def _compute_propagation_expm_both_lind(transferred_time,dyn_gen,derivative_directions):
+    return vmap(vmap(_compute_propagation_expm_both_loop,in_axes=(0,0,0)),in_axes=(None,None,1))(
+        transferred_time,dyn_gen,derivative_directions)
+
+@jit
+def _compute_propagation_expm_both_noise(transferred_time,dyn_gen_noise,derivative_directions):
+    return vmap(_compute_propagation_expm_both,in_axes=(None,0,None))(transferred_time,dyn_gen_noise,derivative_directions)
+
+def _compute_propagation_expm_loop(transferred_time,dyn_gen):
+    return jax.scipy.linalg.expm(dyn_gen*transferred_time)
+
+#if no derivatives runtime also here
+@jit
+def _compute_propagation_expm(transferred_time,dyn_gen):
+    return vmap(_compute_propagation_expm_loop,in_axes=(0,0))(transferred_time,dyn_gen)
+
+@jit
+def _compute_propagation_expm_noise(transferred_time,dyn_gen_noise):
+    return vmap(_compute_propagation_expm,in_axes=(None,0))(transferred_time,dyn_gen_noise)
+
+def _cumprod_loop(res,el):
+    res = jnp.dot(el,res)
+    return res,res
+
+@jit
+def _cumprod(init,prop):
+    _, cum_prod = jax.lax.scan(_cumprod_loop,init,prop)
+    return cum_prod
+
+@jit 
+def _cumprod_noise(init,prop_noise):
+    return vmap(_cumprod,in_axes=(None,0))(init,prop_noise)
+
+def _cumprod_reversed_loop(res,el):
+    res = jnp.dot(res,el)
+    return res,res
+
+@jit
+def _cumprod_reversed(init,prop):
+    _, cum_prod = jax.lax.scan(_cumprod_reversed_loop,init,prop)
+    return cum_prod
+
+@jit 
+def _cumprod_reversed_noise(init,prop_noise):
+    return vmap(_cumprod_reversed,in_axes=(None,0))(init,prop_noise)
+
+
+class SolverJAX(Solver):
+
+    def __init__(
+            self,
+            h_ctrl: List[q_mat.OperatorMatrix],
+            h_drift: List[q_mat.OperatorMatrix],
+            tau: np.array,
+            initial_state: q_mat.OperatorMatrix = None,
+            opt_pars: Optional[np.array] = None,
+            ctrl_amps: Optional[np.array] = None,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
+            filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_n_coeffs_deriv: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
+            exponential_method: Optional[str] = None,
+            is_skew_hermitian: bool = True,
+            transfer_function: Optional[TransferFunction] = None,
+            amplitude_function: Optional[AmplitudeFunction] = None,
+            paranoia_level: int = 2
+    ):
+        
+        super().__init__(
+            h_ctrl,
+            h_drift,
+            tau,
+            initial_state,
+            opt_pars,
+            ctrl_amps,
+            filter_function_h_n,
+            filter_function_basis,
+            filter_function_n_coeffs_deriv,
+            exponential_method,
+            is_skew_hermitian,
+            transfer_function,
+            amplitude_function,
+            paranoia_level)
+        
+        if type(h_drift) in [matrix.DenseOperator, matrix.SparseOperator, matrix.DenseOperatorJAX]:
+            self._h_drift_jnp = jnp.expand_dims(h_drift.data,0)
+            self.h_drift = [h_drift, ] * self.transfer_function.num_x
+        elif len(h_drift) == 1:
+            self._h_drift_jnp = jnp.expand_dims(h_drift[0].data,0)
+            self.h_drift = h_drift * self.transfer_function.num_x
+        else:
+            self._h_drift_jnp = jnp.array([h.data for h in h_drift])
+            self.h_drift = h_drift
+        
+        self._h_ctrl_jnp = jnp.array([h.data for h in h_ctrl])
+        self._transferred_time_jnp = jnp.array(self.transferred_time)
+        if initial_state is None:
+            dim = self.h_ctrl[0].shape[0]
+            self.initial_state = matrix.DenseOperatorJAX(jnp.eye(dim))
+        else:
+            self.initial_state = matrix.DenseOperatorJAX(initial_state)
+        self._initial_state_jnp = self.initial_state.data         
+            
+        self._prop_jnp = None
+        self._reversed_prop_jnp = None
+        self._fwd_prop_jnp = None
+        self._derivative_prop_jnp = None
+
+
+    def set_optimization_parameters(self, y: jnp.array) -> None:
+        """
+        Set the control amplitudes.
+
+        All computation flags are set to false.
+
+        The new control amplitudes u are calculated:
+        u: np.array, shape (num_t, num_ctrl)
+
+        Parameters
+        ----------
+        y: np.array, shape (num_x, num_ctrl)
+            Raw optimization parameters.
+
+        """
+
+        if jnp.array_equal(self._opt_pars, y):
+            return
+        else:
+            #previously with copy (?)
+            self._opt_pars = y
+
+        if self.transfer_function is not None:
+            self.transferred_parameters = self.transfer_function(y)
+        else:
+            #previously with copy (?)
+            self.transferred_parameters = y
+
+        if self.amplitude_function is not None:
+            u = self.amplitude_function(
+                self.transferred_parameters)
+        else:
+            u = self.transferred_parameters
+
+        if len(u.shape) != 2:
+            raise ValueError('The new control amplitudes must have two '
+                             'dimensions! '
+                             '(time, control operator)')
+
+        if u.shape[0] != len(self.transferred_time):
+            raise ValueError('The new control amplitudes do not have the '
+                             'correct number of entries on the time axis!')
+
+        if u.shape[1] != len(self.h_ctrl):
+            raise ValueError('The new control amplitudes do not have the '
+                             'correnct number of entries on the control axis!')
+
+        self._ctrl_amps = u
+        self.reset_cached_propagators()
+
+    def reset_cached_propagators(self):
+        """ Resets all cached propagators. """
+        
+        self._prop = None #perhaps nonexistent?
+        self._fwd_prop = None
+        self._derivative_prop = None
+        self._reversed_prop = None
+        self.pulse_sequence = None
+        
+        self._prop_jnp = None
+        self._reversed_prop_jnp = None
+        self._fwd_prop_jnp = None
+        self._derivative_prop_jnp = None
+
+    @property
+    def forward_propagators_jnp(self) -> jnp.ndarray:
+
+        if self._fwd_prop_jnp is None:
+            self._compute_forward_propagation_jnp()
+        return self._fwd_prop_jnp
+    
+    @property
+    def reversed_propagators_jnp(self) -> jnp.ndarray:
+
+        if self._reversed_prop_jnp is None:
+            self._compute_reversed_propagation_jnp()
+        return self._reversed_prop_jnp
+    
+    @property
+    def frechet_deriv_propagators_jnp(self) -> jnp.ndarray:
+        
+        if self._derivative_prop_jnp is None:
+            self._compute_propagation_derivatives_jnp()
+        return self._derivative_prop_jnp
+    
+    @abstractmethod
+    def _compute_propagation(self) -> None:
+        if self._prop_jnp is None:
+            self._compute_propagation_jnp()
+            
+        self._prop = [matrix.DenseOperatorJAX(p) for p in self._prop_jnp]
+            
+    def _compute_forward_propagation(self) -> None:
+        """Computes the forward propagators. """
+        # if self._fwd_prop_jnp is None:
+        #     self._compute_forward_propagation_jnp()
+     
+        self._fwd_prop = [matrix.DenseOperatorJAX(p) for p in self.forward_propagators_jnp]
+               
+    def _compute_reversed_propagation(self) -> None:
+        """Compute the reversed propagation. """
+        #should work without(?)
+        # if self._reversed_prop_jnp is None:
+        #     self._compute_reversed_propagation_jnp()
+
+        self._reversed_prop = [matrix.DenseOperatorJAX(p) for p in self.reversed_propagators_jnp]
+        
+    @abstractmethod
+    def _compute_propagation_derivatives(self) -> None:
+        
+        if self._derivative_prop_jnp is None:
+            self._compute_propagation_derivatives_jnp()
+        
+        self._derivative_prop = [[matrix.DenseOperatorJAX(p) for p in der_t] for der_t in self._derivative_prop_jnp]
+        
+    def _compute_forward_propagation_jnp(self) -> None:
+        
+        if self._prop_jnp is None:
+            self._compute_propagation_jnp()
+        
+        self._fwd_prop_jnp = jnp.append(jnp.expand_dims(self._initial_state_jnp.copy(),0),_cumprod(self._initial_state_jnp.copy(),self._prop_jnp),axis=0)                        
+       
+    def _compute_reversed_propagation_jnp(self) -> None:
+    
+        if self._prop_jnp is None:
+             self._compute_propagation_jnp()
+         
+        _initial_state_rev_jnp = jnp.eye(self._prop_jnp[0].shape[0]) * (1 + 0j)
+     
+        self._reversed_prop_jnp = jnp.append(jnp.expand_dims(_initial_state_rev_jnp.copy(),0),_cumprod_reversed(_initial_state_rev_jnp.copy(),self._prop_jnp[::-1]),axis=0)
+
+    @abstractmethod
+    def _compute_propagation_jnp(self) -> None:
+        """
+        Computes the propagators. Must set self._prop!
+
+        Raises
+        ------
+        ValueError
+            If the control amplitudes are not set.
+
+        """
+        if self._ctrl_amps is None:
+            raise ValueError("The control amplitudes must be set to calculate "
+                             "the propagation!")
+
+    @abstractmethod
+    def _compute_propagation_derivatives_jnp(self) -> None:
+        """Compute the derivatives of the propagators by the control
+        amplitudes.
+        """
+        pass
+
+
+class SchroedingerSolverJAX(SolverJAX):
+    """
+    This time slot computer solves the unperturbed Schroedinger equation.
+
+    All intermediary propagators are calculated and cached. Takes also input
+    parameters of the base class.
+
+    Parameters
+    ----------
+    calculate_propagator_derivatives: bool
+        If true, the derivatives of the propagators by the control amplitudes
+        are always calculated. Otherwise only on demand.
+
+    frechet_deriv_approx_method: Optional[str]
+        Method for the approximation of the derivatives of the propagators, if
+        they are not calculated analytically. Note that this method is never
+        used if calculate_propagator_derivatives is set to True!
+        Methods:
+        None: The derivatives are not approximated by calculated by the control
+        matrix class.
+        'grape': use the approximation given in the original grape paper.
+
+    Attributes
+    ----------
+    _dyn_gen: List[ControlMatrix], len num_t
+        The generators of the systems dynamics
+
+    calculate_propagator_derivatives: bool
+        If true, the derivatives of the propagators by the control amplitudes
+        are always calculated. Otherwise only on demand.
+
+    frechet_deriv_approx_method: Optional[str]
+        Method for the approximation of the derivatives of the propagators, if
+        they are not calculated analytically. Note that this method is never
+        used if calculate_propagator_derivatives is set to True!
+        Methods:
+        'grape': use the approximation given in the original grape paper.
+
+    Methods
+    -------
+    _compute_derivative_directions: List[List[q_mat.ControlMatrix]],
+    shape [[] * num_ctrl] * num_t
+        Computes the directions of change with respect to the control
+        parameters.
+
+    _compute_dyn_gen: List[ControlMatrix], len num_t
+        Computes the dynamics generators.
+
+    `Todo`
+        * raise a warning if the approximation method although the gradient
+            is always calculated.
+        * raise a warning if the grape approximation is chosen but its
+            requirement of small time steps is not met.
+
+    """
+
+    def __init__(self,
+                 h_drift: List[q_mat.OperatorMatrix],
+                 h_ctrl: List[q_mat.OperatorMatrix],
+                 tau: np.array,
+                 initial_state: q_mat.OperatorMatrix = None,
+                 ctrl_amps: Optional[np.array] = None,
+                 calculate_propagator_derivatives: bool = True,
+                 filter_function_h_n: Union[
+                     Callable, List[List], None] = None,
+                 filter_function_basis: Optional[basis.Basis] = None,
+                 filter_function_n_coeffs_deriv: Optional[
+                    Callable[[np.ndarray], np.ndarray]] = None,
+                 exponential_method: Optional[str] = None,
+                 frechet_deriv_approx_method: Optional[str] = None,
+                 is_skew_hermitian: bool = True,
+                 transfer_function: Optional[TransferFunction] = None,
+                 amplitude_function: Optional[AmplitudeFunction] = None):
+        super().__init__(
+            h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
+            tau=tau, ctrl_amps=ctrl_amps,
+            filter_function_h_n=filter_function_h_n,
+            filter_function_basis=filter_function_basis,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
+            exponential_method=exponential_method,
+            is_skew_hermitian=is_skew_hermitian,
+            transfer_function=transfer_function,
+            amplitude_function=amplitude_function
+        )
+        
+            
+        if self.exponential_method != "Frechet":
+            print("Other than Frechet ignored")
+        
+        self.id_text = 'ALL'
+        self.cache_text = 'Save'
+        self.calculate_propagator_derivatives = \
+            calculate_propagator_derivatives
+        self.frechet_deriv_approx_method = frechet_deriv_approx_method
+
+        self._dyn_gen = None
+
+        
+    def set_optimization_parameters(self, y: Union[np.ndarray,jnp.ndarray]) -> None:
+        """See base class. """
+        if not jnp.array_equal(self._opt_pars, y):
+            self.reset_cached_propagators()
+        super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        self._dyn_gen = None
+        super().reset_cached_propagators()            
+    
+    ###not able to implement jax.scipy.minimize due to unhashable types, therefore unnecessary
+    # #to be jax-able
+    # #??? jax seems to count "self" as arg0
+    # @partial(jit,static_argnums=(0,1,2,3,4,5,6))
+    # def compute_forward_propagation_pure(self,h_drift_jnp,h_ctrl_jnp,_transferred_time_jnp,transfer_function,amplitude_function,_initial_state_jnp,y):
+
+    #     if transfer_function is not None:
+    #         transferred_parameters = transfer_function(y)
+    #     else:
+    #         #previously with copy (?)
+    #         transferred_parameters = y
+
+    #     if amplitude_function is not None:
+    #         u = amplitude_function(
+    #             transferred_parameters)
+    #     else:
+    #         u = transferred_parameters
+            
+    #     #TODO: way to implement warning outside jit?
+    #     # if len(u.shape) != 2:
+    #     #     raise ValueError('The new control amplitudes must have two '
+    #     #                      'dimensions! '
+    #     #                      '(time, control operator)')
+
+    #     # if u.shape[0] != len(_transferred_time_jnp):
+    #     #     raise ValueError('The new control amplitudes do not have the '
+    #     #                      'correct number of entries on the time axis!')
+
+    #     # if u.shape[1] != len(h_ctrl_jnp):
+    #     #     raise ValueError('The new control amplitudes do not have the '
+    #     #                      'correnct number of entries on the control axis!')
+
+    #     _ctrl_amps = u
+    #     _dyn_gen = -1j*(h_drift_jnp+jnp.einsum("ij,jkl->ikl",_ctrl_amps,h_ctrl_jnp))
+    #     #jax computes own derivatives?
+    #     # derivative_directions = -1j*jnp.expand_dims(self._h_ctrl_jnp,0)
+    #     _prop_jnp = _compute_propagation_expm(_transferred_time_jnp,_dyn_gen)
+    #     return jnp.append(jnp.expand_dims(_initial_state_jnp.copy(),0),_cumprod(_initial_state_jnp.copy(),_prop_jnp),axis=0)
+    
+    def _compute_dyn_gen(self) -> jnp.ndarray:
+        """
+        Computes the dynamics generators.
+
+        Returns
+        -------
+        dyn_gen: List[ControlMatrix], len num_t
+            This is basically the total Hamiltonian.
+
+        """
+        
+        # #(num_t)
+        # h_drift_jnp = jnp.array([h for self.h_drift])
+        # #(num_ctrl)
+        # h_ctrl_jnp = jnp.array(self.h_ctrl)
+        # #(num_t,num_ctrl)
+        # ctrl_amp_jnp = jnp.array(self._ctrl_amps)
+        
+        self._dyn_gen = -1j*(self._h_drift_jnp+jnp.einsum("ij,jkl->ikl",self._ctrl_amps,self._h_ctrl_jnp))
+        
+        #internally now only jax tensors?
+        return self._dyn_gen                
+        
+        # def _compute_dyn_gen_loop(h_drift,h_ctrl,ctrl_amp):
+        #     return -1j*h_drift + -1j*jnp.sum(ctrl_amp*h_ctrl)
+        
+        # self._dyn_gen = vmap(_compute_dyn_gen_loop,in_axes=(0,None,0))
+        
+        # self._dyn_gen = [-1j * h for h in self.h_drift]
+        # for ctrl, ctrl_op in enumerate(self.h_ctrl):
+        #     for dyn_gen, ctrl_amp in \
+        #             zip(self._dyn_gen, self._ctrl_amps[:, ctrl]):
+        #         dyn_gen += -1j * ctrl_amp * ctrl_op
+        # return self._dyn_gen
+
+    def _compute_derivative_directions(
+            self) -> jnp.ndarray:
+        """
+        The directions of the frechet derivatives are the control operators.
+
+        No deep copy is required because the result is not used for in-place
+        operations.
+
+        """
+        # The list is multiplied (copied by reference) because the elements
+        # will not be manipulated in place. (only as copy)
+        return -1j*jnp.expand_dims(self._h_ctrl_jnp,0)
+        # return -1j for operator in self.h_ctrl], ] * len(self.transferred_time)
+
+    def _compute_propagation(self) -> None:
+        super()._compute_propagation()
+
+    def _compute_propagation_derivatives(self) -> None:
+        super()._compute_propagation_derivatives()
+
+    def _compute_propagation_jnp(
+            self, calculate_propagator_derivatives: Optional[bool] = None) \
+            -> None:
+        """See base class. """
+        super()._compute_propagation_jnp()
+
+        if self._dyn_gen is None:
+            self._dyn_gen = self._compute_dyn_gen()
+
+        if calculate_propagator_derivatives is None:
+            calculate_propagator_derivatives = \
+                self.calculate_propagator_derivatives
+
+        # initialize the attributes
+        # self._prop = [None for _ in range(len(self.transferred_time))]
+        #not even needed
+        # self._prop = jnp.empty((len(self.transferred_time),*self._h_ctrl_jnp.shape[1:]))
+
+
+        if calculate_propagator_derivatives:
+            derivative_directions = self._compute_derivative_directions()
+            # self._derivative_prop = [
+            #     [None for _ in range(len(self.transferred_time))]
+            #     for _2 in range(len(self.h_ctrl))]
+            #not even needed
+            # self._derivative_prop = jnp.empty((len(self.transferred_time),*self._h_ctrl_jnp.shape))
+            
+            # def _compute_propagation_expm(transferred_time,dyn_gen):
+            #     return jax.scipy.linalg.expm(dyn_gen* transferred_time)
+            
+            # def _compute_propagation_expm_frechet(transferred_time,dyn_gen,derivative_directions):
+            #     return jax.scipy.linalg.expm_frechet(dyn_gen*transferred_time,derivative_directions*transferred_time,compute_expm=False)
+            
+            # def _compute_propagation_expm_both(transferred_time,dyn_gen,derivative_directions):
+            #     return jax.scipy.linalg.expm_frechet(dyn_gen*transferred_time,derivative_directions*transferred_time,compute_expm=True)
+            
+            # self._prop, self._derivative_prop = vmap(vmap(_compute_propagation_expm_both,in_axes=(0,0,None)),in_axes=(None,None,0))(self._transferred_time_jnp,self._dyn_gen,derivative_directions[0])
+            
+            #TODO: behavior is not exactly reproduced as now derivative_directions[0] is taken; however only relevant for LindbladSolver (in special cases) (?)
+            self._prop_jnp, self._derivative_prop_jnp = _compute_propagation_expm_both(self._transferred_time_jnp,self._dyn_gen,derivative_directions[0])
+            self._prop_jnp = self._prop_jnp[0,:,:,:]
+
+            
+            # self._prop = [q_mat.DenseOperator(p) for p in _prop[0,:,:,:]]
+            # self._derivative_prop = [[q_mat.DenseOperator(p) for p in dpt] for dpt in _derivative_prop]
+
+            # for t in range(len(self.transferred_time)):   
+            #     for ctrl in range(len(self.h_ctrl)):
+            #         try:
+            #             self._prop[t], self._derivative_prop[ctrl][t] \
+            #                 = self._dyn_gen[t].dexp(
+            #                 derivative_directions[t][ctrl],
+            #                 self.transferred_time[t],
+            #                 compute_expm=True, method=self.exponential_method,
+            #                 is_skew_hermitian=self._is_skew_hermitian)
+            #         except ValueError:
+            #             raise ValueError('the computation has failed with '
+            #                             'a value error. try another '
+            #                             'exponentiation method.')
+                
+        else:
+            
+            # def _compute_propagation_expm(transferred_time,dyn_gen):
+            #     return jax.scipy.linalg.expm(dyn_gen* transferred_time)
+            
+            # self._prop = vmap(_compute_propagation_expm,in_axes=(0,0))(self._transferred_time_jnp,self._dyn_gen)
+            
+            self._prop_jnp = _compute_propagation_expm(self._transferred_time_jnp,self._dyn_gen)
+            
+            # for t in range(len(self.transferred_time)):
+            #     self._prop[t] = self._dyn_gen[t].exp(
+            #         tau=self.transferred_time[t], method=self.exponential_method,
+            #         is_skew_hermitian=self._is_skew_hermitian)
+    
+    
+    # def _compute_propagation_expm(self,transferred_time,dyn_gen):
+    #     return jax.scipy.linalg.expm(dyn_gen* transferred_time)
+    
+    # def _compute_propagation_expm_frechet(self,transferred_time,dyn_gen,derivative_directions):
+    #     return jax.scipy.linalg.expm_frechet(dyn_gen*transferred_time,derivative_directions*transferred_time,compute_expm=False)
+
+    def _compute_propagation_derivatives_jnp(self) -> None:
+        """
+        Computes the frechet derivatives of the propagators.
+
+        The derivatives are not returned but cached. Since the function is only
+        called when no derivatives are cached, the approximation is
+        prioritised.
+        """
+        if not self.frechet_deriv_approx_method:
+            self._compute_propagation_jnp(calculate_propagator_derivatives=True)
+        elif self.frechet_deriv_approx_method == 'grape':
+            if self._prop_jnp is None:
+                self._compute_propagation_jnp(
+                    calculate_propagator_derivatives=False)
+            # self._derivative_prop = [[None for _ in range(len(self.h_ctrl))]
+            #                          for _2 in range(len(self.transferred_time))]
+            
+            self._derivative_prop_jnp = jnp.swapaxes(jnp.expand_dims(self._transferred_time_jnp,(1,2,3))*self._compute_derivative_directions()@jnp.expand_dims(self._prop_jnp,axis=1),0,1)
+            
+            
+            # for t in range(len(self.transferred_time)):
+            #     for ctrl in range(len(self.h_ctrl)):
+            #         self._derivative_prop[t][ctrl] = \
+            #             self.transferred_time[t] * derivative_directions[t][ctrl] \
+            #             * self._prop[t]
+        else:
+            raise ValueError('Unknown gradient derivative approximation '
+                             'method:'
+                             + str(self.frechet_deriv_approx_method))
+
+
+class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
+    r"""
+    Solves Schroedinger's equation for explicit noise realisations as Monte
+    Carlo experiment.
+
+    This time slot computer solves the Schroedinger equation explicitly for
+    concrete noise realizations. The noise traces are generated by an instance
+    of the Noise Trace Generator Class. Then they can be processed by the
+    noise amplitude function, before they are multiplied by the noise
+    hamiltionians.
+
+    Parameters
+    ----------
+    h_noise: List[ControlMatrix], len num_noise_operators
+        List of noise operators occurring in the Hamiltonian.
+
+    noise_trace_generator: noise.NoiseTraceGenerator
+        Noise trace generator object.
+
+    processes: int, optional
+        If an integer is given, then the propagation is calculated in
+        this number of parallel processes. If 1 then no parallel
+        computing is applied. If None then cpu_count() is called to use
+        all cores available. Defaults to 1.
+
+    noise_amplitude_function: Callable[[noise_samples: np.array,
+        optimization_parameters: np.array,
+        transferred_parameters: np.array,
+        control_amplitudes: np.array], np.array]
+        The noise amplitude function calculated the noisy control amplitudes
+        corresponding to the noise samples. They recieve 4 keyword arguments
+        being the noise samples, the optimization parameters, the transferred
+        optimization parameters and the control amplitudes in this order.
+        The noise samples are given with the shape (n_samples_per_trace,
+        n_traces, n_noise_operators), the optimization parameters
+        (num_x, num_ctrl), the transferred parameters (num_t, num_ctrl) and
+        the control amplitudes (num_t, num_ctrl). The returned noise amplitudes
+        should be of the shape (num_t, n_traces, n_noise_operators).
+
+    Attributes
+    ----------
+    h_noise: List[ControlMatrix], len num_noise_operators
+        List of noise operators occurring in the Hamiltonian.
+
+    noise_trace_generator: noise.NoiseTraceGenerator
+        Noise trace generator object.
+
+    _dyn_gen_noise: List[List[ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+        Dynamics generators for the individual noise traces.
+
+    _prop_noise: List[List[ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+        Propagators for the individual noise traces.
+
+    _fwd_prop_noise: List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+        Cumulation of the propagators for the individual noise traces. They
+        describe the forward propagation of the systems state.
+
+    _reversed_prop_noise: List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+        Cumulation of propagators in reversed order for the individual noise
+        traces.
+
+    _derivative_prop_noise: List[List[List[ControlMatrix]]],
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
+        Frechet derivatives of the propagators by the control amplitudes for
+        the individual noise traces.
+
+    Methods
+    -------
+    propagators_noise: List[List[ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+        Propagators for the individual noise traces.
+
+    forward_propagators_noise: List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+        Cumulation of the propagators for the individual noise traces. They
+        describe the forward propagation of the systems state.
+
+    reversed_propagators_noise: List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+        Cumulation of propagators in reversed order for the individual noise
+        traces.
+
+    frechet_deriv_propagators_noise: List[List[List[ControlMatrix]]],
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
+        Frechet derivatives of the propagators by the control amplitudes for
+        the individual noise traces.
+
+    """
+    def __init__(
+            self, h_drift: List[q_mat.OperatorMatrix],
+            h_ctrl: List[q_mat.OperatorMatrix],
+            tau: np.array,
+            h_noise: List[q_mat.OperatorMatrix],
+            noise_trace_generator:
+            Optional[noise.NoiseTraceGenerator],
+            initial_state: q_mat.OperatorMatrix = None,
+            ctrl_amps: Optional[np.array] = None,
+            calculate_propagator_derivatives: bool = False,
+            processes: Optional[int] = 1,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
+            filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_n_coeffs_deriv: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
+            exponential_method: Optional[str] = None,
+            frechet_deriv_approx_method: Optional[str] = None,
+            is_skew_hermitian: bool = True,
+            transfer_function: Optional[TransferFunction] = None,
+            amplitude_function: Optional[AmplitudeFunction] = None,
+            noise_amplitude_function: Optional[Callable[
+                [np.array, np.array, np.array,
+                 np.array], np.array]] = None
+    ):
+
+        super().__init__(
+            h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
+            tau=tau, ctrl_amps=ctrl_amps,
+            filter_function_h_n=filter_function_h_n,
+            filter_function_basis=filter_function_basis,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
+            exponential_method=exponential_method,
+            calculate_propagator_derivatives=calculate_propagator_derivatives,
+            frechet_deriv_approx_method=frechet_deriv_approx_method,
+            is_skew_hermitian=is_skew_hermitian,
+            transfer_function=transfer_function,
+            amplitude_function=amplitude_function)
+
+        self.h_noise = h_noise
+        self._h_noise_jnp = jnp.array([h.data for h in h_noise])
+        self.noise_trace_generator = noise_trace_generator
+        self.noise_amplitude_function = noise_amplitude_function
+        self.processes = processes
+
+        self._dyn_gen_noise = None
+        self._prop_noise = None
+        self._derivative_prop_noise = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+        
+        self._prop_noise_jnp = None
+        self._derivative_prop_noise_jnp = None
+        self._fwd_prop_noise_jnp = None
+        self._reversed_prop_noise_jnp = None
+        
+    def set_optimization_parameters(self, y: Union[np.ndarray,jnp.ndarray]) -> None:
+        """See base class. """
+        if not jnp.array_equal(self._opt_pars, y):
+            self.reset_cached_propagators()
+        super().set_optimization_parameters(y)
+
+    def reset_cached_propagators(self):
+        """See base class. """
+        super().reset_cached_propagators()
+        self._dyn_gen_noise = None
+        self._prop_noise = None
+        self._prop_noise_jnp = None
+        self._derivative_prop_noise = None
+        self._derivative_prop_noise_jnp = None
+        self._fwd_prop_noise = None
+        self._reversed_prop_noise = None
+        self._fwd_prop_noise_jnp = None
+        self._reversed_prop_noise_jnp = None
+
+
+    @property
+    def propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Returns the propagators of the system for each noise trace and
+        calculates them if necessary.
+
+        Returns
+        -------
+        propagators_noise: List[List[ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+            Propagators of the system for each noise trace.
+
+        """
+        if self._prop_noise is None:
+            self._compute_propagation()
+        return self._prop_noise
+    
+    @property
+    def propagators_noise_jnp(self) -> jnp.ndarray:
+
+        if self._prop_noise_jnp is None:
+            self._compute_propagation_jnp()
+        return self._prop_noise_jnp
+    
+    @property
+    def forward_propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Returns the forward propagation of the initial state for every time
+        slice and every noise trace and calculate it if necessary. If the
+        initial state is the identity matrix, then the cumulative propagators
+        are given. The element forward_propagators[k][i] propagates a state by
+        the first i time steps under the kth noise trace, if the initial state
+        is the identity matrix.
+
+        Returns
+        -------
+        forward_propagation:List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+            Propagation of the initial state of the system. fwd[0] gives the
+            initial state itself.
+
+        """
+        if self._fwd_prop_noise is None:
+            self._compute_forward_propagation()
+        return self._fwd_prop_noise
+
+    @property
+    def forward_propagators_noise_jnp(self) -> jnp.ndarray:
+
+        if self._fwd_prop_noise_jnp is None:
+            self._compute_forward_propagation_jnp()
+        return self._fwd_prop_noise_jnp
+
+    @property
+    def frechet_deriv_propagators_noise(self) \
+            -> List[List[List[q_mat.OperatorMatrix]]]:
+        """
+        Returns the frechet derivatives of the propagators with respect to the
+        control amplitudes for each noise trace.
+
+        Returns
+        -------
+        derivative_prop_noise: List[List[List[ControlMatrix]]],
+        shape [[[] * num_t] * num_ctrl] * num_noise_traces
+            Frechet derivatives of the propagators by the control amplitudes.
+
+        """
+        if self._derivative_prop_noise is None:
+            self._compute_propagation_derivatives()
+        return self._derivative_prop_noise
+    
+    @property
+    def frechet_deriv_propagators_noise_jnp(self) -> jnp.ndarray:
+
+        if self._derivative_prop_noise_jnp is None:
+            self._compute_propagation_derivatives_jnp()
+        return self._derivative_prop_noise_jnp
+    
+    @property
+    def reversed_propagators_noise(self) -> List[List[q_mat.OperatorMatrix]]:
+        """
+        Returns the reversed propagation of the initial state for every noise
+        trace and calculate it if necessary. If the initial state is the
+        identity matrix, then the reversed cumulative propagators are given.
+        The element forward_propagators[k][i] propagates a state by the first i
+        time steps under the kth noise trace, if the initial state is the
+        identity matrix.
+
+        Returns
+        -------
+        reversed_propagation_noise: List[List[ControlMatrix]],
+        shape [[] * (num_t + 1)] * num_noise_traces
+            Propagation of the initial state of the system. reversed[k][0]
+            gives the initial state itself.
+
+        """
+        if self._reversed_prop_noise is None:
+            self._compute_reversed_propagation()
+        return self._reversed_prop_noise
+    
+    @property
+    def reversed_propagators_noise_jnp(self) -> jnp.ndarray:
+
+        if self._reversed_prop_noise_jnp is None:
+            self._compute_reversed_propagation_jnp()
+        return self._reversed_prop_noise_jnp
+    
+    def _compute_dyn_gen_noise(self) -> jnp.ndarray:
+        """
+        Computes the dynamics generators for the perturbed and unperturbed
+        Schroedinger equation.
+
+        Returns
+        -------
+        dyn_gen_noise: List[List[q_mat.ControlMatrix]],
+        shape [[] * num_t] * num_noise_traces
+            Dynamics generators for each noise trace.
+
+        """
+        # compute the generators of the unperturbed dynamics
+        self._dyn_gen = super()._compute_dyn_gen()
+
+        # compute the generators for the noise traces.
+        # n_noise_traces = self.noise_trace_generator.n_traces
+
+        noise_samples = jnp.array(self.noise_trace_generator.noise_samples)
+        # we transpose, so we iterate over the time last
+        noise_samples = jnp.transpose(noise_samples, (2, 1, 0))
+
+        if self.noise_amplitude_function:
+            noise_samples = self.noise_amplitude_function(
+                noise_samples=noise_samples,
+                optimization_parameters=self._opt_pars,
+                transferred_parameters=self.transferred_parameters,
+                control_amplitudes=self._ctrl_amps
+            )
+
+        # self._dyn_gen_noise = [[dyn_gen.copy() for dyn_gen in self._dyn_gen]
+        #                        for _ in range(n_noise_traces)]
+        
+        #??? Why should n_samples_per_trace always be t?
+        # for t, sample_stack in enumerate(noise_samples):
+        #     for n_trace, trace in enumerate(sample_stack):
+        #         for operator_sample, operator in zip(trace, self.h_noise):
+        #             self._dyn_gen_noise[n_trace][t] += \
+        #                 (-1j * operator_sample) * operator
+                        
+        # i: n_samples_per_trace, j: n_traces, k: n_noise_ops, l: first dim of ham, m: second dim of ham
+        self._dyn_gen_noise = jnp.expand_dims(self._dyn_gen,axis=0) - 1j*(jnp.einsum("ijk,klm->jilm",noise_samples,self._h_noise_jnp))
+        
+        # -> (n_traces,n_samples_per_trace || t ?,d,d)
+        return self._dyn_gen_noise
+    
+    def _compute_propagation(self) -> None:
+        super()._compute_propagation()
+        # if self._fwd_prop_noise_jnp is None:
+        #     self._compute_forward_propagation_jnp()
+            
+        self._prop_noise = [[matrix.DenseOperatorJAX(p) for p in trace] for trace in self.propagators_noise_jnp]
+    
+    def _compute_propagation_derivatives(self) -> None:
+        super()._compute_propagation_derivatives()
+        if self._derivative_prop_noise_jnp is None:
+            self._compute_propagation_derivatives_jnp()
+        
+        self._derivative_prop_noise_jnp = [[[matrix.DenseOperatorJAX(p) for p in ctrl] for ctrl in der_t] for der_t in self._derivative_prop_noise_jnp]
+        
+        
+    def _compute_propagation_jnp(
+            self, calculate_propagator_derivatives: Optional[bool] = None
+    ) -> None:
+        """
+        Computes the propagators for the perturbed Schroedinger equation and
+        the derivatives on demand.
+
+        Parameters
+        ----------
+        calculate_propagator_derivatives: bool, optional
+            Calculate the derivatives of the propagators with respect to the
+            control amplitudes if true.
+
+        """
+
+        if self._dyn_gen_noise is None:
+            self._dyn_gen_noise = self._compute_dyn_gen_noise()
+
+        # n_noise_traces = self.noise_trace_generator.n_traces
+        # num_t = len(self.transferred_time)
+        # num_ctrl = len(self.h_ctrl)
+
+        # self._prop_noise = [[None for _ in range(num_t)]
+        #                     for _2 in range(n_noise_traces)]
+
+        if calculate_propagator_derivatives is None:
+            calculate_propagator_derivatives = \
+                self.calculate_propagator_derivatives
+
+        # parallelization of following code probably unnecessary
+        if calculate_propagator_derivatives:
+            # self._derivative_prop_noise = \
+            #     [[[None for _ in range(num_t)]
+            #       for _2 in range(num_ctrl)]
+            #      for _3 in range(n_noise_traces)]
+            derivative_directions = self._compute_derivative_directions()
+
+        # call the parent method for the noiseless propagators
+        super()._compute_propagation_jnp(
+            calculate_propagator_derivatives=calculate_propagator_derivatives)
+
+        if self.processes == 1:
+            if calculate_propagator_derivatives:
+                # for k in range(n_noise_traces):
+                #     for t in range(num_t):
+                #         for ctrl in range(len(self.h_ctrl)):
+                #             self._prop_noise[k][t], \
+                #                 self._derivative_prop_noise[k][ctrl][t] \
+                #                 = self._dyn_gen_noise[k][t].dexp(
+                #                 derivative_directions[t][ctrl],
+                #                 self.transferred_time[t],
+                #                 compute_expm=True,
+                #                 method=self.exponential_method,
+                #                 is_skew_hermitian=self._is_skew_hermitian)
+                
+                self._prop_noise_jnp, self._derivative_prop_noise_jnp = _compute_propagation_expm_both_noise(self._transferred_time_jnp,self._dyn_gen_noise,derivative_directions[0])
+                self._prop_noise_jnp = self._prop_noise_jnp[:,0,:,:,:]
+            else:
+                # for k in range(n_noise_traces):
+                #     for t in range(num_t):
+                #         self._prop_noise[k][t] = self._dyn_gen_noise[k][t].exp(
+                #             tau=self.transferred_time[t],
+                #             method=self.exponential_method,
+                #             is_skew_hermitian=self._is_skew_hermitian)
+                self._prop_noise_jnp = _compute_propagation_expm_noise(self._transferred_time_jnp,self._dyn_gen_noise)
+                
+        elif (type(self.processes) == int and self.processes > 0) \
+                or self.processes is None:
+            
+            raise NotImplementedError("No pool-multiprocess with jax calc, (TODO) perhaps add with pmap (?)")        
+            
+            # if calculate_propagator_derivatives:
+            #     raise NotImplementedError
+            # else:
+            #     input_dicts = []
+            #     for k in range(n_noise_traces):
+            #         input_dicts.append(dict())
+            #         input_dicts[-1]['time'] = self.transferred_time
+            #         input_dicts[-1]['matrices'] = self._dyn_gen_noise[k]
+            #         input_dicts[-1]['method'] = self.exponential_method
+            #         input_dicts[-1][
+            #             'is_skew_hermitian'] = self._is_skew_hermitian
+
+            #     with Pool(processes=self.processes) as pool:
+            #         self._prop_noise = pool.map(
+            #             _compute_matrix_exponentials, input_dicts)
+
+        else:
+            raise ValueError('Invalid number of processes for parallel '
+                             'computation!')
+
+    def _compute_forward_propagation_jnp(self) -> None:
+        """Computes the forward propagators. """
+        super()._compute_forward_propagation_jnp()
+        if self._prop_noise_jnp is None:
+            self._compute_propagation_jnp()
+
+        # self._fwd_prop_noise = [
+        #     [self.initial_state.copy(), ]
+        #     for _ in range(self.noise_trace_generator.n_traces)]
+
+        # for fwd_per_trace, prop_per_trace in zip(self._fwd_prop_noise,
+        #                                          self._prop_noise):
+        #     for prop in prop_per_trace:
+        #         fwd_per_trace.append(prop * fwd_per_trace[-1])
+        
+        cum_prop_noise = _cumprod_noise(self._initial_state_jnp.copy(),self._prop_noise_jnp)
+        #??? does this broadcast correclty?
+        sh = cum_prop_noise.shape
+        
+        self._fwd_prop_noise_jnp = jnp.append(jnp.broadcast_to(self._initial_state_jnp.copy(),(sh[0],1,*sh[2:])),cum_prop_noise,axis=1)
+
+
+    @profile
+    def _compute_forward_propagation(self) -> None:
+        """Computes the forward propagators. """
+        super()._compute_forward_propagation()
+        # if self._fwd_prop_noise_jnp is None:
+        #     self._compute_forward_propagation_jnp()
+            
+        self._fwd_prop_noise = [[matrix.DenseOperatorJAX(p) for p in trace] for trace in self.forward_propagators_noise_jnp]
+
+    def _compute_reversed_propagation_jnp(self) -> None:
+        """Compute the reversed propagation. For the perturbed and unperturbed
+        Schroedinger equation. """
+        super()._compute_reversed_propagation_jnp()
+        if self._prop_noise_jnp is None:
+            self._compute_propagation_jnp()
+
+        # self._reversed_prop_noise = [
+        #     [self._prop[0].identity_like(), ]
+        #     for _ in range(self.noise_trace_generator.n_traces)]
+
+        # for rev_per_trace, prop_per_trace in zip(self._reversed_prop_noise,
+        #                                          self._prop_noise):
+        #     for prop in prop_per_trace[::-1]:
+        #         rev_per_trace.append(rev_per_trace[-1] * prop)
+                
+        _initial_state_rev_jnp = jnp.eye(self._prop_jnp[0].shape[0]) * (1 + 0j)
+        
+        cum_prop_reversed_noise = _cumprod_reversed_noise(_initial_state_rev_jnp,self._prop_noise_jnp[::-1])
+        
+        sh = cum_prop_reversed_noise.shape
+        
+        self._reversed_prop_noise_jnp = jnp.append(jnp.broadcast_to(_initial_state_rev_jnp,(sh[0],1,*sh[2:])),cum_prop_reversed_noise,axis=1)
+
+                
+    def _compute_reversed_propagation(self) -> None:
+        """Compute the reversed propagation. For the perturbed and unperturbed
+        Schroedinger equation. """
+        super()._compute_reversed_propagation()
+        #should be calculated by call to attribute later anyway(?)
+        # if self._prop_noise is None:
+        #     self._compute_propagation()
+
+        self._reversed_prop_noise = [[matrix.DenseOperatorJAX(p) for p in trace] for trace in self.reversed_propagators_noise_jnp]
+                
+                
+    def _compute_propagation_derivatives_jnp(self) -> None:
+        """
+        Computes the frechet derivatives of the propagators.
+
+        The derivatives are not returned but cached. Since the function is only
+        called when no derivatives are cached, the approximation is
+        prioritised.
+        """
+        if not self.frechet_deriv_approx_method:
+            self._compute_propagation_jnp(calculate_propagator_derivatives=True)
+            
+        elif self.frechet_deriv_approx_method == 'grape':
+            super()._compute_propagation_derivatives_jnp()
+
+            if self._prop_noise_jnp is None:
+                self._compute_propagation_jnp(
+                    calculate_propagator_derivatives=False)
+
+            # n_noise_traces = self.noise_trace_generator.n_traces
+            # num_t = len(self.transferred_time)
+            # num_ctrl = len(self.h_ctrl)
+
+            # self._derivative_prop_noise = [
+            #     [[None for _ in range(num_t)]
+            #      for _2 in range(num_ctrl)]
+            #     for _3 in range(n_noise_traces)]
+
+            derivative_directions = self._compute_derivative_directions()
+            
+            #broadcasting explicitly
+            self._derivative_prop_noise_jnp = jnp.swapaxes(jnp.expand_dims(self._transferred_time_jnp,(0,2,3,4))*jnp.expand_dims(derivative_directions,0) @jnp.expand_dims(self._prop_noise_jnp,axis=2),1,2)
+
+
+            # for k in range(n_noise_traces):
+            #     for t in range(len(self.transferred_time)):
+            #         for ctrl in range(num_ctrl):
+            #             self._derivative_prop_noise[k][ctrl][t] = \
+            #                 self.transferred_time[t] * derivative_directions[t][ctrl] \
+            #                 * self._prop_noise[k][t]
+        else:
+            raise ValueError('Unknown gradient derivative approximation '
+                             'method:'
+                             + str(self.frechet_deriv_approx_method))
+
+
+class SchroedingerSMCControlNoiseJAX(SchroedingerSMonteCarloJAX):
+    
+    
+    """
+    Convenience class like `SchroedingerSMonteCarlo` but with noise on the
+    optimization parameters.
+
+    This time slot computer solves the Schroedinger equation explicitly for
+    concrete control noise realizations. This time slot computer assumes,
+    that the noise is sampled on the time scale of the already transferred
+    optimization parameters. The control Hamiltionians are also used as noise
+    Hamiltionians and the noise amplitude function adds the noise samples to
+    the unperturbed transferred optimization parameters and applies the
+    amplitude function of the control amplitudes.
+
+    """
+    def __init__(
+            self,
+            h_drift: List[q_mat.OperatorMatrix],
+            h_ctrl: List[q_mat.OperatorMatrix],
+            tau: np.array,
+            noise_trace_generator:
+            Optional[noise.NoiseTraceGenerator],
+            initial_state: q_mat.OperatorMatrix = None,
+            ctrl_amps: Optional[np.array] = None,
+            calculate_propagator_derivatives: bool = False,
+            processes: Optional[int] = 1,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
+            filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_n_coeffs_deriv: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
+            exponential_method: Optional[str] = None,
+            frechet_deriv_approx_method: Optional[str] = None,
+            is_skew_hermitian: bool = True,
+            transfer_function: Optional[TransferFunction] = None,
+            amplitude_function: Optional[AmplitudeFunction] = None):
+
+        def noise_amplitude_function(noise_samples: Union[np.array,jnp.array],
+                                     transferred_parameters: Union[np.array,jnp.array],
+                                     control_amplitudes: Union[np.array,jnp.array],
+                                     **_):
+            """Calculates the noise amplitudes.
+
+            Takes into account the actual optimization parameters and random
+            variations.
+
+            Parameters
+            ----------
+            noise_samples: np.array, shape()
+                Noise samples calculated by the noise trace generator.
+
+            transferred_parameters: np.array
+                Transferred optimization parameters.
+
+            control_amplitudes: np.array
+                Control amplitudes.
+
+            """
+            # noise_amplitudes = np.zeros_like(noise_samples, dtype=complex)
+            noise_amplitudes = jnp.zeros(
+                (noise_samples.shape[0], noise_samples.shape[1],
+                    control_amplitudes.shape[1]), dtype=complex)
+            
+            #TODO: amplitude function as vmap?
+            # complex values were requested.
+            for trace_num in range(noise_samples.shape[1]):
+                #jnp cannot be updated in place
+                #->copy every time; inefficient in for loop?
+                noise_amplitudes.at[:, trace_num, :].set(self.amplitude_function(
+                    transferred_parameters + noise_samples[:, trace_num, :]) \
+                    - control_amplitudes)
+            return noise_amplitudes
+
+        super().__init__(
+            h_drift=h_drift,
+            h_ctrl=h_ctrl,
+            initial_state=initial_state,
+            tau=tau,
+            h_noise=h_ctrl,
+            noise_trace_generator=noise_trace_generator,
+            ctrl_amps=ctrl_amps,
+            calculate_propagator_derivatives=calculate_propagator_derivatives,
+            processes=processes,
+            filter_function_h_n=filter_function_h_n,
+            filter_function_basis=filter_function_basis,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
+            exponential_method=exponential_method,
+            frechet_deriv_approx_method=frechet_deriv_approx_method,
+            is_skew_hermitian=is_skew_hermitian,
+            transfer_function=transfer_function,
+            amplitude_function=amplitude_function,)
+            
+
+class LindbladSolverJAX(SchroedingerSolverJAX):
+    r"""
+    Solves a master equation for an open quantum system in the Markov
+    approximation using the Lindblad super operator formalism.
+
+    The master equation to be solved is
+
+    .. math::
+
+        d \rho / dt = i [\rho, H] + \sum_k (L_k \rho L_k^\dagger
+        - .5 L_k^\dagger L_k \rho - .5 \rho L_k^\dagger L_k)
+
+
+    with the Lindblad operators L_k. The solution is calculated as
+
+    .. math::
+
+        \rho(t) = exp[(-i \mathcal{H} + \mathcal{G})t] \rho(0)
+
+    with the dissipative super operator
+
+    .. math::
+
+        \mathcal{G} = \sum_k D(L_k)
+
+    .. math::
+
+        D(L) = L^\ast \otimes L - .5 I \otimes (L^\dagger L)
+               - .5 (L^T L^\ast) \otimes I
+
+    The dissipation super operator can be given in three different ways.
+
+    1. A nested list of dissipation super operators D(L_k) as control
+    matrices.
+    2. A nested list of Lindblad operators L as control matrices.
+    3. A function handle receiving the control amplitudes as sole argument and
+    returning a dissipation super operator as list of control matrices.
+
+    Optionally a prefactor function can be given for 1. and 2. This function
+    receives the control parameters and returns an array of the shape
+    num_t x num_l where num_t is the number of time steps in the control and
+    num_l is the number of Lindblad operators or dissipation super operators.
+
+    If multiple construction arguments are given, the implementation
+    prioritises the function (3.) over the Lindblad operators (2.) over the
+    dissipation super operator (1.).
+
+    Parameters
+    ----------
+    initial_diss_super_op: List[ControlMatrix], len num_l
+        Initial dissipation super operator; num_l is the number of
+        Lindbladians. Set if you want to use (1.) (See documentation above!).
+        The control matrices are expected to be of shape (dim, dim) where dim
+        is the dimension of the system.
+
+    lindblad_operators: List[ControlMatrix], len num_l
+        Lindblad operators; num_l is the number of Lindbladians. Set if you
+        want to use (2.) (See documentation above!). The Lindblad operators are
+        assumend to be of shape (dim, dim) where dim is the dimension of the
+        system.
+
+    prefactor_function: Callable[[np.array, np.array], np.array]
+        Receives the control amplitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns prefactors as numpy
+        array of shape (num_t, num_l). The prefactors a_k are used as weights in
+        the sum of the total dissipation operator.
+
+        .. math::
+
+            \mathcal{G} = \sum_k a_k * D(L_k)
+
+        If the Lindblad operator is for example given by a complex number b_k
+        times a constant (in time) matrix C_k.
+
+        .. math::
+
+            L_k = b_k * C_k
+
+        Then the prefactor is the squared absolute value of this number:
+
+        .. math::
+
+            a_k = |b_k|^2
+
+        Set if you want to use method (1.) or (2.). (See class documentation.)
+
+    prefactor_derivative_function: Callable[[np.array, np.array], np.array]
+        Receives the control amplitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the derivatives of
+        the prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
+        derivatives d_k are used as weights in the sum of the derivative of the
+        total dissipation operator.
+
+        .. math::
+
+            d \mathcal{G} / d u_k = \sum_k d_k * D(L_k)
+
+        If the Lindblad operator is for example given by a complex number b_k
+        times a constant (in time) matrix C_k. And this number depends on the
+        control amplitudes u_k
+
+        .. math::
+
+            L_k = b_k (u_k) * C_k
+
+        Then the derivative of the prefactor is the derivative of the squared
+        absolute value of this number:
+
+        .. math::
+
+            d_k = d |b_k|^2 / d u_k
+
+        Set if you want to use method (1.) or (2.). (See class documentation.)
+
+    super_operator_function: Callable[[np.array, np.array], List[ControlMatrix]]
+        Receives the control amlitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the total dissipation
+        operators as list of length num_t. Set if you want to use method (3.).
+        (See class documentation.)
+
+    super_operator_derivative_function: Callable[[np.array, np.array],
+        List[List[ControlMatrix]]]
+        Receives the control amlitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and the transferred optimization parameters (as
+        numpy array of shape (num_t, num_opt)) and returns the derivatives of
+        the total dissipation operators as nested list of
+        shape [[] * num_ctrl] * num_t. Set if you
+        want to use method (3.). (See class documentation.)
+
+    is_skew_hermitian: bool
+        If True, then the total dynamics generator is assumed to be skew
+        hermitian.
+
+    Attributes
+    ----------
+    _diss_sup_op: List[ControlMatrix], len num_t
+        Total dissipaton super operator.
+
+    _diss_sup_op_deriv: List[List[ControlMatrix]],
+        shape [[] * num_ctrl] * num_t
+        Derivative of the total dissipation operator with respect to the
+        control amplitudes.
+
+    _initial_diss_super_op: List[ControlMatrix], len num_l
+        Initial dissipation super operator; num_l is the number of
+        Lindbladians.
+
+    _lindblad_operatorsList[ControlMatrix], len num_l
+        Lindblad operators; num_l is the number of Lindbladians.
+
+    _prefactor_function: Callable[[np.array], np.array]
+        Receives the control amplitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and returns prefactors as numpy array
+        of shape (num_t, num_l). The prefactors a_k are used as weights in the
+        sum of the total dissipation operator.
+
+        .. math::
+
+            \mathcal{G} = \sum_k a_k * D(L_k)
+
+        If the Lindblad operator is for example given by a complex number b_k
+        times a constant (in time) matrix C_k.
+
+        .. math::
+
+            L_k = b_k * C_k
+
+        Then the prefactor is the squared absolute value of this number:
+
+        .. math::
+
+            a_k = |b_k|^2
+
+        Set if you want to use method (1.) or (2.). (See class documentation.)
+
+    _prefactor_deriv_function: Callable[[np.array], np.array]
+        Receives the control amplitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and returns the derivatives of the
+        prefactors as numpy array of shape (num_t, num_ctrl, num_l). The
+        derivatives d_k are used as weights in the sum of the derivative of the
+        total dissipation operator.
+
+        .. math::
+
+            d \mathcal{G} / d u_k = \sum_k d_k * D(L_k)
+
+        If the Lindblad operator is for example given by a complex number b_k
+        times a constant (in time) matrix C_k. And this number depends on the
+        control amplitudes u_k
+
+        .. math::
+
+            L_k = b_k (u_k) * C_k
+
+        Then the derivative of the prefactor is the derivative of the squared
+        absolute value of this number:
+
+        .. math::
+
+            d_k = d |b_k|^2 / d u_k
+
+    _sup_op_func: Callable[[np.array], List[ControlMatrix]]
+        Receives the control amplitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and returns the total dissipation
+        operators as list of length num_t.
+
+    _sup_op_deriv_func: Callable[[np.array], List[List[ControlMatrix]]]
+        Receives the control amplitudes u (as numpy array of shape
+        (num_t, num_ctrl)) and returns the derivatives of the total dissipation
+        operators as nested list of shape [[] * num_ctrl] * num_t.
+
+    Methods
+    -------
+    _parse_dissipative_super_operator: None
+
+    _calc_diss_sup_op: List[ControlMatrix]
+        Calculates the total dissipation super operator.
+
+    _calc_diss_sup_op_deriv: Optional[List[List[ControlMatrix]]]
+        Calculates the derivatives of the total dissipation super operators
+        with respect to the control amplitudes.
+
+    `Todo`
+        * Write parser
+
+    """
+
+    def __init__(
+            self,
+            h_drift: List[q_mat.OperatorMatrix],
+            h_ctrl: List[q_mat.OperatorMatrix],
+            tau: np.array,
+            initial_state: q_mat.OperatorMatrix = None,
+            ctrl_amps: Optional[np.array] = None,
+            calculate_unitary_derivatives: bool = False,
+            filter_function_h_n: Union[
+                Callable, List[List], None] = None,
+            filter_function_basis: Optional[basis.Basis] = None,
+            filter_function_n_coeffs_deriv: Optional[
+                Callable[[np.ndarray], np.ndarray]] = None,
+            exponential_method: Optional[str] = None,
+            frechet_deriv_approx_method: Optional[str] = None,
+            initial_diss_super_op: List[q_mat.OperatorMatrix] = None,
+            lindblad_operators: List[q_mat.OperatorMatrix] = None,
+            prefactor_function: Callable[[np.array, np.array], np.array] = None,
+            prefactor_derivative_function:
+            Callable[[np.array, np.array], np.array] = None,
+            super_operator_function:
+            Callable[[np.array, np.array], List[q_mat.OperatorMatrix]] = None,
+            super_operator_derivative_function:
+            Callable[[np.array, np.array],
+                     List[List[q_mat.OperatorMatrix]]] = None,
+            is_skew_hermitian: bool = False,
+            transfer_function: Optional[TransferFunction] = None,
+            amplitude_function: Optional[AmplitudeFunction] = None) \
+            -> None:
+
+        if initial_state is None:
+            dim = h_ctrl[0].shape[0]
+            initial_state = type(h_ctrl[0])(np.eye(dim ** 2))
+
+        self._diss_sup_op_jnp = None
+        self._diss_sup_op_deriv_jnp = None
+
+        # we do not throw away any operators or functions, just in case
+        self._initial_diss_super_op = initial_diss_super_op
+        self._lindblad_operators = lindblad_operators
+        # if lindblad_operators is not None:
+        #     self._lindblad_operators_jnp = jnp.array([l.data for l in lindblad_operators])
+        # else:
+            
+        self._prefactor_function = prefactor_function
+        self._prefactor_deriv_function = prefactor_derivative_function
+        self._sup_op_func = super_operator_function
+        self._sup_op_deriv_func = super_operator_derivative_function
+        self._is_hermitian = is_skew_hermitian
+
+        super().__init__(
+            h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
+            tau=tau, ctrl_amps=ctrl_amps,
+            calculate_propagator_derivatives=calculate_unitary_derivatives,
+            filter_function_h_n=filter_function_h_n,
+            filter_function_basis=filter_function_basis,
+            filter_function_n_coeffs_deriv=filter_function_n_coeffs_deriv,
+            exponential_method=exponential_method,
+            frechet_deriv_approx_method=frechet_deriv_approx_method,
+            is_skew_hermitian=is_skew_hermitian,
+            transfer_function=transfer_function,
+            amplitude_function=amplitude_function)
+
+    def set_optimization_parameters(self, y: np.array) -> None:
+        """See base class. """
+        if not np.array_equal(self._opt_pars, y):
+            super().set_optimization_parameters(y)
+            self.reset_cached_propagators()
+
+    def reset_cached_propagators(self):
+        """ See base class. """
+        super().reset_cached_propagators()
+        if self._prefactor_function is not None \
+                or self._sup_op_func is not None:
+            self._diss_sup_op_jnp = None
+            self._diss_sup_op_deriv_jnp = None
+
+    def _calc_diss_sup_op_jnp(self) -> jnp.ndarray:
+        r"""
+        Calculates the dissipative super operator as described in the class
+        doc string.
+
+        Returns
+        -------
+        #TODO: is actually num_t and not num_l?
+        diss_sup_op: List[ControlMatrix], len num_l
+            Dissipation super operator; Where num_l is the number of Lindblad
+            terms.
+
+        """
+        if self._sup_op_func is None:
+            # use Lindblad operators
+            if self._lindblad_operators is None:
+                # use dissipation_sup_op
+                const_diss_sup_op = self._initial_diss_super_op
+            else:
+                # Calculate the time constant dissipation super operators
+                # without time dependence
+                const_diss_sup_op = []
+                identity = self._lindblad_operators[0].identity_like()
+
+                for lindblad in self._lindblad_operators:
+                    const_diss_sup_op.append(
+                        (lindblad.conj(do_copy=True)).kron(lindblad))
+                    const_diss_sup_op[-1] -= .5 * identity.kron(
+                        lindblad.dag(do_copy=True) * lindblad)
+                    const_diss_sup_op[-1] -= .5 * (
+                        lindblad.transpose(do_copy=True)
+                        * lindblad.conj(do_copy=True)).kron(identity)
+                    
+            # Add the time dependence
+            if self._prefactor_function is not None:
+                self._diss_sup_op = []
+                prefactors = self._prefactor_function(
+                    copy.deepcopy(self._ctrl_amps),
+                    copy.deepcopy(self.transferred_parameters))
+                for factor_at_time_t in prefactors:
+                    self._diss_sup_op.append(
+                        const_diss_sup_op[0] * factor_at_time_t[0])
+                    for sup_op, factor \
+                            in zip(const_diss_sup_op[1:],
+                                   factor_at_time_t[1:]):
+                        self._diss_sup_op[-1] += sup_op * factor
+            else:
+                self._diss_sup_op = [const_diss_sup_op[0], ]
+                for sup_op in const_diss_sup_op[1:]:
+                    self._diss_sup_op[0] += sup_op
+                self._diss_sup_op *= len(self.transferred_time)
+        else:
+            self._diss_sup_op = self._sup_op_func(
+                copy.deepcopy(self._ctrl_amps),
+                copy.deepcopy(self.transferred_parameters))
+        
+        self._diss_sup_op_jnp = jnp.array([l.data for l in self._diss_sup_op])
+        del self._diss_sup_op
+        #would be complicated to rewrite as jnp cause many in-place assignments?
+        #not the most efficient, but ok if not insane amounts of lindblad ops?
+        #TODO: need to profile
+        return self._diss_sup_op_jnp
+
+    def _calc_diss_sup_op_deriv_jnp(self) \
+            -> Optional[jnp.ndarray]:
+        r"""
+        Calculates the derivatives of the dissipation super operator with
+        respect to the control amplitudes.
+
+        If the dissipation super operator is given as constant (1.) or as
+        lindblad operators (2.) they are assumed not to depend on the control
+        parameters and only the derivative of the prefactor is to be taken into
+        account. In order to do so, a function handle containing the
+        derivatives must be given. This function receives the control
+        amplitudes as num_t x num_ctrl numpy array and returns the derivatives
+        as num_t x num_l x num_ctrl array.
+
+        If the dissipation super operator is given as function handle (3.),
+        then the derivatives must also be given as function handle receiving
+        the control amplitudes and returning a nested list of super operators
+        as control matrices.
+
+        If the requested derivative functions are not provided (None), then
+        the dissipation super operator is considered constant in the control
+        amplitudes and the function returns None.
+
+        Returns
+        -------
+        diss_sup_op_deriv: Optional[List[List[q_mat.ControlMatrix]]],
+                           shape [[] * num_ctrl] * num_t
+            The derivatives of the dissipation super operator with respect to
+            the control variables.
+
+        """
+        if self._sup_op_deriv_func is not None:
+            self._diss_sup_op_deriv = \
+                self._sup_op_deriv_func(
+                    copy.deepcopy(self._ctrl_amps),
+                    copy.deepcopy(self.transferred_parameters))
+            
+            self._diss_sup_op_deriv_jnp = jnp.array([[l.data for l in lm] for lm in self._diss_sup_op_deriv])
+            del self._diss_sup_op_deriv
+            return self._diss_sup_op_deriv_jnp
+
+        elif self._prefactor_deriv_function is not None:
+            if self._lindblad_operators is None:
+                # use dissipation_sup_op
+                const_diss_sup_op = self._initial_diss_super_op
+            else:
+                # Calculate the time constant dissipation super operators
+                # without time dependence
+                const_diss_sup_op = []
+                identity = self._lindblad_operators[0].identity_like()
+
+                for lindblad in self._lindblad_operators:
+                    const_diss_sup_op.append(
+                        (lindblad.conj(do_copy=True)).kron(lindblad))
+                    const_diss_sup_op[-1] -= .5 * identity.kron(
+                        lindblad.dag(do_copy=True) * lindblad)
+                    const_diss_sup_op[-1] -= .5 * (
+                        lindblad.transpose(do_copy=True)
+                        * lindblad.conj(do_copy=True)).kron(identity)
+
+            prefactor_derivatives = \
+                self._prefactor_deriv_function(
+                copy.deepcopy(self._ctrl_amps),
+                copy.deepcopy(self.transferred_parameters))
+
+            # Todo: Assert that the prefactor returns the right dimension
+
+            # prefactor_derivatives: shape (num_t, num_ctrl, num_l)
+            diss_sup_op_deriv = []
+            for factor_per_ctrl_lind in prefactor_derivatives:
+                # create new sub list for eacht time step
+                diss_sup_op_deriv.append([])
+                for factor_per_lind in factor_per_ctrl_lind:
+                    # add the first term for each control direction
+                    diss_sup_op_deriv[-1].append(
+                        const_diss_sup_op[0] * factor_per_lind[0])
+                    for diss_sup_op, factor in zip(
+                            const_diss_sup_op[1:], factor_per_lind[1:]):
+                        # add the remaining terms
+                        diss_sup_op_deriv[-1][-1] += diss_sup_op * factor
+
+            self._diss_sup_op_deriv_jnp = jnp.array([[l.data for l in lm] for lm in diss_sup_op_deriv])
+            return self._diss_sup_op_deriv_jnp
+
+        else:
+            return None
+
+    def _compute_derivative_directions(
+            self) -> jnp.ndarray:
+        r"""
+        Computes the derivative directions of the total dynamics generator.
+
+        Returns
+        -------
+        deriv_directions: List[List[q_mat.ControlMatrix]],
+                          shape [[] * num_ctrl] * num_t
+            Derivative directions given by
+
+            .. math::
+
+                -1j * (I \otimes H_k - H_k \otimes I) + d \mathcal{G} / d u_k
+
+        """
+        # derivative of the coherent part
+        # identity_times_i = self.h_ctrl[0].identity_like()
+        # identity_times_i *= -1j
+        # h_ctrl_sup_op = []
+        # for ctrl_op in self.h_ctrl:
+        #     h_ctrl_sup_op.append(identity_times_i.kron(ctrl_op))
+        #     h_ctrl_sup_op[-1] -= (ctrl_op.transpose(do_copy=True)).kron(
+        #         identity_times_i)
+        
+        identity_times_i = -1j*jnp.identity(self._h_ctrl_jnp[0].shape[0])
+        h_ctrl_sup_op_jnp = jnp.kron(identity_times_i,self._h_ctrl_jnp) - jnp.kron(jnp.transpose(self._h_ctrl_jnp,(0,2,1)),identity_times_i)
+        
+        # add derivative of the dissipation part
+        if self._diss_sup_op_deriv_jnp is None:
+            self._diss_sup_op_deriv_jnp = self._calc_diss_sup_op_deriv_jnp()
+        if self._diss_sup_op_deriv_jnp is not None:
+            
+            dh_by_ctrl = self._diss_sup_op_deriv_jnp + h_ctrl_sup_op_jnp
+            # dh_by_ctrl = []
+            # for diss_sup_op_deriv_at_t in self._diss_sup_op_deriv:
+            #     dh_by_ctrl.append([])
+            #     for diss_sup_op_deriv, ctrl_sup_op \
+            #             in zip(diss_sup_op_deriv_at_t, h_ctrl_sup_op):
+            #         dh_by_ctrl[-1].append(diss_sup_op_deriv + ctrl_sup_op)
+        else:
+            dh_by_ctrl = jnp.broadcast_to(h_ctrl_sup_op_jnp,self._transferred_time_jnp.shape+h_ctrl_sup_op_jnp.shape)
+
+        return dh_by_ctrl
+
+    def _parse_dissipative_super_operator(self) -> None:
+        r"""
+        check the dissipative super operator for dimensional consistency
+        (maybe even physical properties)
+        - not implemented yet -
+        """
+        pass
+
+    def _compute_dyn_gen(self) -> jnp.ndarray:
+        r"""
+        Computes the dynamics generator for the Lindblad master equation.
+
+        The Hamiltonian is translated into the master equation formalism as
+
+        .. math::
+
+            \mathcal{H} = I \otimes H - H^\ast \otimes I
+
+        Then the dissipation super operator is added.
+
+        Returns
+        -------
+        dyn_gen: List[ControlMatrix], len num_t
+            Dynamics generators for the master equation.
+
+        Raises
+        ------
+        ValueError:
+            The computation is only defined for the use of dense control
+            matrices.
+
+        """
+        self._dyn_gen = super()._compute_dyn_gen()
+
+        if self._diss_sup_op_jnp is None:
+            self._diss_sup_op_jnp = self._calc_diss_sup_op_jnp()
+
+        identity_operator = jnp.identity(self._dyn_gen[0].shape[0])
+        sup_op_dyn_gen = []
+
+        assert(len(self._dyn_gen) == len(self._diss_sup_op_jnp))
+
+        # for dyn_gen, diss_sup_op in zip(self._dyn_gen, self._diss_sup_op):
+        #     sup_op_dyn_gen.append(identity_operator.kron(dyn_gen))
+        #     # the cancelling minus sign accounts for the -i factor, which is
+        #     # also conjugated (included in the dyn gen)
+        #     sup_op_dyn_gen[-1] += dyn_gen.conj(do_copy=True).kron(
+        #         identity_operator)
+        #     sup_op_dyn_gen[-1] += diss_sup_op
+        
+        sup_op_dyn_gen = jnp.kron(identity_operator,self._dyn_gen) + jnp.kron(jnp.conj(self._dyn_gen),identity_operator) + self._diss_sup_op_jnp
+        
+        self._dyn_gen = sup_op_dyn_gen
+        return sup_op_dyn_gen
+
+    def _compute_propagation_jnp(
+            self, calculate_propagator_derivatives: Optional[bool] = None) \
+            -> None:
+        """See base class. """
+        super(SchroedingerSolverJAX,self)._compute_propagation_jnp()
+
+        if self._dyn_gen is None:
+            self._dyn_gen = self._compute_dyn_gen()
+
+        if calculate_propagator_derivatives is None:
+            calculate_propagator_derivatives = \
+                self.calculate_propagator_derivatives
+
+        if calculate_propagator_derivatives:
+            derivative_directions = self._compute_derivative_directions()
+            
+            #previously with derivative_directions[0] due to being time-constant in normal SchroedingerSolver; however in LindbladSolver is maybe not(?)
+            self._prop_jnp, self._derivative_prop_jnp = _compute_propagation_expm_both_lind(self._transferred_time_jnp,self._dyn_gen,derivative_directions)
+            self._prop_jnp = self._prop_jnp[0,:,:,:]
+                
+        else:
+            self._prop_jnp = _compute_propagation_expm(self._transferred_time_jnp,self._dyn_gen)
+            
+            
+class LindbladSControlNoiseJAX(LindbladSolverJAX):
+    """
+    Special case of the Lindblad master equation. It considers white noise on
+    the control parameters. The same functionality should be implementable
+    with the parent class, but less convenient.
+    """
+
+    @needs_refactoring
+    def __init__(self, h_drift, h_ctrl, initial_state, tau,
+                 ctrl_amps, transfer_function=None,
+                 calculate_unitary_derivatives=True, filter_function_h_n=None,
+                 exponential_method=None, lindblad_operators=None,
+                 constant_lindblad_operators=False, noise_psd=1):
+        super().__init__(
+            h_drift=h_drift, h_ctrl=h_ctrl, initial_state=initial_state,
+            tau=tau, ctrl_amps=ctrl_amps,
+            calculate_unitary_derivatives=calculate_unitary_derivatives,
+            filter_function_h_n=filter_function_h_n,
+            exponential_method=exponential_method)
+
+        if lindblad_operators is None:
+            self.lindblad_super_operator = None
+        else:
+            d = lindblad_operators[0].shape[0]
+            self.lindblad_super_operator = np.zeros(
+                (len(lindblad_operators), d**2, d**2))
+            for i, l in enumerate(lindblad_operators):
+                self.lindblad_super_operator[i, :, :] += np.kron(np.conj(l), l)
+                self.lindblad_super_operator[i, :, :] += -.5 * np.kron(
+                    np.eye(d), l.T.conj() @ l)
+                self.lindblad_super_operator[i, :, :] += -.5 * np.kron(
+                    l.T @ l.conj(), np.eye(d))
+
+        self.transfer_function = transfer_function
+        # if no transfer function is given it might be consider to be identity
+        # its not necessarily required
+
+        self.constant_lindblad_operators = constant_lindblad_operators
+        self.noise_psd = noise_psd
+        self.incoherent_dyn_gen = None
+
+    def _compute_propagation(self):
+        """
+
+        """
+        # Compute and cache all dyn_gen (basically the total hamiltonian)
+        self._dyn_gen = self._h_drift_jnp
+        self._dyn_gen += jnp.sum(self._ctrl_amps * self._h_ctrl_jnp, axis=1)
+
+        # initialize the attributes
+        # self._prop = [None] * self.num_t
+        # self._dU = np.array(shape=(self.num_t, self.num_ctrl),
+        #                        dtype=matrix.DenseOperator)
+        # self._fwd = [self.initial_state]
+
+        # super operator calculation
+        # this is the special case for charge noise on the control parameters
+        # the required filter function contains
+        if not self.constant_lindblad_operators or \
+                self.incoherent_dyn_gen is None:
+            transfer_matrix = self.transfer_function.transfer_matrix
+            self.incoherent_dyn_gen = jnp.einsum('ijk,klm,k->ilm',
+                                                transfer_matrix,
+                                                self.lindblad_super_operator,
+                                                self.noise_psd)
+        dim = self._dyn_gen[0].shape[0]
+        identity_operator = jnp.identity(dim)
+        
+        self._dyn_gen = -1j*jnp.kron(identity_operator,self._dyn_gen)-jnp.kron(self._dyn_gen,identity_operator)
+        self._dyn_gen += self.incoherent_dyn_gen
+        
+        # for i, gen in enumerate(self._dyn_gen):
+        #     gen = -1j * np.kron(
+        #         np.eye(dim), gen.data) - np.kron(gen.data, np.eye(dim))
+        #     gen += self.incoherent_dyn_gen[i, :, :]
+        #     gen = matrix.DenseOperator(gen)
+
+        # calculation of the propagators
+        # for t in range(len(self.num_t)):
+        if self.calculate_propagator_derivatives:
+            derivative_directions = jnp.kron(identity_operator,self._h_ctrl_jnp)-jnp.kron(self._h_ctrl_jnp,identity_operator)
+            self._prop_jnp, _derivative_prop_jnp = _compute_propagation_expm_both_lind(self._transferred_time_jnp,self._dyn_gen,derivative_directions)
+            self._prop_jnp = self._prop_jnp[0,:,:,:]
+            #why this convention now?
+            self._dU = jnp.swapaxes(_derivative_prop_jnp,0,1)
+            
+                # for ctrl in range(self.num_ctrl):
+                #     direction = np.kron(
+                #         np.eye(dim), self.h_ctrl[t][ctrl]) - np.kron(
+                #         self.h_ctrl[t][ctrl], np.eye(dim))
+                #     self._prop[t], self._dU[t, ctrl] = self._dyn_gen[t].dexp(
+                #         direction=direction, tau=self.transferred_time[t],
+                #         compute_expm=True, method=self.exponential_method)
+
+        else:
+            self._prop_jnp = _compute_propagation_expm(self._transferred_time_jnp,self._dyn_gen)
+                # self._prop[t] = self._dyn_gen[t].exp(
+                #     tau=self.transferred_time[t], method=self.exponential_method)
+                
+        #TODO: where is _fwd used elsewhere? is _fwd_props meant...?
+        # self._fwd.append(self._prop[t] * self._fwd[t])
+
+        self.prop_calculated = True
+
+    

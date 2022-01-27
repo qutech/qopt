@@ -105,6 +105,10 @@ from qopt.util import needs_refactoring, deprecated
 from qopt.matrix import ket_vectorize_density_matrix, \
     convert_ket_vectorized_density_matrix_to_square
 
+import jax.numpy as jnp
+from jax import jit, vmap
+import jax
+from functools import partial
 
 class CostFunction(ABC):
     r"""
@@ -119,7 +123,6 @@ class CostFunction(ABC):
         Indices of the returned infidelities for distinction in the analysis.
 
     """
-
     def __init__(self, solver: solver_algorithms.Solver,
                  label: Optional[List[str]] = None):
         self.solver = solver
@@ -1749,6 +1752,1562 @@ class LeakageLiouville(CostFunction):
                                   'yet.')
 
 
+###############################################################################
+
+#TODO: only OperationInfidelity and OperationNoiseInfidelity (partially) debugged,
+#others not tested yet, guaranteed bugs
+
+# #for static devicearrays to be hashable in static inputs (computational states)
+# #https://github.com/google/jax/issues/4572#issuecomment-709809897
+# # HOWEVER: does not seem to work with multiple nested jits; perhaps bug?
+# def _some_hash_function(x):
+#   return int(1e3*jnp.sum(x))
+
+# class _HashableArrayWrapper:
+#   def __init__(self, val):
+#     self.val = val
+#   def __hash__(self):
+#     return _some_hash_function(self.val)
+#   def __eq__(self, other):
+#     return (isinstance(other, _HashableArrayWrapper) and
+#             jnp.all(jnp.equal(self.val, other.val)))
+
+
+@jit
+def _closest_unitary_jnp(matrix: jnp.ndarray):
+
+    left_singular_vec, __, right_singular_vec_h = jnp.linalg.svd(
+        matrix)
+    return left_singular_vec.dot(right_singular_vec_h)
+
+
+@partial(jit,static_argnames=("subspace_indices",))
+def _truncate_to_subspace_jnp(
+        arr: jnp.ndarray,
+        subspace_indices,
+        map_to_closest_unitary: bool
+) -> jnp.ndarray:
+    """See base class. """
+    # subspace_indices = jnp.asarray(subspace_indices)
+    if subspace_indices is None:
+        return arr
+    elif arr.shape[0] == True:
+        # square matrix
+        subspace_indices = jnp.asarray(subspace_indices)
+        out = arr[jnp.ix_(subspace_indices, subspace_indices)]
+        if map_to_closest_unitary==True:
+            out = _closest_unitary_jnp(out)
+            # left_singular_vec, __, right_singular_vec_h = jnp.linalg.svd(
+            #     out)
+            # out = left_singular_vec.dot(right_singular_vec_h)
+            
+    elif arr.shape[0] == 1:
+        # bra-vector
+        subspace_indices = jnp.asarray(subspace_indices)
+        out = arr[jnp.ix_(jnp.array([0]), subspace_indices)]
+        if map_to_closest_unitary:
+            #TODO: was "fre", but only "fro" available?
+            out *= 1 / jnp.linalg.norm(out,'fro')
+    elif arr.shape[0] == 1:
+        # ket-vector
+        subspace_indices = jnp.asarray(subspace_indices)
+        out = arr[jnp.ix_(subspace_indices, jnp.array([0]))]
+        if map_to_closest_unitary:
+            out *= 1 / jnp.linalg.norm(out,'fro')
+    else:
+        subspace_indices = jnp.asarray(subspace_indices)
+        out = arr[jnp.ix_(subspace_indices)]
+
+    return out
+
+
+@partial(jit,static_argnums=(2,))
+def _entanglement_fidelity_jnp(
+        target: jnp.ndarray,
+        propagator: jnp.ndarray,
+        computational_states: Optional[tuple] = None,
+        map_to_closest_unitary: bool = False
+) -> jnp.float64:
+    """
+
+    Returns
+    -------
+    fidelity: float
+        The entanglement fidelity of target_unitary.dag * unitary.
+
+    """
+    # if type(propagator) == matrix.DenseOperatorJAX:
+    #     propagator = propagator.data
+    # if type(target) == matrix.DenseOperatorJAX:
+    #     target = target.data
+    d = target.shape[0]
+    if computational_states is None:
+        trace = (jnp.conj(target).T @ propagator).trace()
+    else:
+        trace = (jnp.conj(target).T @ _truncate_to_subspace_jnp(propagator,
+            computational_states,
+            map_to_closest_unitary)).trace()
+    return (jnp.abs(trace) ** 2) / d / d
+
+
+@partial(jit,static_argnums=2)
+def _entanglement_fidelity_super_operator_jnp(
+        target: jnp.ndarray,
+        propagator: jnp.ndarray,
+        computational_states: Optional[tuple] = None,
+) -> jnp.float64:
+    """
+    The entanglement fidelity between a simulated Propagator and target
+    propagator in the super operator formalism.
+
+    The entanglement fidelity between a propagator in the super operator
+    formalism of dimension d^2 x d^2 and a target unitary operator of dimension
+    d x d. If the system incorporates leakage states, the propagator is
+    projected onto the computational space [1].
+
+    Parameters
+    ----------
+    propagator: Union[np.ndarray, ControlMatrix]
+        The simulated evolution propagator in the super operator formalism.
+
+    target: Union[np.ndarray, ControlMatrix]
+        The target unitary evolution. (NOT as super operator.)
+
+    computational_states: Optional[List[int]]
+        If set, the entanglement fidelity is only calculated for the specified
+        subspace.
+
+    Returns
+    -------
+    fidelity: float
+        The entanglement fidelity of target_unitary.dag * unitary.
+
+    Notes
+    -----
+    [1] Quantification and characterization of leakage errors, Christopher J.
+    Wood and Jay M. Gambetta, Phys. Rev. A 97, 032306 - Published 8 March 2018
+
+    """
+
+    dim_comp = target.shape[0]
+
+    if computational_states is None:
+        target_super_operator_inv = \
+            jnp.kron(target.T, jnp.conj(target.T))
+        trace = (target_super_operator_inv @ propagator).trace().real
+    else:
+        # Here we assume that the full Hilbertspace is the outer sum of a
+        # computational and a leakage space.
+
+        # Thus the dimension of the propagator is (d_comp + d_leak) ** 2
+        d_leakage = int(jnp.sqrt(propagator.shape[0])) - dim_comp
+
+        # We fill zeros to the target on the leakage space. We will project
+        # onto the computational space anyway.
+
+        target_inv = jnp.conj(target.T)
+        target_inv_full_space = jnp.zeros((d_leakage, d_leakage))
+
+        # for i, row in enumerate(computational_states):
+        #     for k, column in enumerate(computational_states):
+        target_inv_full_space.at[computational_states] = target_inv[computational_states]
+
+        target_inv_full_space = jnp.kron(jnp.eye(d_leakage),jnp.conj(target.T))
+
+        # Then convert the target unitary into Liouville space.
+        
+        target_super_operator_inv = jnp.kron(jnp.conj(target_inv_full_space), target_inv_full_space)
+        
+        # target_super_operator_inv = \
+        #     matrix.convert_unitary_to_super_operator(
+        #         target_inv_full_space)
+
+        # We start the projector with a zero matrix of dimension
+        # (d_comp + d_leak).
+        projector_comp_state = 0 * jnp.identity(target_inv_full_space.shape(0))
+        
+        # for state in computational_states:
+        projector_comp_state.at[computational_states,computational_states].set(1)
+
+        # Then convert the projector into liouville space.
+        projector_comp_state=jnp.kron(jnp.conj(projector_comp_state), projector_comp_state)
+        # projector_comp_state = matrix.convert_unitary_to_super_operator(
+        #     projector_comp_state
+        # )
+
+        trace = (
+            projector_comp_state @ target_super_operator_inv @ propagator
+        ).trace().real
+    return trace / dim_comp / dim_comp
+
+
+@partial(jit,static_argnums=4)
+def _derivative_entanglement_fidelity_with_du_jnp(
+        target: jnp.ndarray,
+        forward_propagators_jnp: jnp.ndarray,
+        propagator_derivatives_jnp: jnp.ndarray,
+        reversed_propagators_jnp: jnp.ndarray,
+        computational_states: Optional[tuple] = None,
+        map_to_closest_unitary: bool = False
+) -> jnp.ndarray:
+    """
+    Derivative of the entanglement fidelity using the derivatives of the
+    propagators.
+
+    Parameters
+    ----------
+    forward_propagators: List[ControlMatrix], len: num_t +1
+        The forward propagators calculated in the systems simulation.
+        forward_propagators[i] is the ordered sum of the propagators i..0 in
+        descending order.
+
+    propagator_derivatives: List[List[ControlMatrix]],
+                         shape: [[] * num_t] * num_ctrl
+        Frechet derivatives of the propagators by the control amplitudes.
+
+    target: ControlMatrix
+        The target propagator.
+
+    reversed_propagators: List[ControlMatrix]
+        The reversed propagators calculated in the systems simulation.
+        reversed_propagators[i] is the ordered sum of the propagators n-i..n in
+        ascending order where n is the total number of time steps.
+
+    computational_states: Optional[List[int]]
+        If set, the entanglement fidelity is only calculated for the specified
+        subspace.
+
+    map_to_closest_unitary: bool
+        If True, then the final propagator is mapped to the closest unitary
+        before the infidelity is evaluated.
+
+    Returns
+    -------
+    derivative_fidelity: np.ndarray, shape: (num_t, num_ctrl)
+        The derivatives of the entanglement fidelity.
+
+    """
+    target_unitary_dag = jnp.conj(target).T
+    if computational_states is not None:
+        trace = jnp.conj(
+            ((_truncate_to_subspace_jnp(forward_propagators_jnp[-1],
+                computational_states,
+                map_to_closest_unitary=map_to_closest_unitary)
+              @ target_unitary_dag).trace())
+        )
+    else:
+        trace = jnp.conj(((forward_propagators_jnp[-1] @ target_unitary_dag).trace()))
+    # num_ctrls,num_time_steps = propagator_derivatives_jnp.shape[:2]
+    d = target.shape[0]
+
+    # derivative_fidelity = jnp.zeros(shape=(num_time_steps, num_ctrls),
+    #                                dtype=float)
+
+
+    # here we need to take the real part.
+    if computational_states:
+        derivative_fidelity = 2/d/d * jnp.real(trace*_der_fid_comp_states(
+            propagator_derivatives_jnp,
+            reversed_propagators_jnp[::-1][1:],
+            #TODO: WHY :-1? (copied from behavior of original function)
+            forward_propagators_jnp[:-1],computational_states,
+            map_to_closest_unitary,target_unitary_dag)).T
+    # for ctrl in range(num_ctrls):
+    #     for t in range(num_time_steps):      
+                # derivative_fidelity[t, ctrl] = 2 / d / d * np.real(
+                #     trace * ((reversed_propagators[::-1][t + 1]
+                #               * propagator_derivatives[ctrl][t]
+                #               * forward_propagators[t]).truncate_to_subspace(
+                #         subspace_indices=computational_states,
+                #         map_to_closest_unitary=map_to_closest_unitary
+                #     )
+                #              * target_unitary_dag).tr())
+    else:
+        derivative_fidelity = 2/d/d * jnp.real(trace*_der_fid(
+            propagator_derivatives_jnp,
+            reversed_propagators_jnp[::-1][1:],
+            forward_propagators_jnp[:-1],target_unitary_dag)).T
+        
+        # for ctrl in range(num_ctrls):
+        #     for t in range(num_time_steps):  
+        #            derivative_fidelity[t, ctrl] = 2 / d / d * np.real(
+        #                      trace * (reversed_propagators[::-1][t + 1]
+        #                               * propagator_derivatives[ctrl][t]
+        #                               * forward_propagators[t]
+        #                               * target_unitary_dag).tr())
+
+    return derivative_fidelity
+
+
+def _der_fid_comp_states_loop(prop_der,rev_prop_rev,fwd_prop,comp_states,map_to_closest_unitary,target_unitary_dag):
+    return (_truncate_to_subspace_jnp(rev_prop_rev @ prop_der @ fwd_prop,subspace_indices=comp_states,
+                                    map_to_closest_unitary=map_to_closest_unitary)
+            @ target_unitary_dag).trace()
+
+#(to be used with additional .T for previous shape)
+@partial(jit,static_argnums=3)
+def _der_fid_comp_states(prop_der,rev_prop_rev,fwd_prop,comp_states,map_to_closest_unitary,target_unitary_dag):
+    return vmap(vmap(_der_fid_comp_states_loop,in_axes=(0,0,0,None,None,None)),in_axes=(0,None,None,None,None,None))(
+        prop_der,rev_prop_rev,fwd_prop,comp_states,map_to_closest_unitary,target_unitary_dag)
+
+def _der_fid_loop(prop_der,rev_prop_rev,fwd_prop,target_unitary_dag):
+    return (rev_prop_rev @ prop_der @ fwd_prop @ target_unitary_dag).trace()
+
+#(to be used with additional .T for previous shape)
+@jit
+def _der_fid(prop_der,rev_prop_rev,fwd_prop,target_unitary_dag):
+    return vmap(vmap(_der_fid_loop,in_axes=(0,0,0,None)),in_axes=(0,None,None,None))(
+        prop_der,rev_prop_rev,fwd_prop,target_unitary_dag)
+
+
+@partial(jit,static_argnums=4)
+def _deriv_entanglement_fid_sup_op_with_du_jnp(
+        target: jnp.ndarray,
+        forward_propagators: jnp.ndarray,
+        unitary_derivatives: jnp.ndarray,
+        reversed_propagators: jnp.ndarray,
+        computational_states: Optional[tuple] = None
+):
+    """
+    Derivative of the entanglement fidelity of a super operator.
+
+    Calculates the derivatives of the entanglement fidelity between a target
+    unitary of dimension d x d and a propagator of dimension d^2 x d^2 with
+    respect to the control amplitudes.
+
+    Parameters
+    ----------
+    forward_propagators: List[ControlMatrix], len: num_t +1
+        The forward propagators calculated in the systems simulation.
+        forward_propagators[i] is the ordered sum of the propagators i..0 in
+        descending order.
+
+    unitary_derivatives: List[List[ControlMatrix]],
+                         shape: [[] * num_t] * num_ctrl
+        Frechet derivatives of the propagators by the control amplitudes.
+
+    target: ControlMatrix
+        The target unitary evolution.
+
+    reversed_propagators: List[ControlMatrix]
+        The reversed propagators calculated in the systems simulation.
+        reversed_propagators[i] is the ordered sum of the propagators n-i..n in
+        ascending order where n is the total number of time steps.
+
+    computational_states: Optional[List[int]]
+        If set, the entanglement fidelity is only calculated for the specified
+        subspace.s only calculated for the specified
+        subspace.
+
+    Returns
+    -------
+    derivative_fidelity: np.ndarray, shape: (num_t, num_ctrl)
+        The derivatives of the entanglement fidelity.
+
+    """
+    num_ctrls = len(unitary_derivatives)
+    num_time_steps = len(unitary_derivatives[0])
+
+    derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+                                   dtype=float)
+
+    derivative_fidelity = _der_entanglement_fidelity_super_operator_jnp(target,
+        reversed_propagators[::-1][1:] @ unitary_derivatives @ forward_propagators[:-1],
+        computational_states).T
+
+    # for ctrl in range(num_ctrls):
+    #     for t in range(num_time_steps):
+    #         # here we need to take the real part.
+    #         derivative_fidelity[t, ctrl] = \
+    #             _der_entanglement_fidelity_super_operator_jnp(
+    #                 target=target,
+    #                 propagator=reversed_propagators[::-1][t + 1] *
+    #                 unitary_derivatives[ctrl][t] *
+    #                 forward_propagators[t],
+    #                 computational_states=computational_states)
+    return derivative_fidelity
+
+
+#(to be used with additional .T for previous shape)
+@partial(jit,static_argnums=2)
+def _der_entanglement_fidelity_super_operator_jnp(target,propagators,computational_states):
+    return vmap(vmap(_entanglement_fidelity_super_operator_jnp,in_axes=(None,0,None)),in_axes=(None,0,None))(
+        target,propagators,computational_states)
+
+
+class StateInfidelityJAX(CostFunction):
+    """Quantum state infidelity.
+
+    TODO:
+        * support super operator formalism
+        * handle leakage states?
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 rescale_propagated_state: bool = False
+                 ):
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
+        # assure target is a bra vector
+
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+            
+        self._target_jnp = jnp.array(target.data)
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+        self.rescale_propagated_state = rescale_propagated_state
+
+    def costs(self) -> jnp.float64:
+        """See base class. """
+        final = self.solver.forward_propagators_jnp[-1]
+        infid = 1. - _state_fidelity_jnp(
+            target=self._target_jnp,
+            propagated_state=final,
+            computational_states=self.computational_states,
+            rescale_propagated_state=self.rescale_propagated_state
+        )
+        return infid
+
+    def grad(self) -> jnp.ndarray:
+        """See base class. """
+        derivative_fid = _derivative_state_fidelity_jnp(
+            forward_propagators=self.solver.forward_propagators_jnp,
+            target=self._target_jnp,
+            reversed_propagators=self.solver.reversed_propagators_jnp,
+            propagator_derivatives=self.solver.frechet_deriv_propagators_jnp,
+            computational_states=self.computational_states,
+            rescale_propagated_state=self.rescale_propagated_state
+        )
+        return -1. * jnp.real(derivative_fid)
+
+
+@partial(jit,static_argnums=2)
+def _state_fidelity_jnp(
+    target: jnp.ndarray,
+    propagated_state: jnp.ndarray,
+    computational_states: Optional[tuple] = None,
+    rescale_propagated_state: bool = False
+) -> jnp.float64:
+    r"""
+    Quantum state fidelity.
+
+    The quantum state fidelity between two quantum states is calculated as
+    square norm of the wave function overlap as
+
+    .. math::
+
+        F = \vert \langle \psi_1 \vert \psi_2 \rangle \vert^2
+
+    Parameters
+    ----------
+    target: numpy array or operator matrix of shape (1, d)
+        The target state is assumed to be given as bra-vector.
+
+    propagated_state: numpy array or operator matrix of shape (d, 1)
+        The target state is assumed to be given as ket-vector.
+
+    computational_states: Optional[List[int]]
+        If set, the entanglement fidelity is only calculated for the specified
+        subspace.
+
+    rescale_propagated_state: bool
+        If True, then the propagated state vector is rescaled to a norm of 1.
+
+    Returns
+    -------
+    quantum_state_fidelity: float
+        The quantum state fidelity between the propagated and the target state.
+
+    TODO:
+        * functions should not change type of input arrays
+
+    """
+
+    if computational_states is not None:
+        scalar_prod = jnp.dot(target,  _truncate_to_subspace_jnp(propagated_state,
+            computational_states,
+            map_to_closest_unitary=rescale_propagated_state
+        ))
+    else:
+        scalar_prod = jnp.dot(target,  propagated_state)
+
+    if scalar_prod.shape != (1, 1):
+        raise ValueError('The scalar product is not a scalar. This means that'
+                         'either the target is not a bra vector or the the '
+                         'propagated state not a ket, or both!')
+    scalar_prod = scalar_prod[0, 0]
+    # abs_sqr = scalar_prod.real ** 2 + scalar_prod.imag ** 2
+    #TODO: should already be real?
+    return jnp.abs(scalar_prod)
+
+
+@partial(jit,static_argnums=4)
+def _derivative_state_fidelity_jnp(
+    target: jnp.ndarray,
+    forward_propagators: jnp.ndarray,
+    propagator_derivatives: jnp.ndarray,
+    reversed_propagators: jnp.ndarray,
+    computational_states: Optional[tuple] = None,
+    rescale_propagated_state: bool = False
+) -> jnp.ndarray:
+    """
+    Derivative of the state fidelity.
+
+    Leakage states can be defined and the propagator is projected onto the
+    computational states.
+
+    Parameters
+    ----------
+    target: OperatorMatrix
+        The target state as bra vector.
+
+    forward_propagators: list of OperatorMatrix
+        Forward propagated initial state.
+
+    propagator_derivatives: list of OperatorMatrix
+        Frechet derivatives of the matrix exponential used to calculate the
+        propagators.
+
+    reversed_propagators: list of OperatorMatrix
+        Backward passed propagators.
+
+    computational_states: list of int
+        States used for the qubit implementation. If this is not None, then all
+        other inides are eliminated, by projection into the computational
+        space.
+
+    rescale_propagated_state: bool
+        If set to Ture, then the propagated state is rescaled after leakage
+        states are eliminated.
+
+    Returns
+    -------
+    Derivative: numpy array, shape: (num_time_steps, num_ctrls)
+        The derivatives of the state fidelity by the
+
+    """
+
+    if computational_states is not None:
+        scalar_prod = jnp.dot(target,_truncate_to_subspace_jnp(forward_propagators[-1],
+            subspace_indices=computational_states,
+            map_to_closest_unitary=rescale_propagated_state
+        ))
+    else:
+        scalar_prod = jnp.dot(target,forward_propagators[-1])
+
+    scalar_prod = jnp.conj(scalar_prod)
+
+    # num_ctrls = len(propagator_derivatives)
+    # num_time_steps = len(propagator_derivatives[0])
+
+    # derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+    #                                dtype=float)
+    
+    if computational_states:
+        derivative_fidelity = 2 * jnp.real(scalar_prod*_der_fid_comp_states(
+            propagator_derivatives,
+            reversed_propagators[::-1][1:],
+            #TODO: WHY :-1? (copied from behavior of original function)
+            forward_propagators[:-1],computational_states,
+            rescale_propagated_state,target)).T
+    
+    else:
+        derivative_fidelity = 2 * jnp.real(scalar_prod*_der_fid(
+            propagator_derivatives,
+            reversed_propagators[::-1][1:],
+            forward_propagators[:-1],target)).T
+    
+    # for ctrl in range(num_ctrls):
+    #     for t in range(num_time_steps):
+    #         # here we need to take the real part.
+    #         if computational_states:
+    #             derivative_fidelity[t, ctrl] = 2 * np.real(
+    #                 (scalar_prod * (
+    #                         target * (
+    #                         reversed_propagators[::-1][t + 1]
+    #                         * propagator_derivatives[ctrl][t]
+    #                         * forward_propagators[t]
+    #                 ).truncate_to_subspace(
+    #                     subspace_indices=computational_states,
+    #                     map_to_closest_unitary=rescale_propagated_state
+    #                 )
+    #                 ))[0, 0])
+    #         else:
+    #             derivative_fidelity[t, ctrl] = 2 * np.real(
+    #                 (scalar_prod * (target * reversed_propagators[::-1][t + 1]
+    #                                 * propagator_derivatives[ctrl][t]
+    #                                 * forward_propagators[t]))[0, 0])
+
+    return derivative_fidelity
+
+
+def _der_state_fid_comp_states_loop(prop_der,rev_prop_rev,fwd_prop,comp_states,map_to_closest_unitary,target):
+    return (target @ _truncate_to_subspace_jnp(rev_prop_rev @ prop_der @ fwd_prop,subspace_indices=comp_states,
+                                    map_to_closest_unitary=map_to_closest_unitary))[0,0]
+
+#(to be used with additional .T for previous shape)
+@partial(jit,static_argnums=3)
+def _der_state_fid_comp_states(prop_der,rev_prop_rev,fwd_prop,comp_states,map_to_closest_unitary,target):
+    return vmap(vmap(_der_state_fid_comp_states_loop,in_axes=(0,0,0,None,None,None)),in_axes=(0,None,None,None,None,None))(
+        prop_der,rev_prop_rev,fwd_prop,comp_states,map_to_closest_unitary,target)
+
+def _der_state_fid_loop(prop_der,rev_prop_rev,fwd_prop,target):
+    return (target @ rev_prop_rev @ prop_der @ fwd_prop)[0,0]
+
+#(to be used with additional .T for previous shape)
+@jit
+def _der_state_fid(prop_der,rev_prop_rev,fwd_prop,target):
+    return vmap(vmap(_der_state_fid_loop,in_axes=(0,0,0,None)),in_axes=(0,None,None,None))(
+        prop_der,rev_prop_rev,fwd_prop,target)
+
+
+class StateInfidelitySubspaceJAX(CostFunction):
+    """ Quantum state infidelity on a subspace.
+
+    Assume that the simulated system operates on a product space and the
+    target states is described only on a subspace. This class then calculates
+    the partial derivative over the neglected subspace.
+
+    Parameters
+    ----------
+    dims: list of int,
+        The dimensions of the subspaces. (Compare to the ptrace function of
+        the MatrixOperator class.)
+
+    remove: list of int,
+        The indices of the dims list corresponding to the subspaces that are to
+        be eliminated. (Compare to the ptrace function of the MatrixOperator
+        class.)
+
+    TODO:
+        * support super operator formalism
+        * handle leakage states?
+        * Docstring
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 dims: List[int],
+                 remove: List[int],
+                 label: Optional[List[str]] = None
+                 ):
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
+        # assure target is a bra vector
+
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+            
+        self._target_jnp = jnp.asarray(self.target.data)
+        self.dims = tuple(dims)
+        self.remove = tuple(remove)
+
+    def costs(self) -> jnp.float64:
+        """See base class. """
+        final = self.solver.forward_propagators_jnp[-1]
+        infid = 1. - _state_fidelity_subspace_jnp(
+            target=self._target_jnp,
+            propagated_state=final,
+            dims=self.dims,
+            remove=self.remove
+        )
+        return infid
+
+    def grad(self) -> jnp.ndarray:
+        """See base class. """
+        derivative_fid = _derivative_state_fidelity_subspace_jnp(
+            forward_propagators=self.solver.forward_propagators_jnp,
+            target=self._target_jnp,
+            reversed_propagators=self.solver.reversed_propagators_jnp,
+            propagator_derivatives=self.solver.frechet_deriv_propagators_jnp,
+            dims=self.dims,
+            remove=self.remove
+        )
+        return -1. * derivative_fid
+
+
+@partial(jit,static_argnums=(2,3))
+def _state_fidelity_subspace_jnp(
+    target: jnp.ndarray,
+    propagated_state: jnp.ndarray,
+    dims: tuple,
+    remove: tuple
+) -> jnp.float64:
+    r"""
+    Quantum state fidelity on a subspace.
+
+    We assume that the target state is defined only on a subspace of the total
+    simulated hilbert space. Thus we calculate the partial trace over our
+    simulated state, rendering it into the density matrix of a potentially
+    mixed state.
+
+    The quantum state fidelity between a pure $\psi$ and a mixed quantum state
+    $\rho$ is calculated as
+
+    .. math::
+
+        F =  \langle \psi \vert \rho \vert \psi \rangle
+
+    Parameters
+    ----------
+    target: numpy array or operator matrix of shape (1, d)
+        The target state is assumed to be given as bra-vector.
+
+    propagated_state: numpy array or operator matrix of shape (d, 1)
+        The target state is assumed to be given as ket-vector.
+
+    dims: list of int,
+        The dimensions of the subspaces. (Compare to the ptrace function of
+        the MatrixOperator class.)
+
+    remove: list of int,
+        The indices of the dims list corresponding to the subspaces that are to
+        be eliminated. (Compare to the ptrace function of the MatrixOperator
+        class.)
+
+    Returns
+    -------
+    quantum_state_fidelity: float
+        The quantum state fidelity between the propagated and the target state.
+
+    TODO:
+        * functions should not change type of input arrays
+
+    """
+
+    rho = _ptrace_jnp(propagated_state,dims=dims, remove=remove)
+
+    scalar_prod = target @ rho @ jnp.conj(target).T
+
+    if scalar_prod.shape != (1, 1):
+        raise ValueError('The scalar product is not a scalar. This means that'
+                         'either the target is not a bra vector or the the '
+                         'propagated state not a ket, or both!')
+    scalar_prod = scalar_prod[0, 0]
+    scalar_prod_real = scalar_prod.real
+    assert jnp.abs(scalar_prod - scalar_prod_real) < 1e-5
+    return scalar_prod_real
+
+#not tested, might not work jitted?
+@partial(jit,static_argnums=(1,2))
+def _ptrace_jnp(mat: jnp.ndarray,
+           dims: tuple,
+           remove: tuple) -> jnp.ndarray:
+    """
+    Partial trace of the matrix.
+
+    If the matrix describes a ket, the corresponding density matrix is
+    calculated and used for the partial trace.
+
+    This implementation closely follows that of QuTip's qobj._ptrace_dense.
+    Parameters
+    ----------
+    dims : list of int
+        Dimensions of the subspaces making up the total space on which
+        the matrix operates. The product of elements in 'dims' must be
+        equal to the matrix' dimension.
+    remove : list of int
+        The selected subspaces as indices over which the partial trace is
+        formed. The given indices correspond to the ordering of
+        subspaces specified in the 'dim' argument.
+    do_copy : bool, optional
+        If false, the operation is executed inplace. Otherwise returns
+        a new instance. Defaults to True.
+
+    Returns
+    -------
+    pmat : OperatorMatrix
+        The partially traced OperatorMatrix.
+
+    Raises
+    ------
+    AssertionError:
+        If matrix dimension does not match specified dimensions.
+
+    Examples
+    --------
+     ghz_ket = DenseOperator(np.array([[1,0,0,0,0,0,0,1]]).T) / np.sqrt(2)
+     ghz_rho = ghz_ket * ghz_ket.dag()
+     ghz_rho.ptrace(dims=[2,2,2], remove=[0,2])
+    DenseOperator with data:
+    array([[0.5+0.j, 0. +0.j],
+           [0. +0.j, 0.5+0.j]])
+    """
+
+    if mat.shape[1] == 1:
+        mat = (mat @ jnp.conj(mat).T)
+
+    if mat.shape[0] != jnp.prod(dims):
+        raise AssertionError("Specified dimensions do not match "
+                             "matrix dimension.")
+    n_dim = len(dims)  # number of subspaces
+    dims = jnp.asarray(dims, dtype=int)
+
+    remove = list(jnp.sort(jnp.asarray(remove)))
+    # indices of subspace that are kept
+    keep = list(set(jnp.arange(n_dim)) - set(remove))
+
+    dims_rm = (dims[remove]).tolist()
+    dims_keep = (dims[keep]).tolist()
+    dims = list(dims)
+
+    # 1. Reshape: Split matrix into subspaces
+    # 2. Transpose: Change subspace/index ordering such that the subspaces
+    # over which is traced correspond to the first axes
+    # 3. Reshape: Merge each, subspaces to be removed (A) and to be kept
+    # (B), common spaces/axes.
+    # The trace of the merged spaces (A \otimes B) can then be
+    # calculated as Tr_A(mat) using np.trace for input with
+    # more than two axes effectively resulting in
+    # pmat[j,k] = Sum_i mat[i,i,j,k] for all j,k = 0..prod(dims_keep)
+    pmat = jnp.trace(mat.reshape(dims + dims)
+                       .transpose(remove + [n_dim + q for q in remove] +
+                                  keep + [n_dim + q for q in keep])
+                       .reshape([jnp.prod(dims_rm),
+                                jnp.prod(dims_rm),
+                                jnp.prod(dims_keep),
+                                jnp.prod(dims_keep)])
+                    )
+
+    return pmat
+
+
+@partial(jit,static_argnums=(4,5))
+def _derivative_state_fidelity_subspace_jnp(
+    target: jnp.ndarray,
+    forward_propagators: jnp.ndarray,
+    propagator_derivatives: jnp.ndarray,
+    reversed_propagators: jnp.ndarray,
+    dims: tuple,
+    remove: tuple
+) -> jnp.ndarray:
+    """
+    Derivative of the state fidelity on a subspace.
+
+    The unused subspace is traced out.
+
+    Parameters
+    ----------
+    target: OperatorMatrix
+        The target state as bra vector.
+
+    forward_propagators: list of OperatorMatrix
+        Forward propagated initial state.
+
+    propagator_derivatives: list of OperatorMatrix
+        Frechet derivatives of the matrix exponential used to calculate the
+        propagators.
+
+    reversed_propagators: list of OperatorMatrix
+        Backward passed propagators.
+
+    dims: list of int,
+        The dimensions of the subspaces. (Compare to the ptrace function of
+        the MatrixOperator class.)
+
+    remove: list of int,
+        The indices of the dims list corresponding to the subspaces that are to
+        be eliminated. (Compare to the ptrace function of the MatrixOperator
+        class.)
+
+    Returns
+    -------
+    Derivative: numpy array, shape: (num_time_steps, num_ctrls)
+        The derivatives of the state fidelity by the
+
+    """
+
+    num_ctrls = len(propagator_derivatives)
+    num_time_steps = len(propagator_derivatives[0])
+
+    derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+                                   dtype=float)
+    # final_state_dag = jnp.conj(forward_propagators[-1]).T
+
+    derivative_fidelity = 2 * jnp.real(_der_fid_comp_states(
+        propagator_derivatives,
+        reversed_propagators[::-1][1:],
+        #TODO: WHY :-1? (copied from behavior of original function)
+        forward_propagators[:-1],dims,
+        remove,target)).T
+
+    # for ctrl in range(num_ctrls):
+    #     for t in range(num_time_steps):
+    #         # here we need to take the real part.
+    #         derivative_fidelity[t, ctrl] = 2 * np.real((
+    #             target * (
+    #                     reversed_propagators[::-1][t + 1]
+    #                     * propagator_derivatives[ctrl][t]
+    #                     * forward_propagators[t]
+    #                     * final_state_dag
+    #             ).ptrace(dims=dims, remove=remove) * target.dag())[0, 0]
+    #         )
+
+    return derivative_fidelity
+
+
+def _der_state_sub_fid_comp_states_loop(prop_der,rev_prop_rev,fwd_prop,dims,remove,target):
+    return (target @ _ptrace_jnp(rev_prop_rev @ prop_der @ fwd_prop @ jnp.conj(fwd_prop[-1]).T,dims,remove)@jnp.conj(target).T)[0,0]
+
+#(to be used with additional .T for previous shape)
+@partial(jit,static_argnums=(3,4))
+def _der_state_sub_fid_comp_states(prop_der,rev_prop_rev,fwd_prop,dims,remove,target):
+    return vmap(vmap(_der_state_sub_fid_comp_states_loop,in_axes=(0,0,0,None,None,None)),in_axes=(0,None,None,None,None,None))(
+        prop_der,rev_prop_rev,fwd_prop,dims,remove,target)
+
+
+class StateNoiseInfidelityJAX(CostFunction):
+    """ Averages the state infidelity over noise traces.
+
+    TODO:
+        * support super operator formalism
+        * implement gradient
+        * docstring
+    """
+    def __init__(self,
+                 solver: solver_algorithms.SchroedingerSMonteCarlo,
+                 target: matrix.OperatorMatrix,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 rescale_propagated_state: bool = False,
+                 neglect_systematic_errors: bool = True
+                 ):
+        if label is None:
+            label = ['State Infidelity', ]
+        super().__init__(solver=solver, label=label)
+        self.solver = solver
+
+        # assure target is a bra vector
+        if target.shape[0] > target.shape[1]:
+            self.target = target.dag()
+        else:
+            self.target = target
+
+        self._target_jnp = jnp.array(target.data)
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+        self.rescale_propagated_state = rescale_propagated_state
+
+        self.neglect_systematic_errors = neglect_systematic_errors
+        if target is None and not neglect_systematic_errors:
+            print('The systematic errors must be neglected if no target is '
+                  'set!')
+            self.neglect_systematic_errors = True
+
+    def costs(self) -> jnp.float64:
+        """See base class. """
+        n_traces = self.solver.noise_trace_generator.n_traces
+        infidelities = np.zeros((n_traces,))
+
+        if self.neglect_systematic_errors:
+            if self.computational_states is None:
+                target = self.solver.forward_propagators_jnp[-1]
+            else:
+                target = _truncate_to_subspace_jnp(self.solver.forward_propagators_jnp[
+                    -1],
+                    self.computational_states,
+                    map_to_closest_unitary=self.rescale_propagated_state
+                )
+            target = jnp.conj(target).T
+        else:
+            target = self._target_jnp
+
+        # for i in range(n_traces):
+        final = self.solver.forward_propagators_noise_jnp[:,-1]
+        infidelities = 1. - jit(vmap(_state_fidelity_jnp,in_axes=(0,None,None,None)),static_argnums=(2,))(
+            target=target,
+            propagated_state=final,
+            computational_states=self.computational_states,
+            rescale_propagated_state=self.rescale_propagated_state
+        )
+
+        # for i in range(n_traces):
+        #     final = self.solver.forward_propagators_noise[i][-1]
+        #     infidelities[i] = 1. - _state_fidelity_jnp(
+        #         target=target,
+        #         propagated_state=final,
+        #         computational_states=self.computational_states,
+        #         rescale_propagated_state=self.rescale_propagated_state
+        #     )
+        return jnp.mean(infidelities)
+
+    def grad(self) -> jnp.ndarray:
+        """See base class. """
+        raise NotImplementedError
+
+
+class OperationInfidelityJAX(CostFunction):
+    """Calculates the infidelity of a quantum channel.
+
+    The infidelity of a quantum channel described by a unitary evolution or
+    propagator in the master equation formalism.
+
+    Parameters
+    ----------
+    solver: `Solver`
+        The time slot computer simulating the systems dynamics.
+
+    target: `ControlMatrix`
+        Unitary target evolution.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    fidelity_measure: string, optional
+        If 'entanglement': the entanglement fidelity is calculated.
+        Otherwise an error is raised.
+
+    super_operator_formalism: bool, optional
+        If true, the time slot computer is expected to return a propagator in
+        the super operator formalism, while the target unitary is not given as
+        super operator.
+        If false, no super operators are assumed.
+
+    computational_states: list of int, optional
+        If set, the chosen fidelity is only calculated for the specified
+        subspace.
+
+    map_to_closest_unitary: bool, optional
+        If True, then the final propagator is mapped to the closest unitary
+        before the infidelity is evaluated.
+
+    Attributes
+    ----------
+    solver: TimeSlotComputer
+        The time slot computer simulating the systems dynamics.
+
+    target: ControlMatrix
+        Unitary target evolution.
+
+    fidelity_measure: string
+        If 'entanglement': the entanglement fidelity is calculated.
+        Otherwise an error is raised.
+
+    super_operator_formalism: bool
+        If true, the time slot computer is expected to return a propagator in
+        the super operator formalism, while the target unitary is not given as
+        super operator.
+        If false, no super operators are assumed.
+
+    Raises
+    ------
+    NotImplementedError
+        If the fidelity measure is not 'entanglement'.
+
+    Todo:
+        * add the average fidelity? or remove the fidelity_measure.
+        * gradient does not truncate to the subspace.
+
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 fidelity_measure: str = 'entanglement',
+                 super_operator_formalism: bool = False,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 map_to_closest_unitary: bool = False
+                 ):
+        if label is None:
+            if fidelity_measure == 'entanglement':
+                label = ['Entanglement Infidelity', ]
+            else:
+                label = ['Operator Infidelity', ]
+
+        super().__init__(solver=solver, label=label)
+        self.target = target
+        self._target_jnp = jnp.array(target.data)
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+        self.map_to_closest_unitary = map_to_closest_unitary
+
+        if fidelity_measure == 'entanglement':
+            self.fidelity_measure = fidelity_measure
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'currently supported.')
+
+        self.super_operator = super_operator_formalism
+
+    def costs(self) -> float:
+        """Calculates the costs by the selected fidelity measure. """
+        final = self.solver.forward_propagators_jnp[-1]
+
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            # raise NotImplementedError
+            infid = 1 - _entanglement_fidelity_super_operator_jnp(
+                self._target_jnp,
+                final,
+                self.computational_states,
+            )
+        elif self.fidelity_measure == 'entanglement':
+            infid = 1 - _entanglement_fidelity_jnp(
+                self._target_jnp,
+                final,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'implemented in this version.')
+        return jnp.real(infid)
+    
+    ###not able to implement jax.scipy.minimize due to unhashable types
+    # @partial(jit,static_argnums=(0,1,2,3,4,5,6,7,8,9,10,11,12))
+    # def costs_pure(self,solver,
+    #                 fidelity_measure,
+    #                 super_operator,
+    #                 target_jnp,
+    #                 computational_states,
+    #                 map_to_closest_unitary,
+    #                 h_drift_jnp,
+    #                 h_ctrl_jnp,
+    #                 _transferred_time_jnp,
+    #                 transfer_function,
+    #                 amplitude_function,
+    #                 _initial_state_jnp,
+    #                 y) -> float:
+    #     """Calculates the costs by the selected fidelity measure. """
+    #     final = solver.compute_forward_propagation_pure(h_drift_jnp,
+    #                                              h_ctrl_jnp,
+    #                                              _transferred_time_jnp,
+    #                                              transfer_function,
+    #                                              amplitude_function,
+    #                                              _initial_state_jnp,
+    #                                              y)[-1]
+    #     if fidelity_measure == 'entanglement' and super_operator:
+    #         raise NotImplementedError
+    #         # infid = 1 - entanglement_fidelity_super_operator_jnp(
+    #         #     propagator=final,
+    #         #     target=self.target,
+    #         #     computational_states=self.computational_states
+    #         # )
+    #     elif fidelity_measure == 'entanglement':
+    #         infid = 1 - entanglement_fidelity_jnp(
+    #             target_jnp,
+    #             final,
+    #             computational_states,
+    #             map_to_closest_unitary
+    #         )
+    #     else:
+    #         raise NotImplementedError('Only the entanglement fidelity is '
+    #                                   'implemented in this version.')
+    #     return jnp.real(infid)
+    
+    def grad(self) -> jnp.ndarray:
+        """Calculates the derivatives of the selected fidelity measure with
+        respect to the control amplitudes. """
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            # raise NotImplementedError
+            derivative_fid = _deriv_entanglement_fid_sup_op_with_du_jnp(
+                self._target_jnp,
+                self.solver.forward_propagators_jnp,
+                self.solver.frechet_deriv_propagators_jnp,
+                self.solver.reversed_propagators_jnp,
+                self.computational_states,
+            )
+        elif self.fidelity_measure == 'entanglement':
+            # raise NotImplementedError
+            derivative_fid = _derivative_entanglement_fidelity_with_du_jnp(
+                self._target_jnp,
+                self.solver.forward_propagators_jnp,
+                self.solver.frechet_deriv_propagators_jnp,
+                self.solver.reversed_propagators_jnp,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the average and entanglement'
+                                      'fidelity is implemented in this '
+                                      'version.')
+        return -1 * jnp.real(derivative_fid)
+
+
+class OperationNoiseInfidelityJAX(CostFunction):
+    """
+    Averages the operator fidelity over noise traces.
+
+    Parameters
+    ----------
+    solver: `Solver`
+        The time slot computer simulating the systems dynamics.
+
+    target: `ControlMatrix`
+        Unitary target evolution.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    fidelity_measure: string, optional
+        If 'entanglement': the entanglement fidelity is calculated.
+        Otherwise an error is raised.
+
+    computational_states: list of int, optional
+        If set, the chosen fidelity is only calculated for the specified
+        subspace.
+
+    map_to_closest_unitary: bool, optional
+        If True, then the final propagator is mapped to the closest unitary
+        before the infidelity is evaluated.
+
+    neglect_systematic_errors: bool
+        If true, the mean operator fidelity is calculated with respect to the
+        simulated propagator without statistical noise.
+        Otherwise the mean operator fidelity is calculated with respect to the
+        target propagator.
+
+    Attributes
+    ----------
+    neglect_systematic_errors: bool
+        If true, the standard deviation of the operator fidelity is measured.
+        Otherwise the mean operator fidelity is calculated with respect to the
+        target propagator.
+
+    """
+    def __init__(self,
+                 solver: solver_algorithms.SchroedingerSMonteCarlo,
+                 target: Optional[matrix.OperatorMatrix],
+                 label: Optional[List[str]] = None,
+                 fidelity_measure: str = 'entanglement',
+                 computational_states: Optional[List[int]] = None,
+                 map_to_closest_unitary: bool = False,
+                 neglect_systematic_errors: bool = True):
+        if label is None:
+            label = ['Operator Noise Infidelity']
+        super().__init__(solver=solver, label=label)
+        self.solver = solver
+        self.target = target
+        
+        self._target_jnp = jnp.array(target.data)
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+        self.map_to_closest_unitary = map_to_closest_unitary
+        self.fidelity_measure = fidelity_measure
+
+        self.neglect_systematic_errors = neglect_systematic_errors
+        if target is None and not neglect_systematic_errors:
+            print('The systematic errors must be neglected if no target is '
+                  'set!')
+            self.neglect_systematic_errors = True
+
+    def _to_comp_space(self, dynamic_target: jnp.ndarray) -> jnp.ndarray:
+        """Map an operator to the computational space"""
+        if self.computational_states is not None:
+            return _truncate_to_subspace_jnp(dynamic_target,
+                subspace_indices=self.computational_states,
+                map_to_closest_unitary=self.map_to_closest_unitary,
+                )
+        else:
+            return dynamic_target
+
+    def _effective_target(self) -> jnp.ndarray:
+        if self.neglect_systematic_errors:
+            return self._to_comp_space(self.solver.forward_propagators_jnp[-1])
+        else:
+            return self._target_jnp
+
+    def costs(self):
+        """See base class. """
+        n_traces = self.solver.noise_trace_generator.n_traces
+        infidelities = np.zeros((n_traces,))
+
+        target = self._effective_target()
+
+        if self.fidelity_measure == 'entanglement':
+            # for i in range(n_traces):
+            final = self.solver.forward_propagators_noise_jnp[:,-1]
+
+            infidelities = 1 - jit(vmap(_entanglement_fidelity_jnp,in_axes=(0,None,None,None)),static_argnums=(2,))(
+                final, target,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'currently implemented in this class.')
+
+        return jnp.mean(jnp.real(infidelities))
+
+    def grad(self):
+        """See base class. """
+        target = self._effective_target()
+
+        # n_traces = self.solver.noise_trace_generator.n_traces
+        # num_t = len(self.solver.transferred_time)
+        # num_ctrl = len(self.solver.h_ctrl)
+        # derivative = np.zeros((num_t, num_ctrl, n_traces, ))
+        # for i in range(n_traces):
+            # AJHBDAWG
+        temp = _derivative_entanglement_fidelity_with_du_noise_jnp(
+                target,
+                self.solver.forward_propagators_noise_jnp,
+                self.solver.frechet_deriv_propagators_noise_jnp,
+                self.solver.reversed_propagators_noise_jnp,
+                self.computational_states,
+                self.map_to_closest_unitary
+                )
+        #TODO: "map_to_closest unitary was not given as argument in original function; intentional?
+        if self.neglect_systematic_errors:
+            temp_target = vmap(self._to_comp_space,in_axes=(0,))(self.solver.forward_propagators_noise_jnp[:,-1])
+
+            temp += _derivative_entanglement_fidelity_with_du_noise_sys_jnp(
+                    temp_target,
+                    self.solver.forward_propagators_jnp,
+                    self.solver.frechet_deriv_propagators_jnp,
+                    self.solver.reversed_propagators_jnp,
+                    self.computational_states,
+                    self.map_to_closest_unitary
+                )
+            # derivative[:, :, i] = np.real(temp)
+        return jnp.mean(-jnp.real(temp), axis=0)
+
+
+@partial(jit,static_argnums=4)
+def _derivative_entanglement_fidelity_with_du_noise_jnp(target,fwd_props,prop_der,reversed_props,comp_states,map_to_closest):
+    return vmap(_derivative_entanglement_fidelity_with_du_jnp,in_axes=(None,0,0,0,None,None))(
+        target,fwd_props,prop_der,reversed_props,comp_states,map_to_closest)
+
+
+@partial(jit,static_argnums=4)
+def _derivative_entanglement_fidelity_with_du_noise_sys_jnp(target,fwd_props,prop_der,reversed_props,comp_states,map_to_closest):
+    return vmap(_derivative_entanglement_fidelity_with_du_jnp,in_axes=(0,None,None,None,None,None))(
+        target,fwd_props,prop_der,reversed_props,comp_states,map_to_closest)
+
+
+class LeakageErrorJAX(CostFunction):
+    r"""This class measures leakage as quantum operation error.
+
+    The resulting infidelity is measured by truncating the leakage states of
+    the propagator U yielding the Propagator V on the computational basis. The
+    infidelity is then given as the distance from unitarity:
+    infid = 1 - trace(V^\dag V) / 4
+
+    Parameters
+    ----------
+    solver : TimeSlotComputer
+        The time slot computer computing the propagation of the system.
+
+    computational_states : list of int
+        List of indices marking the computational states of the propagator.
+        These are all but the leakage states.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    """
+    def __init__(self, solver: solver_algorithms.Solver,
+                 computational_states: List[int],
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ["Leakage Error", ]
+        super().__init__(solver=solver, label=label)
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+
+    def costs(self):
+        """See base class. """
+        final_prop = self.solver.forward_propagator_jnp[-1]
+        clipped_prop = _truncate_to_subspace_jnp(final_prop,
+            self.computational_states)
+        #TODO: is this correctly transferred? (left or right multiplication)
+        temp = jnp.conj(clipped_prop).T @ clipped_prop
+
+        # the result should always be positive within numerical accuracy
+        return jnp.max(0, 1 - temp.trace().real / clipped_prop.shape[0])
+
+    def grad(self):
+        """See base class. """
+        # num_ctrls = len(self.solver.frechet_deriv_propagators)
+        # num_time_steps = len(self.solver.frechet_deriv_propagators[0])
+
+        # derivative_fidelity = np.zeros(shape=(num_time_steps, num_ctrls),
+        #                                dtype=np.float64)
+
+        final = self.solver.forward_propagators_jnp[-1]
+        final_leak_dag = _truncate_to_subspace_jnp(jnp.conj(final).T,
+            self.computational_states)
+        d = final_leak_dag.shape[0]
+        
+        derivative_fidelity = -2./d * jnp.real(_der_leak_comp_states(self.solver.frechet_deriv_propagators_jnp,
+                                                    self.solver.reversed_propagators_jnp[::-1][1:],
+                                                    self.solver.forward_propagators_jnp[:-1],
+                                                    self.computational_states,
+                                                    final_leak_dag).T)
+        
+        # for ctrl in range(num_ctrls):
+        #     for t in range(num_time_steps):
+        #         temp = self.solver.reversed_propagators[::-1][t + 1] \
+        #                * self.solver.frechet_deriv_propagators[ctrl][t]
+        #         temp *= self.solver.forward_propagators[t]
+        #         temp = temp.truncate_to_subspace(self.computational_states)
+        #         temp *= final_leak_dag
+        #         derivative_fidelity[t, ctrl] = -2. / d * temp.tr().real
+        return derivative_fidelity
+
+
+def _der_leak_comp_states_loop(prop_der,rev_prop_rev,fwd_prop,comp_states,final_leak_dag):
+    return (_truncate_to_subspace_jnp(rev_prop_rev @ prop_der @ fwd_prop,subspace_indices=comp_states,
+                                    map_to_closest_unitary=False)
+            @ final_leak_dag).trace()
+
+#(to be used with additional .T for previous shape)
+@partial(jit,static_argnums=3)
+def _der_leak_comp_states(prop_der,rev_prop_rev,fwd_prop,comp_states,final_leak_dag):
+    return vmap(vmap(_der_leak_comp_states_loop,in_axes=(0,0,0,None,None)),in_axes=(0,None,None,None,None))(
+        prop_der,rev_prop_rev,fwd_prop,comp_states,final_leak_dag)
+
+
+class IncoherentLeakageErrorJAX(CostFunction):
+    r"""This class measures leakage as quantum operation error.
+
+    The resulting infidelity is measured by truncating the leakage states of
+    the propagator U yielding the Propagator V on the computational basis. The
+    infidelity is then given as the distance from unitarity:
+    infid = 1 - trace(V^\dag V) / 4
+
+    Parameters
+    ----------
+    solver : TimeSlotComputer
+        The time slot computer computing the propagation of the system.
+
+    computational_states : list of int
+        List of indices marking the computational states of the propagator.
+        These are all but the leakage states.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    TODO:
+        * adjust docstring
+
+    """
+
+    def __init__(self, solver: solver_algorithms.SchroedingerSMonteCarloJAX,
+                 computational_states: List[int],
+                 label: Optional[List[str]] = None):
+        if label is None:
+            label = ["Incoherent Leakage Error", ]
+        super().__init__(solver=solver, label=label)
+        self.solver = solver
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+
+    def costs(self):
+        """See base class. """
+        final_props = self.solver.forward_propagators_noise_jnp[:,-1]
+        
+        clipped_props = vmap(_truncate_to_subspace_jnp,in_axes=(0,None,None))(
+            final_props,self.computational_states,False)
+        
+        result = 1-jnp.real(jnp.trace(jnp.transpose(jnp.conj(clipped_props),axes=(0,2,1))@clipped_props,axis1=1,axis2=2))/len(self.computational_states)
+
+        return jnp.mean(result)
+
+    def grad(self):
+        """See base class. """
+        raise NotImplementedError('Derivatives only implemented for the '
+                                  'coherent leakage.')
+
+
+class LeakageLiouvilleJAX(CostFunction):
+    r"""This class measures leakage in Liouville space.
+
+    The leakage is calculated in Liouville space as matrix element. In pseudo
+    Code:
+
+        L = < projector leakage space | Propagator | projector comp. space >
+
+    Parameters
+    ----------
+    solver : TimeSlotComputer
+        The time slot computer computing the propagation of the system.
+
+    computational_states : list of int
+        List of indices marking the computational states of the propagator.
+        These are all but the leakage states.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    verbose: int
+        Additional printed output for debugging.
+
+    """
+    def __init__(self, solver: solver_algorithms.Solver,
+                 computational_states: List[int],
+                 label: Optional[List[str]] = None,
+                 verbose: int = 0):
+        if label is None:
+            label = ["Leakage Error Lindblad", ]
+        super().__init__(solver=solver, label=label)
+
+        self.computational_states = tuple(computational_states)
+        dim = self.solver.h_ctrl[0].shape[0]
+        self.dim_comp = len(self.computational_states)
+        self.verbose = verbose
+        # operator_class = type(self.solver.h_ctrl[0])
+
+        # create projectors
+        projector_comp = np.diag(np.ones([dim, ], dtype=complex))
+        projector_leakage = np.diag(np.ones([dim, ], dtype=complex))
+
+        for state in computational_states:
+            projector_leakage[state, state] = 0
+        projector_comp -= projector_leakage
+
+        # vectorize projectors
+        self.projector_leakage_bra = jnp.asarray(ket_vectorize_density_matrix(
+            projector_leakage).transpose())
+
+        self.projector_comp_ket = jnp.asarray(ket_vectorize_density_matrix(projector_comp))
+        
+        
+    def costs(self):
+        """See base class. """
+        leakage = (1 / self.dim_comp) * (
+                self.projector_leakage_bra
+                @ self.solver.forward_propagators_jnp[-1]
+                @ self.projector_comp_ket
+        )
+
+        if self.verbose > 0:
+            print('leakage:')
+            print(leakage[0, 0])
+
+        # the result should always be positive within numerical accuracy
+        return leakage.real[0]
+
+    def grad(self):
+        """See base class. """
+        raise NotImplementedError('The derivative of the cost function '
+                                  'LeakageLiouville has not been implemented'
+                                  'yet.')
+
+
+
+
 @deprecated
 def derivative_entanglement_fidelity(
         control_hamiltonians: List[matrix.OperatorMatrix],
@@ -1876,8 +3435,7 @@ def default_set_orthorgonal(dim: int) -> List[matrix.OperatorMatrix]:
 
 @deprecated
 def derivative_average_gate_fidelity(control_hamiltonians, propagators,
-                                     propagators_past, delta_t,
-                                     target_unitary):
+                                     propagators_past, delta_t, target_unitary):
     """
     The derivative of the average gate fidelity.
     """
@@ -1896,13 +3454,13 @@ def derivative_average_gate_fidelity(control_hamiltonians, propagators,
                                    dtype=complex)
     for ctrl in range(num_ctrls):
         for t in range(num_time_steps):
-            bkwd_prop_target = propagators_future[t + 1].dag() * target_unitary
+            bkwd_prop_target = propagators_future[t+1].dag() * target_unitary
             temp = 0
             for ort in orthogonal_operators:
                 lambda_ = bkwd_prop_target * ort.dag(do_copy=True)
                 lambda_ *= bkwd_prop_target.dag()
-                rho = propagators_past[t + 1] * ort
-                rho *= propagators_past[t + 1].dag()
+                rho = propagators_past[t+1] * ort
+                rho *= propagators_past[t+1].dag()
                 # everything rewritten to operate in place
                 temp_mat2 = control_hamiltonians[t, ctrl] * rho
                 temp_mat2 -= rho * control_hamiltonians[t, ctrl]

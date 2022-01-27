@@ -116,6 +116,7 @@ from abc import ABC, abstractmethod
 
 from qopt.util import deprecated, needs_refactoring
 
+import jax.numpy as jnp
 
 class TransferFunction(ABC):
     """
@@ -1643,3 +1644,485 @@ class GaussianMTF(MatrixTF):
 
         super().set_times(times)
         # TODO: properly implement 'w'
+
+
+###############################################################################
+
+
+class TransferFunctionJAX(TransferFunction):
+    """
+    A class for representing transfer functions, between optimization
+    variables of the optimization algorithm and the amplitudes of the control
+    fields.
+
+    The intended workflow is to initialise the transfer function object first
+    and subsequently set the x_times, which is the time scale of the
+    optimization variables. Then the transfer function is called to calculate
+    control amplitudes and gradients.
+
+    Examples
+    --------
+    Example work flow with the abstract base class:
+
+    >>> x_times = np.ones(5)
+    >>> optimization_variables = np.random.rand(5)
+    >>> gradient_fidelity_by_control_amplitudes = np.random.rand(shape=(30,5))
+    >>> transfer_function = TransferFunction(oversampling=5,
+    >>>                                      bound_type=('x', 1))
+    >>> transfer_function.set_times(x_times)
+    >>> control_amplitudes = transfer_function(optimization_variables)
+    >>> gradient_fidelity_by_optimization_variables = \
+    >>>     transfer_function.gradient_chain_rule(
+    >>>         gradient_fidelity_by_control_amplitudes)
+
+    Parameters
+    ----------
+    num_ctrls: int
+        Number of controlled amplitudes.
+
+    oversampling: int
+        Each time step of the optimization variables is sliced into a number
+        of time steps of the control amplitudes.
+
+    bound_type: (str, int)
+        The pulse can be padded with zeros (before adding the offset) to avoid
+        bleedthrough i.e. that the pulses overlap slightly and thereby
+        influence each other.
+
+        The string states, whether you want to pad before or after the
+        oversampling or just to the end of the pulse.
+
+        The integer specifies the amount of padding elements (also depending on
+        the code of course).
+
+        If not all time steps have the same length:
+        Let dt denote the first (or respectively last) time duration when you
+        are padding to the beginning (end) of the sequence.
+
+        string options:
+            "n": n extra slice of dt/overSampleRate
+            "x": n extra slice of dt (default with n=1)
+            "right_n": n extra slice of dt/overSampleRage on the right side
+
+    offset: float
+        Constant offset which is added to the optimization parameters.
+
+
+    Attributes
+    ----------
+    num_ctrls: int
+        Number of controlled amplitudes.
+
+    oversampling: int
+        Each time step of the optimization variables is sliced into a number
+        of time steps of the control amplitudes.
+
+    bound_type: (str, int) or None
+        The pulse can be padded with zeros (before adding the offset) to avoid
+        bleedthrough i.e. that the pulses overlap slightly and thereby
+        influence each other.
+
+        The string states, whether you want to pad before or after the
+        oversampling or just to the end of the pulse.
+
+        The integer specifies the amount of padding elements (also depending on
+        the code of course).
+
+        If not all time steps have the same length:
+        Let dt denote the first (or respectively last) time duration when you
+        are padding to the beginning (end) of the sequence.
+
+        string options:
+            "n": n extra slice of dt/overSampleRate
+            "x": n extra slice of dt (default with n=1)
+            "right_n": n extra slice of dt/overSampleRage on the right side
+
+    offset: float
+        Constant offset which is added to the optimization parameters.
+
+    num_x: int
+        Number of time slices of the transferred optimization variables.
+
+    x_times: array, shape (num_u)
+        Time values for the transferred optimization parameters. These
+        describe the length of the time slices.
+
+    _num_y: int
+        Number of time slices of the raw optimization variables.
+
+    _y_times: array, shape (num_x)
+        Time values for the raw control variables. These  describe the length
+        of the time slices.
+
+    _absolute_y_times : array_like, shape (num_x + 1)
+        Absolute times of the raw optimization variables. The values describe
+        the point in time where a time slice ends and the next one begins.
+
+    Methods
+    -------
+    __call__(y):
+        Application of the transfer function.
+
+    transfer_matrix: property, returns array, shape (num_x, num_y, num_par)
+        Returns the transfer matrix.
+
+    num_padding_elements: property, returns list
+        Two elements list with the number of elements padded to the beginning
+        and end, as specified by the bound type.
+
+    set_times(times):
+        Set the times of the optimization variables and calculates the times
+        of the optimization variables.
+
+    set_absolute_times(absolute_y_times):
+        Set the absolute times (time points of beginning and ending a time
+        step) of the optimization variables.
+
+    plot_pulse(y):
+        For the raw optimisation variables (y), plot the resulting pulse.
+
+    `Todo`
+        * bound type seems to be buggy. test with exp_transfer
+        * parse bound_type to raise exception only in one function.
+        * add exception to the docstring
+
+    """
+
+    def __init__(self,
+                 num_ctrls: int = 1,
+                 bound_type: Optional[Tuple[str, int]] = None,
+                 oversampling: int = 1,
+                 offset: Optional[float] = None
+                 ):
+        
+        super().__init__(num_ctrls.bound_type,oversampling,offset)
+
+    @abstractmethod
+    def __call__(self, y: Union[np.array,jnp.array]) -> jnp.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        pass
+
+    @property
+    def num_padding_elements(self) -> (int, int):
+        """
+        Convenience function. Returns the number of elements padded to the
+        beginning and the end of the control amplitude times.
+
+        Returns
+        -------
+        num_padding_elements: (int, int)
+            (elements padded to the beginning, elements padded to the end)
+
+        """
+        if self.bound_type is None:
+            return 0, 0
+        elif self.bound_type[0] == 'n':
+            return self.bound_type[1], self.bound_type[1]
+        elif self.bound_type[0] == 'x':
+            return self.bound_type[1] * self.oversampling, \
+                   self.bound_type[1] * self.oversampling
+        elif self.bound_type[0] == 'right_n':
+            return 0, self.bound_type[1]
+        else:
+            raise ValueError('Unknown bound type ' + str(self.bound_type[0]))
+
+    @abstractmethod
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: Union[np.array,jnp.array]) -> jnp.array:
+        """
+        Obtain the derivatives of a quantity a i.e. da/dy by the optimization
+        variables from the derivatives by the amplitude of the control fields.
+
+        The chain rule applies: df/dy = df/dx * dx/dy.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+
+        """
+        pass
+
+    def set_times(self, y_times: Union[np.array,jnp.array]) -> None:
+        """
+        Generate the time_slot duration array 'transferred_time'
+        (here: x_times).
+
+        The time slices depend on the oversampling of the control variables
+        and the boundary conditions. The times are for the intended use cases
+        only set once.
+
+        Parameters
+        ----------
+        y_times: Union[np.ndarray, list], shape (num_y)
+            The time steps / durations of constant optimization variables.
+            num_y is the number of time steps for the raw optimization
+            variables.
+
+        """
+        if isinstance(y_times, list):
+            y_times = np.array(y_times)
+        if not isinstance(y_times, Union[np.ndarray,jnp.array]):
+            raise Exception("times must be a list or (j)np.array")
+
+        y_times = jnp.atleast_1d(jnp.squeeze(y_times))
+
+        if len(y_times.shape) > 1:
+            raise ValueError('The x_times should not have more than one '
+                             'dimension!')
+
+        self._num_y = y_times.size
+        self._y_times = y_times
+
+        if self.bound_type is None:
+            self.num_x = self.oversampling * self._num_y
+            self.x_times = jnp.repeat(
+                self._y_times, self.oversampling) / self.oversampling
+
+        elif self.bound_type[0] == 'n':
+            self.num_x = self.oversampling * self._num_y + 2 \
+                         * self.bound_type[1]
+            self.x_times = jnp.concatenate((
+                self._y_times[0] / self.oversampling
+                * jnp.ones(self.bound_type[1]),
+                jnp.repeat(
+                    self._y_times / self.oversampling, self.oversampling),
+                self._y_times[-1] / self.oversampling
+                * jnp.ones(self.bound_type[1])))
+
+        elif self.bound_type[0] == 'x':
+            self.num_x = self.oversampling * (self._num_y
+                                              + 2 * self.bound_type[1])
+            self.x_times = jnp.concatenate((
+                self._y_times[0] / self.oversampling
+                * jnp.ones(self.bound_type[1] * self.oversampling),
+                jnp.repeat(self._y_times / self.oversampling,
+                          self.oversampling),
+                self._y_times[-1] / self.oversampling
+                * jnp.ones(self.bound_type[1] * self.oversampling)))
+
+        elif self.bound_type[0] == 'right_n':
+            self.num_x = self.oversampling * self._num_y + self.bound_type[1]
+            self.x_times = np.concatenate((
+                jnp.repeat(self._y_times / self.oversampling,
+                          self.oversampling),
+                self._y_times[-1] / self.oversampling
+                * jnp.ones(self.bound_type[1])))
+
+        else:
+            raise ValueError('The boundary type ' + str(self.bound_type[0])
+                             + ' is not implemented!')
+
+    def set_absolute_times(self, absolute_y_times: Union[np.array,jnp.array]) -> None:
+        """
+        Generate the time_slot duration array 'transferred_time'
+        (here: x_times)
+
+        This time slices depend on the oversampling of the control variables
+        and the boundary conditions. The differences of the absolute times
+        give the time steps x_times.
+
+        Parameters
+        ----------
+        absolute_y_times: Union[np.ndarray, list]
+            Absolute times of the start / end of each time segment for the raw
+            optimization parameters.
+
+        """
+        if isinstance(absolute_y_times, list):
+            absolute_y_times = jnp.array(absolute_y_times)
+        if not isinstance(absolute_y_times, Union[np.array,jnp.array]):
+            raise Exception("times must be a list or (j)np.array")
+        if not jnp.all(jnp.diff(absolute_y_times) >= 0):
+            raise Exception("times must be sorted")
+
+        self._absolute_y_times = absolute_y_times
+        self.set_times(jnp.diff(absolute_y_times))
+
+    def plot_pulse(self, y: Union[np.array,jnp.array]) -> None:
+        """
+
+        Plot the control amplitudes corresponding to the given optimisation
+        variables.
+
+        Parameters
+        ----------
+        y: array, shape (num_y, num_par)
+            Raw optimization parameters.
+
+        """
+        
+        x = self(y)
+        #plotting not good with jnp(?)
+        x, y = np.array(x), np.array(y)
+        n_padding_start, n_padding_end = self.num_padding_elements
+        for y_per_control, x_per_control in zip(y.T, x.T):
+            plt.figure()
+            plt.bar(np.cumsum(self.x_times) - .5 * self.x_times[0],
+                    x_per_control, self.x_times[0])
+            plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
+                    + np.cumsum(self._y_times)[n_padding_start]
+                    - self._y_times[n_padding_start],
+                    y_per_control, self._y_times[0],
+                    fill=False)
+        plt.show()
+
+
+class IdentityTFJAX(TransferFunctionJAX):
+    """Numerically efficient identity transfer function which does not change
+    pulse nor time steps.
+
+    Base class functions __call__ and gradient_chane_rule are reimplemented in
+    order to avoid setting a transfer matrix.
+
+    """
+    def __init__(self, num_ctrls=1):
+        super().__init__(
+            bound_type=None,
+            oversampling=1,
+            num_ctrls=num_ctrls,
+            offset=0.
+        )
+        self.name = 'Identity'
+
+    def __call__(self, y: Union[np.array,jnp.array]) -> jnp.array:
+        """See base class. """
+        return jnp.asarray(y)
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: Union[np.array,jnp.array]) -> jnp.array:
+        """See base class. """
+        return jnp.asarray(deriv_by_transferred_par)
+
+
+class OversamplingTFJAX(TransferFunctionJAX):
+    """ Handles oversampling and boundaries without transfer matrix.
+
+    This function is destined to be used for the oversampling and the boundary
+    functions for all transfer functions which do not compute a transfer
+    matrix.
+
+    See Also
+    --------
+
+    Base Class
+
+    """
+    def __init__(self,
+                 num_ctrls: int = 1,
+                 bound_type: Optional[Tuple[str, int]] = None,
+                 oversampling: int = 1
+                 ):
+        super().__init__(
+            num_ctrls=num_ctrls,
+            bound_type=bound_type,
+            oversampling=oversampling
+        )
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def __call__(self, y: Union[np.array,jnp.array]) -> jnp.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Only the oversampling and boundaries are taken into account.
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        # oversample pulse by repetition
+        u = jnp.repeat(y, self.oversampling, axis=0)
+
+        # add the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        u = jnp.concatenate(
+            (jnp.zeros((padding_start, self.num_ctrls)),
+             u,
+             jnp.zeros((padding_end, self.num_ctrls))), axis=0)
+
+        return u
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: Union[np.array,jnp.array]) -> jnp.array:
+        """
+        See base class.
+
+        Processing without transfer matrix.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: np.array, shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: np.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+
+        """
+
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+
+        # delete the padding elements
+        padding_start, padding_end = self.num_padding_elements
+
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        if padding_end > 0:
+            cropped_derivs = deriv_by_transferred_par[
+                             padding_start:-padding_end, :, :]
+        else:
+            cropped_derivs = deriv_by_transferred_par[
+                             padding_start:, :, :]
+
+        cropped_derivs = jnp.expand_dims(cropped_derivs, axis=1)
+        cropped_derivs = jnp.reshape(
+            cropped_derivs, (
+                self._num_y,
+                self.oversampling,
+                cropped_derivs.shape[2],
+                cropped_derivs.shape[3]
+            )
+        )
+        deriv_by_opt_par = jnp.sum(cropped_derivs, axis=1)
+        return deriv_by_opt_par
