@@ -82,3 +82,7 @@ except ImportError:
 __version__ = '1.0.2'
 __license__ = 'GNU GPLv3+'
 __author__ = 'Julian Teske, Forschungszentrum Juelich'
+
+
+from jax.config import config
+config.update("jax_enable_x64", True)

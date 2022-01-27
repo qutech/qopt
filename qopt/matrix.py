@@ -74,6 +74,11 @@ from typing import Tuple, Optional, Union, Sequence
 from unittest import mock
 from warnings import warn
 
+import jax
+import jax.numpy as jnp
+import jaxlib.xla_extension
+from jax import grad, jit, vmap
+
 try:
     from qutip import Qobj
 except ImportError:
@@ -1451,3 +1456,1273 @@ def closest_unitary(matrix: OperatorMatrix):
     left_singular_vec, __, right_singular_vec_h = scipy.linalg.svd(
         matrix.data)
     return type(matrix)(left_singular_vec.dot(right_singular_vec_h))
+
+###############################################################################
+
+# class OperatorMatrixJAX(ABC):
+#     """
+#     The abstract base class of the operator matrix for the qopt control
+#     package.
+
+#     It offers an identical interface to use sparse and dense matrices and has
+#     hence the limitations of both representations in terms of usability.
+
+#     Attributes
+#     ----------
+#     data
+#         The stored data. Its type is defined in subclasses.
+#     """
+
+#     def __init__(self) -> None:
+#         self.data = None
+#         self._size = 0
+
+#         self._factormatrix = None
+#         self._prop_eigen = None
+#         self._eig_vec = None
+#         self._eig_vec_dag = None
+#         self._prop = None
+
+#     @abstractmethod
+#     def copy(self):
+#         """Return a deep copy of the control matrix. """
+#         pass
+
+#     def clean(self):
+#         """Delete stored data. """
+#         self._factormatrix = None
+#         self._prop_eigen = None
+#         self._eig_vec = None
+#         self._eig_vec_dag = None
+#         self._prop = None
+
+#     def __add__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         """Overloaded addition.
+
+#         Add Matrix of the same dimension or scalar value to each element.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then the value is added to each matrix element.
+
+#         Returns
+#         -------
+#         out:
+#             New instance of the same type containing the result of the
+#             addition.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         out = self.copy()
+#         out += other
+#         return out
+
+#     @abstractmethod
+#     def __iadd__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         """Overloaded in place addition.
+
+#         Add Matrix of the same dimension or scalar value to each element.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then the value is added to each matrix element.
+
+#         Returns
+#         -------
+#         self:
+#             The matrix itself is returned as the operation is executed in
+#             place.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def __mul__(self, other: Union['OperatorMatrix', complex, float, int,
+#                                    np.generic]) -> 'OperatorMatrix':
+#         """Overloaded multiplication.
+
+#         Matrix multiplication with another matrix or scalar multiplication with
+#         a scalar value.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then each matrix element is multiplied with the scalar value.
+#             Otherwise the matrix product is applied.
+
+#         Returns
+#         -------
+#         self:
+#             The matrix itself is returned as the operation is executed in
+#             place.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def __imul__(self, other: Union['OperatorMatrix', complex, float, int,
+#                                     np.generic]) -> 'OperatorMatrix':
+#         """Overloaded in place multiplication.
+
+#         Matrix multiplication with another matrix or scalar multiplication with
+#         a scalar value in place.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then each matrix element is multiplied with the scalar value.
+#             Otherwise the matrix product is applied.
+
+#         Returns
+#         -------
+#         out:
+#             New instance of the same type containing the result of the
+#             multiplication.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def __rmul__(self, other: Union['OperatorMatrix', complex, float, int,
+#                                     np.generic]) -> 'OperatorMatrix':
+#         """Overloaded reflected multiplication.
+
+#         Matrix multiplication with another matrix or scalar multiplication with
+#         a scalar value.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then each matrix element is multiplied with the scalar value.
+#             Otherwise the matrix product is applied.
+
+#         Returns
+#         -------
+#         out:
+#             New instance of the same type containing the result of the
+#             multiplication.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         pass
+
+#     def __sub__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         """Overloaded subtraction.
+
+#         Subtract Matrix of the same dimension or scalar value from each
+#         element.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then the value is added to each matrix element.
+
+#         Returns
+#         -------
+#         out:
+#             New instance of the same type containing the result of the
+#             addition.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         out = self.copy()
+#         out -= other
+#         return out
+
+#     @abstractmethod
+#     def __isub__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         """Overloaded in place subtraction.
+
+#         Subtract Matrix of the same dimension or scalar value from each
+#         element.
+
+#         Parameters
+#         ----------
+#         other: ControlMatrix or numpy array or scalar
+#             If other is a scalar value (int, float, complex, np.complex128)
+#             then the value is added to each matrix element.
+
+#         Returns
+#         -------
+#         out:
+#             New instance of the same type containing the result of the
+#             addition.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def __truediv__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         pass
+
+#     @abstractmethod
+#     def __itruediv__(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         pass
+
+#     @property
+#     def shape(self) -> Tuple:
+#         """Returns the shape of the matrix. """
+#         return self.data.shape
+
+#     @abstractmethod
+#     def __getitem__(self, index: Tuple) -> complex:
+#         """Returns the corresponding matrix element.
+
+#         Parameters
+#         ----------
+#         index: tuple of int, length: 2
+#             Index describing an entry in the matrix.
+
+#         Returns
+#         -------
+#         value: complex
+#             Matrix element at the position described by the index.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def __setitem__(self, key, value) -> None:
+#         """ Sets the value at the position key.
+
+#         Parameters
+#         ----------
+#         key: tuple of int, length: 2
+#             Index specifying an entry in the matrix.
+
+#         value: complex
+#             Value to be set at the position key.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def dag(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
+#         """
+#         Adjoint (dagger) of the matrix.
+
+#         Parameters
+#         ----------
+#         do_copy: bool, optional
+#             If false, then the operation is executed inplace. Otherwise returns
+#             a new instance. Defaults to True.
+
+#         Returns
+#         -------
+#         out: OperatorMatrix
+#             If do_copy is true, then a new instance otherwise self.
+
+#         """
+#         return self
+
+#     @abstractmethod
+#     def tr(self) -> complex:
+#         """Trace of the matrix.
+
+#         Returns
+#         -------
+#         trace: float
+#             Trace of the matrix.
+
+#         """
+#         return 0j
+
+#     @abstractmethod
+#     def ptrace(self,
+#                dims: Sequence[int],
+#                remove: Sequence[int],
+#                do_copy: bool = True) -> 'OperatorMatrix':
+#         """
+#         Partial trace of the matrix.
+
+#         If the matrix describes a ket, the corresponding density matrix is
+#         calculated and used for the partial trace.
+#         Parameters
+#         ----------
+#         dims : list of int
+#             Dimensions of the subspaces making up the total space on which
+#             the matrix operates. The product of elements in 'dims' must be
+#             equal to the matrix' dimension.
+#         remove : list of int
+#             The selected subspaces over which the partial trace is formed.
+#             The given indices correspond to the ordering of subspaces that
+#             are specified via the 'dim' argument.
+#         do_copy : bool, optional
+#             If false, the operation is executed inplace. Otherwise returns
+#             a new instance. Defaults to True.
+
+#         Returns
+#         -------
+#         pmat : OperatorMatrix
+#             The partially traced OperatorMatrix.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def conj(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
+#         r"""
+#         Complex conjugate of the matrix.
+
+#         Parameters
+#         ----------
+#         do_copy : bool, optional
+#             If false, then the operation is executed inplace. Otherwise returns
+#             a new instance. Defaults to True.
+
+#         Returns
+#         -------
+#         out: OperatorMatrix
+#             If do_copy is true, then a new instance otherwise self.
+
+#         """
+#         pass
+
+#     def conjugate(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
+#         """Alias for conj. """
+#         return self.conj(do_copy=do_copy)
+
+#     @abstractmethod
+#     def transpose(self, do_copy: bool = True) -> Optional['OperatorMatrix']:
+#         """Transpose of the matrix.
+
+#         Parameters
+#         ----------
+#         do_copy: bool, optional
+#             If false, then the operation is executed inplace. Otherwise returns
+#             a new instance. Defaults to True.
+
+#         Returns
+#         -------
+#         out: OperatorMatrix
+#             If do_copy is true, then a new instance otherwise self.
+
+#         """
+
+#     @abstractmethod
+#     def kron(self, other: 'OperatorMatrix') -> 'OperatorMatrix':
+#         """
+#         Computes the kronecker matrix product with another matrix.
+
+#         Parameters
+#         ----------
+#         other: OperatorMatrix or np.ndarray
+#             Second factor of the kronecker product.
+
+#         Returns
+#         -------
+#         out: OperatorMatrix
+#             Operator matrix of the same type containing the product.
+
+#         Raises
+#         ------
+#         ValueError:
+#             If the operation is not defined for the input type.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def flatten(self) -> np.ndarray:
+#         """
+#         Flattens the matrix.
+
+#         Returns
+#         -------
+#         out: np.array
+#             The flattened control matrix as one dimensional numpy array.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def norm(self, ord: str) -> np.float64:
+#         """
+#         Calulates the norm of the matrix.
+
+#         Parameters
+#         ----------
+#         ord: string
+#             Defines the norm which is calculated.
+
+#         Returns
+#         -------
+#         norm: float
+#             Norm of the Matrix.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def spectral_decomposition(self, hermitian: bool = False):
+#         """
+#         Calculates the eigenvalues and eigenvectors of a square matrix.
+
+#         Parameters
+#         ----------
+#         hermitian: bool
+#             If True, the matrix is assumed to be hermitian.
+
+#         Returns
+#         -------
+#         eig_vals: array of shape (n, )
+#             Eigenvalues
+
+#         eig_vecs: array of shape (n, n)
+#             Right Eigenvectors. The normalized eigenvalue eig_vals[i]
+#             corresponds to the eigenvector eig_vec[:,i].
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def exp(self,
+#             tau: complex = 1,
+#             method: Optional[str] = None,
+#             is_skew_hermitian: bool = False) -> 'OperatorMatrix':
+#         """
+#         The matrix exponential.
+
+#         Parameters
+#         ----------
+#         tau: complex, optional
+#             A scalar by which the matrix is multiplied before calculating the
+#             exponential.
+
+#         method: string, optional
+#             The method by which the matrix exponential is calculated.
+
+#         is_skew_hermitian : bool
+#             If set to true, the matrix is expected to be skew Hermitian, which
+#             allows to speed up the spectral decomposition.
+
+#         Returns
+#         -------
+#         exponential: OperatorMatrix
+#             exponential = exp(A * tau) where A is the stored matrix.
+
+#         """
+#         pass
+
+#     @abstractmethod
+#     def dexp(self,
+#              direction: 'OperatorMatrix',
+#              tau: complex = 1,
+#              compute_expm: bool = False,
+#              method: Optional[str] = None,
+#              is_skew_hermitian: bool = False) \
+#             -> Union['OperatorMatrix', Tuple['OperatorMatrix']]:
+#         """The Frechet derivative of the exponential in the given direction
+
+#         Parameters
+#         ----------
+#         direction : OperatorMatrix
+#             The direction in which the Frechet derivative is to be calculated.
+
+#         tau : complex
+#             A scalar by which the matrix is multiplied before exponentiation.
+#             This can be i. e. the length of a time segment if a propagator is
+#             calculated.
+
+#         compute_expm : bool
+#             If set to false only the derivative is calculated and returned.
+
+#         method : Optional[string]
+#             The method by which the exponential is calculated.
+
+#         is_skew_hermitian : bool
+#             If set to true, the matrix is expected to be hermitian, which
+#             allows to speed up the spectral decomposition.
+
+#         Returns
+#         -------
+#         prop : OperatorMatrix
+#             The matrix exponential: exp(self*tau) (Optional, if compute_expm)
+
+#         derivative_prop : OperatorMatrix
+#             The frechet derivative of the matrix exponential:
+#             (exp((self+direction*dt)*tau)-exp(self*tau)) / dt
+#         """
+#         pass
+
+#     @abstractmethod
+#     def identity_like(self) -> 'OperatorMatrix':
+#         """For square matrices, the identity of same dimension is returned. """
+
+#     @abstractmethod
+#     def truncate_to_subspace(
+#             self, subspace_indices: Optional[Sequence[int]],
+#             map_to_closest_unitary: bool = False
+#     ) -> 'OperatorMatrix':
+#         """
+#         Convenience Function to truncate a control matrix to a subspace.
+
+#         Parameters
+#         ----------
+#         subspace_indices: list of int, optional
+#             Indices of the subspace to which the control matrix shall be
+#             truncated. If None, then a reference to the original matrix will be
+#             returned.
+
+#         map_to_closest_unitary: bool
+#             If True, then the final propagator is mapped to the closest unitary
+#             before the infidelity is evaluated.
+
+#         Returns
+#         -------
+#         truncated_matrix: 'OperatorMatrix'
+#             The truncated operator matrix.
+
+#         """
+#         pass
+
+#     @classmethod
+#     def pauli_0(cls):
+#         """Pauli 0 i.e. the Identity matrix. """
+#         return cls(jnp.eye(2))
+
+#     @classmethod
+#     def pauli_x(cls):
+#         """Pauli x Matrix. """
+#         return cls(jnp.asarray([[0, 1], [1, 0]]))
+
+#     @classmethod
+#     def pauli_y(cls):
+#         """Pauli y Matrix. """
+#         return cls(jnp.asarray([[0, -1j], [1j, 0]]))
+
+#     @classmethod
+#     def pauli_z(cls):
+#         """Pauli z Matrix. """
+#         return cls(jnp.diag([1, -1]))
+
+#     @classmethod
+#     def pauli_m(cls):
+#         """Pauli minus Matrix i.e. descending operator. """
+#         return cls(jnp.asarray([[0, 0], [1, 0]]))
+
+#     @classmethod
+#     def pauli_p(cls):
+#         """Pauli plus Matrix i.e. ascending operator. """
+#         return cls(jnp.asarray([[0, 1], [0, 0]]))
+
+#TODO: many undefined baheviors, e.g. when "other" in operation is deviceArray but scalar
+
+class DenseOperatorJAX(OperatorMatrix):
+    """
+    Dense control matrix.
+
+    The data is stored as numpy array and uses the implementations of the
+    numpy package.
+
+    Parameters
+    ----------
+    obj: Qobj or numpy array or scipy csr_matrix
+        The matrix to be stored and handled as dense matrix.
+
+    Attributes
+    ----------
+    data: numpy array
+        The data stored in a two dimensional numpy array
+
+    """
+
+    def __init__(
+            self,
+            obj: Union[Qobj, np.ndarray, sp.csr_matrix, 'DenseOperator', jaxlib.xla_extension.DeviceArray]) \
+            -> None:
+        super().__init__()
+        self.data = None
+        if type(obj) is jaxlib.xla_extension.DeviceArray:
+            self.data = obj.astype(jnp.complex128)
+        elif type(obj) is DenseOperatorJAX:
+            self.data = obj.data
+        elif type(obj) is DenseOperator:
+            self.data = obj.data.astype(jnp.complex128)
+        elif type(obj) is np.ndarray:
+            self.data = obj.astype(np.complex128)
+        elif type(obj) is Qobj:
+            self.data = jnp.array(obj.data.todense(),dtype=jnp.complex128)
+        elif type(obj) is sp.csr_matrix:
+            self.data = obj.toarray()
+            self.data = jnp.array(self.data,dtype=jnp.complex128)
+        
+        #TESTTEST
+
+        # elif type(obj) is jax.interpreters.partial_eval.DynamicJaxprTracer:
+        #     self.data = obj
+        else:
+            raise ValueError("Data of this type can not be broadcasted into a "
+                             "dense control matrix. Type: " + str(type(obj)))
+        # self.data = self.data.astype(np.complex128, copy=False)
+
+    def copy(self):
+        """See base class. """
+        copy_ = DenseOperatorJAX(self.data.copy())
+        # numpy copy are deep
+        return copy_
+
+    #TODO: typecheck not good? (DeviceArray vs jnp.ndarray)
+
+    def __imul__(self, other: Union['DenseOperatorJAX',
+                                    complex,
+                                    float,
+                                    int,
+                                    np.generic,jnp.ndarray]) -> 'DenseOperatorJAX':
+        """See base class. """
+
+        if type(other) == DenseOperatorJAX:
+            jnp.matmul(self.data, other.data, out=self.data)
+        elif type(other) == jnp.ndarray:
+            jnp.matmul(self.data, other, out=self.data)
+        elif type(other) in VALID_SCALARS:
+            self.data *= other
+        else:
+            raise NotImplementedError(str(type(other)))
+        return self
+
+    def __mul__(self, other: Union['DenseOperatorJAX', complex, float, int,
+                                   np.generic,jnp.ndarray]) -> 'DenseOperatorJAX':
+        """See base class. """
+
+        if type(other) in VALID_SCALARS:
+            out = self.copy()
+            out *= other
+        elif type(other) == DenseOperatorJAX:
+            out = DenseOperatorJAX(jnp.matmul(self.data, other.data))
+        elif type(other) == np.ndarray:
+            out = DenseOperatorJAX(jnp.matmul(self.data, jnp.array(other)))
+        elif isinstance(other,jnp.ndarray):
+            if other.shape==():
+                out = DenseOperatorJAX(self.data*other)
+            else:
+                out = DenseOperatorJAX(jnp.matmul(self.data, jnp.array(other)))
+        else:
+            raise NotImplementedError(str(type(other)))
+        return out
+
+    def __rmul__(self, other: Union['DenseOperatorJAX', complex, float, int,
+                                    np.generic, jnp.ndarray]) -> 'DenseOperatorJAX':
+        """See base class. """
+        if type(other) == jnp.ndarray or type(other) == jaxlib.xla_extension.DeviceArray:
+            out = DenseOperatorJAX(jnp.matmul(other, self.data))
+        if type(other) == np.ndarray:
+            out = DenseOperatorJAX(jnp.matmul(jnp.array(other), self.data))
+        elif type(other) in VALID_SCALARS:
+            out = self.copy()
+            out *= other
+        else:
+            raise NotImplementedError(str(type(other)))
+        return out
+
+    def __iadd__(self, other: 'DenseOperatorJAX') -> 'DenseOperatorJAX':
+        """See base class. """
+        if type(other) is DenseOperatorJAX:
+            self.data += other.data
+        elif type(other) == Union[jnp.ndarray,np.ndarray]:
+            self.data += other
+        elif type(other) in VALID_SCALARS:
+            self.data += other
+        else:
+            raise NotImplementedError(str(type(other)))
+        return self
+
+    def __isub__(self, other: 'DenseOperatorJAX') -> 'DenseOperatorJAX':
+        """See base class. """
+
+        if type(other) is DenseOperatorJAX:
+            self.data -= other.data
+        elif type(other) == Union[jnp.ndarray,np.ndarray]:
+            self.data -= other
+        elif type(other) in VALID_SCALARS:
+            self.data -= other
+        else:
+            raise NotImplementedError(str(type(other)))
+        return self
+
+    def __truediv__(self, other: 'DenseOperatorJAX') -> 'DenseOperatorJAX':
+        if isinstance(other, (np.ndarray,jnp.ndarray, *VALID_SCALARS)):
+            return DenseOperatorJAX(self.data / other)
+        raise NotImplementedError(str(type(other)))
+
+    def __itruediv__(self, other: 'DenseOperatorJAX') -> 'DenseOperatorJAX':
+        if isinstance(other, (np.ndarray,jnp.ndarray, *VALID_SCALARS)):
+            self.data /= other
+            return self
+        raise NotImplementedError(str(type(other)))
+
+    def __getitem__(self, index: Tuple) -> np.complex128:
+        """See base class. """
+        return self.data[index]
+
+    def __setitem__(self, key, value) -> None:
+        """See base class. """
+        self.data.at[key].set(value)
+
+    def __repr__(self):
+        """Representation as numpy array. """
+        return 'DenseOperatorJAX with data: \n' + self.data.__repr__()
+
+    def dag(self, do_copy: bool = True) -> Optional['DenseOperatorJAX']:
+        """See base class. """
+        if do_copy:
+            cp = self.copy()
+            #was additional statement with "out" before, not in jnp?
+            
+            cp.data = jnp.conj(cp.data).T
+            return cp
+        else:  
+            self.data = jnp.conj(self.data).T
+            return self
+
+    def conj(self, do_copy: bool = True) -> Optional['DenseOperatorJAX']:
+        """See base class. """
+        if do_copy:
+            copy = self.copy()
+            copy.data = jnp.conj(copy.data)
+            return copy
+        else:
+            self.data = jnp.conj(self.data)
+            return self
+
+    def transpose(self, do_copy: bool = True) -> Optional['DenseOperatorJAX']:
+        """See base class. """
+        if do_copy:
+            out = self.copy()
+        else:
+            out = self
+        out.data = out.data.transpose()
+        return out
+
+    def flatten(self) -> jnp.ndarray:
+        """See base class. """
+        return self.data.flatten()
+
+    def norm(self, ord: Union[str, None, int] = 'fro') -> jnp.float64:
+        """
+        Calulates the norm of the matrix.
+
+        Uses the implementation of numpy.linalg.norm.
+
+        Parameters
+        ----------
+        ord: string
+            Defines the norm which is calculated. Defaults to the Frobenius norm
+            'fro'.
+
+        Returns
+        -------
+        norm: float
+            Norm of the Matrix.
+
+        """
+        return jnp.linalg.norm(self.data, ord=ord)
+
+    def tr(self) -> complex:
+        """See base class. """
+        return self.data.trace()
+
+    def ptrace(self,
+               dims: Sequence[int],
+               remove: Sequence[int],
+               do_copy: bool = True) -> 'DenseOperatorJAX':
+        """
+        Partial trace of the matrix.
+
+        If the matrix describes a ket, the corresponding density matrix is
+        calculated and used for the partial trace.
+
+        This implementation closely follows that of QuTip's qobj._ptrace_dense.
+        Parameters
+        ----------
+        dims : list of int
+            Dimensions of the subspaces making up the total space on which
+            the matrix operates. The product of elements in 'dims' must be
+            equal to the matrix' dimension.
+        remove : list of int
+            The selected subspaces as indices over which the partial trace is
+            formed. The given indices correspond to the ordering of
+            subspaces specified in the 'dim' argument.
+        do_copy : bool, optional
+            If false, the operation is executed inplace. Otherwise returns
+            a new instance. Defaults to True.
+
+        Returns
+        -------
+        pmat : OperatorMatrix
+            The partially traced OperatorMatrix.
+
+        Raises
+        ------
+        AssertionError:
+            If matrix dimension does not match specified dimensions.
+
+        Examples
+        --------
+         ghz_ket = DenseOperator(np.array([[1,0,0,0,0,0,0,1]]).T) / np.sqrt(2)
+         ghz_rho = ghz_ket * ghz_ket.dag()
+         ghz_rho.ptrace(dims=[2,2,2], remove=[0,2])
+        DenseOperator with data:
+        array([[0.5+0.j, 0. +0.j],
+               [0. +0.j, 0.5+0.j]])
+        """
+
+        if self.shape[1] == 1:
+            mat = (self * self.dag()).data
+        else:
+            mat = self.data
+        if mat.shape[0] != jnp.prod(dims):
+            raise AssertionError("Specified dimensions do not match "
+                                 "matrix dimension.")
+        n_dim = len(dims)  # number of subspaces
+        dims = jnp.asarray(dims, dtype=int)
+
+        remove = list(jnp.sort(remove))
+        # indices of subspace that are kept
+        keep = list(set(np.arange(n_dim)) - set(remove))
+
+        dims_rm = (dims[remove]).tolist()
+        dims_keep = (dims[keep]).tolist()
+        dims = list(dims)
+
+        # 1. Reshape: Split matrix into subspaces
+        # 2. Transpose: Change subspace/index ordering such that the subspaces
+        # over which is traced correspond to the first axes
+        # 3. Reshape: Merge each, subspaces to be removed (A) and to be kept
+        # (B), common spaces/axes.
+        # The trace of the merged spaces (A \otimes B) can then be
+        # calculated as Tr_A(mat) using np.trace for input with
+        # more than two axes effectively resulting in
+        # pmat[j,k] = Sum_i mat[i,i,j,k] for all j,k = 0..prod(dims_keep)
+        pmat = jnp.trace(mat.reshape(dims + dims)
+                           .transpose(remove + [n_dim + q for q in remove] +
+                                      keep + [n_dim + q for q in keep])
+                           .reshape([jnp.prod(dims_rm),
+                                    jnp.prod(dims_rm),
+                                    jnp.prod(dims_keep),
+                                    jnp.prod(dims_keep)])
+                        )
+
+        if do_copy:
+            return DenseOperatorJAX(pmat)
+        else:
+            self.data = pmat
+            return self
+
+    def kron(self, other: 'DenseOperatorJAX') -> 'DenseOperatorJAX':
+        """See base class. """
+        if type(other) == DenseOperatorJAX:
+            out = jnp.kron(self.data, other.data)
+        elif type(other) == Union[np.ndarray,jnp.array]:
+            out = jnp.kron(self.data, other)
+        else:
+            raise ValueError('The kronecker product of dense control matrices'
+                             'is not defined for: ' + str(type(other)))
+        return DenseOperatorJAX(out)
+
+    def _exp_diagonalize(self, tau: complex = 1,
+                         is_skew_hermitian: bool = False) -> 'DenseOperatorJAX':
+        """ Calculates the matrix exponential by spectral decomposition.
+
+        Refactored version of _spectral_decomp.
+
+        Parameters
+        ----------
+        tau : complex
+            The matrix is multiplied by tau.
+
+        is_skew_hermitian : bool
+            If True, the matrix is expected to be skew hermitian.
+
+        Returns
+        -------
+        exp: DenseOperator
+            Dense operator matrix containing the matrix exponential.
+
+        """
+        if is_skew_hermitian:
+            eig_val, eig_vec = jnp.linalg.eigh(-1j * self.data)
+            eig_val = 1j * eig_val
+        else:
+            eig_val, eig_vec = jnp.linalg.eig(self.data)
+
+        # apply the exponential function to the eigenvalues and invert the
+        # diagonalization transformation
+        exp = jnp.einsum('ij,j,kj->ik', eig_vec, jnp.exp(tau * eig_val),
+                        eig_vec.conj())
+
+        return DenseOperatorJAX(exp)
+
+    def _dexp_diagonalization(self,
+                              direction: 'DenseOperatorJAX', tau: complex = 1,
+                              is_skew_hermitian: bool = False,
+                              compute_expm: bool = False):
+        """ Calculates the matrix exponential by spectral decomposition.
+
+        Refactored version of _spectral_decomp.
+
+        Parameters
+        ----------
+        direction: DenseOperator
+            Direction in which the frechet derivative is calculated. Must be of
+            the same shape as self.
+
+        tau : complex
+            The matrix is multiplied by tau.
+
+        is_skew_hermitian : bool
+            If True, the matrix is expected to be skew hermitian.
+
+        compute_expm : bool
+            If True, the matrix exponential is calculated as well.
+
+        Returns
+        -------
+        exp: DenseOperator
+            The matrix exponential. Only returned if compute_expm is set to
+            True.
+
+        dexp: DenseOperator
+            Frechet derivative of the matrix exponential.
+
+        """
+        if is_skew_hermitian:
+            eig_val, eig_vec = jnp.linalg.eigh(-1j * self.data)
+            eig_val = 1j * eig_val
+        else:
+            eig_val, eig_vec = jnp.linalg.eig(self.data)
+
+        eig_vec_dag = eig_vec.conj().T
+
+        eig_val_cols = eig_val * jnp.ones(self.shape)
+        eig_val_diffs = eig_val_cols - eig_val_cols.T
+
+        # avoid devision by zero
+        eig_val_diffs += jnp.eye(self.data.shape[0])
+
+        omega = (jnp.exp(eig_val_diffs * tau) - 1.) / eig_val_diffs
+
+        # override the false diagonal elements.
+        np.fill_diagonal(omega, tau)
+
+        direction_transformed = eig_vec @ direction.data @ eig_vec_dag
+        dk_dalpha = direction_transformed * omega
+
+        exp = jnp.einsum('ij,j,jk->ik', eig_vec, jnp.exp(tau * eig_val),
+                        eig_vec_dag)
+        # einsum might be less accurate than the @ operator
+        dv_dalpha = eig_vec_dag @ dk_dalpha @ eig_vec
+        du_dalpha = exp @ dv_dalpha
+
+        if compute_expm:
+            return exp, du_dalpha
+        else:
+            return du_dalpha
+
+    def spectral_decomposition(self, hermitian: bool = False):
+        """See base class. """
+        if hermitian is False:
+            eig_val, eig_vec = jax.scipy.linalg.eig(self.data)
+        else:
+            eig_val, eig_vec = jax.scipy.linalg.eigh(self.data)
+
+        return eig_val, eig_vec
+
+    def exp(self, tau: complex = 1,
+            method: str = "spectral",
+            is_skew_hermitian: bool = False) -> 'DenseOperatorJAX':
+        """
+        Matrix exponential.
+
+        Parameters
+        ----------
+        tau: complex
+            The matrix is multiplied by tau before calculating the exponential.
+
+        method: string
+            Numerical method used for the calculation of the matrix
+            exponential.
+            Currently the following are implemented:
+            - 'approx', 'Frechet': use the scipy linalg matrix exponential
+            - 'first_order': First order taylor approximation
+            - 'second_order': Second order taylor approximation
+            - 'third_order': Third order taylor approximation
+            - 'spectral': Use the self implemented spectral decomposition
+
+        is_skew_hermitian: bool
+            Only important for the method 'spectral'. If set to True then the
+            matrix is assumed to be skew hermitian in the spectral
+            decomposition.
+
+        Returns
+        -------
+        prop: DenseOperator
+            The matrix exponential.
+
+        Raises
+        ------
+        NotImplementedError:
+            If the method given as parameter is not implemented.
+
+        """
+
+        if method == "spectral":
+            prop = self._exp_diagonalize(tau=tau,
+                                         is_skew_hermitian=is_skew_hermitian)
+
+        elif method in ["approx", "Frechet"]:
+            prop = jax.scipy.linalg.expm(self.data * tau)
+
+        elif method == "first_order":
+            prop = jnp.eye(self.data.shape[0]) + self.data * tau
+
+        elif method == "second_order":
+            prop = jnp.eye(self.data.shape[0]) + self.data * tau
+            prop += self.data @ self.data * (tau * tau * 0.5)
+
+        elif method == "third_order":
+            b = self.data * tau
+            prop = jnp.eye(self.data.shape[0]) + b
+            bb = b @ b * 0.5
+            prop += bb
+            prop += bb @ b * 0.3333333333333333333
+        else:
+            raise ValueError("Unknown or not specified method for the "
+                             "calculation of the matrix exponential:"
+                             + str(method))
+        return DenseOperatorJAX(prop)
+
+    def prop(self, tau: complex = 1) -> 'DenseOperatorJAX':
+        """See base class. """
+        return DenseOperatorJAX(self.exp(tau))
+
+    def dexp(self,
+             direction: 'DenseOperatorJAX',
+             tau: complex = 1,
+             compute_expm: bool = False,
+             method: str = "spectral",
+             is_skew_hermitian: bool = False,
+             epsilon: float = 1e-10,
+             # use_jnp=False,
+             ) \
+            -> Union['DenseOperatorJAX', Tuple['DenseOperatorJAX']]:
+        """
+        Frechet derivative of the matrix exponential.
+
+        Parameters
+        ----------
+        direction: DenseOperator
+            Direction in which the frechet derivative is calculated. Must be of
+            the same shape as self.
+
+        tau: complex
+            The matrix is multiplied by tau before calculating the exponential.
+
+        compute_expm: bool
+            If true, then the matrix exponential is calculated and returned as
+            well.
+
+        method: string
+            Numerical method used for the calculation of the matrix
+            exponential.
+            Currently the following are implemented:
+            - 'Frechet': Uses the scipy linalg matrix exponential for
+            simultaniously calculation of the frechet derivative expm_frechet
+            - 'approx': Approximates the Derivative by finite differences.
+            - 'first_order': First order taylor approximation
+            - 'second_order': Second order taylor approximation
+            - 'third_order': Third order taylor approximation
+            - 'spectral': Use the self implemented spectral decomposition
+
+        is_skew_hermitian: bool
+            Only required, for the method 'spectral'. If set to True, then the
+            matrix is assumed to be skew hermitian in the spectral
+            decomposition.
+
+        epsilon: float
+            Width of the finite difference. Only relevant for the method
+            'approx'.
+
+        Returns
+        -------
+        prop: DenseOperator
+            The matrix exponential. Only returned if compute_expm is True!
+        prop_grad: DenseOperator
+            The frechet derivative d exp(Ax + B)/dx at x=0 where A is the
+            direction and B is the matrix stored in self.
+
+        Raises
+        ------
+        NotImplementedError:
+            If the method given as parameter is not implemented.
+
+        """
+        prop = None
+
+        if type(direction) != DenseOperatorJAX:
+            direction = DenseOperatorJAX(direction)
+
+        # if use_jnp == True:
+        #     if method == "Frechet":
+        #         a = self.data * tau
+        #         e = direction.data * tau
+        #         if compute_expm:
+        #             # prop, prop_grad = la.expm_frechet(a, e, compute_expm=True)
+        #             prop, prop_grad =jax.scipy.linalg.expm_frechet(a, e, compute_expm=True)
+        #             # ###prop, prop_grad = np.array(prop), np.array(prop_grad)
+        #             return prop,prop_grad
+                
+        #         else:
+        #             prop_grad = la.expm_frechet(a, e, compute_expm=False)
+        #             # prop =jax.scipy.linalg.expm_frechet(a, e, compute_expm=True)
+
+
+        if method == "Frechet":
+            a = self.data * tau
+            e = direction.data * tau
+            if compute_expm:
+                # prop, prop_grad = la.expm_frechet(a, e, compute_expm=True)
+                prop, prop_grad = jax.scipy.linalg.expm_frechet(a, e, compute_expm=True)
+                # ###prop, prop_grad = np.array(prop), np.array(prop_grad)
+                if type(prop_grad) != DenseOperatorJAX:
+                    prop_grad = DenseOperatorJAX(prop_grad)
+                if type(prop) != DenseOperatorJAX:
+                    prop = DenseOperatorJAX(prop)
+                if compute_expm:
+                    return prop, prop_grad
+                
+            else:
+                prop_grad = jax.scipy.linalg.expm_frechet(a, e, compute_expm=False)
+                # prop =jax.scipy.linalg.expm_frechet(a, e, compute_expm=True)
+
+        elif method == "spectral":
+            if compute_expm:
+                prop, prop_grad = self._dexp_diagonalization(
+                    direction=direction, tau=tau,
+                    is_skew_hermitian=is_skew_hermitian,
+                    compute_expm=compute_expm
+                )
+            else:
+                prop_grad = self._dexp_diagonalization(
+                    direction=direction, tau=tau,
+                    is_skew_hermitian=is_skew_hermitian,
+                    compute_expm=compute_expm
+                )
+
+        elif method == "approx":
+            d_m = (self.data + epsilon * direction.data) * tau
+            dprop = jax.scipy.linalg.expm(d_m)
+            prop = self.exp(tau)
+            prop_grad = (dprop - prop) * (1 / epsilon)
+
+        elif method == "first_order":
+            if compute_expm:
+                prop = self.exp(tau)
+            prop_grad = direction.data * tau
+
+        elif method == "second_order":
+            if compute_expm:
+                prop = self.exp(tau)
+            prop_grad = direction.data * tau
+            prop_grad += (self.data @ direction.data
+                          + direction.data @ self.data) * (tau * tau * 0.5)
+
+        elif method == "third_order":
+            if compute_expm:
+                prop = self.exp(tau)
+            prop_grad = direction.data * tau
+            prop_grad += (self.data @ direction.data
+                          + direction.data @ self.data) * tau * tau * 0.5
+            prop_grad += (
+                 self.data @ self.data @ direction.data
+                 + direction.data @ self.data @ self.data
+                 + self.data @ direction.data @ self.data
+                         ) * (tau * tau * tau * 0.16666666666666666)
+        else:
+            raise NotImplementedError(
+                'The specified method ' + method + "is not implemented!")
+        if compute_expm:
+            if type(prop) != DenseOperatorJAX:
+                prop = DenseOperatorJAX(prop)
+        if type(prop_grad) != DenseOperatorJAX:
+            prop_grad = DenseOperatorJAX(prop_grad)
+        if compute_expm:
+            return prop, prop_grad
+        else:
+            return prop_grad
+
+    def identity_like(self) -> 'DenseOperatorJAX':
+        """See base class. """
+        assert self.shape[0] == self.shape[1]
+        return DenseOperatorJAX(jnp.eye(self.shape[0], dtype=complex))
+
+    def truncate_to_subspace(
+            self, subspace_indices: Optional[Sequence[int]],
+            map_to_closest_unitary: bool = False
+    ) -> 'DenseOperatorJAX':
+        """See base class. """
+        if subspace_indices is None:
+            return self
+        elif self.shape[0] == self.shape[1]:
+            # square matrix
+            out = type(self)(
+                self.data[jnp.ix_(jnp.array(subspace_indices), jnp.array(subspace_indices))])
+            if map_to_closest_unitary:
+                out = closest_unitary(out)
+        elif self.shape[0] == 1:
+            # bra-vector
+            out = type(self)(self.data[jnp.ix_(jnp.array([0]), jnp.array(subspace_indices))])
+            if map_to_closest_unitary:
+                out *= 1 / out.norm('fre')
+        elif self.shape[0] == 1:
+            # ket-vector
+            out = type(self)(self.data[jnp.ix_(jnp.array(subspace_indices), jnp.array([0]))])
+            if map_to_closest_unitary:
+                out *= 1 / out.norm('fre')
+        else:
+            out = type(self)(self.data[jnp.ix_(jnp.array(subspace_indices))])
+
+        return out
+
+
+

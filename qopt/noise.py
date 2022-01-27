@@ -75,6 +75,11 @@ from typing import Callable, Tuple, Optional, List, Union
 from abc import ABC, abstractmethod
 from scipy import signal
 
+import random
+import jax.numpy as jnp
+from jax import jit,vmap
+import jax
+from functools import partial
 
 def bell_curve_1dim(x: Union[np.ndarray, float],
                     stdx: float) -> Union[np.ndarray, float]:
@@ -638,3 +643,427 @@ class NTGColoredNoise(NoiseTraceGenerator):
             np.mean(spectral_density_or_spectrum, axis=0)[1:-1] -
             self.noise_spectral_density(sample_frequencies)[1:-1])
         return deviation_norm
+
+
+###############################################################################
+
+@partial(jit,static_argnums=1)
+def _sample_1dim_gaussian_distribution_jnp(std1: jnp.array,
+                                      n_samples: int, sample_stds=5.,eps=.001) -> jnp.ndarray:
+    """
+    Returns 'n_samples' samples from the one dimensional bell curve.
+
+    The samples are chosen such, that the integral over the bell curve between
+    two adjacent samples is always the same.
+
+    Parameters
+    ----------
+    std1: float
+        Standard deviation of the bell curve.
+
+    n_samples: int
+        Number of samples returned.
+
+    Returns
+    -------
+    selected_x: np.ndarray
+        Noise samples.
+
+    """
+    std1 = jnp.asarray(std1)
+    x = jnp.mgrid[-sample_stds:sample_stds+ .5*eps:eps ]
+    cum_dist = jnp.broadcast_to(jnp.expand_dims(0.5*(1+jax.scipy.special.erf(x/2**0.5)),1),x.shape+(n_samples,))
+    
+    step_vals = jnp.expand_dims(jnp.linspace(1,n_samples,n_samples)/(n_samples+1),0)
+
+    selected_x = x[jnp.argmin(jnp.abs(cum_dist-step_vals),axis=0)]
+    selected_x = jnp.expand_dims(std1,1)*jnp.expand_dims(selected_x,0)
+    
+    # xjnp.where(cum_dist>step_vals,jnp.broadcast_to(jnp.expand_dims(x,1),x.shape+(n_samples,)),0)
+    
+    # jnp.broadcast_to(jnp.expand_dims(x,x.shape+(n_samples,)
+    
+    # x = jnp.mgrid[-5 * std1:5.0001 * std1:0.001 * std1]
+    # normal_distribution = bell_curve_1dim_jnp(x, jnp.expand_dims(std1,0))
+    # normal_distribution /= jnp.sum(normal_distribution,axis=0)
+    # selected_x = []
+    # it_sum = 0
+    # iterator = 1
+    # for i in range(10000):
+    #     it_sum += normal_distribution[i]
+    #     if it_sum > iterator / (n_samples + 1):
+    #         iterator += 1
+    #         selected_x.append(x[i])
+    return selected_x
+
+
+class NTGQuasiStaticJAX(NoiseTraceGenerator):
+    """
+    This class draws noise traces of quasistatic noise.
+
+    The Noise distribution is assumed normal. It would not make sense to use
+    the attribute always_redraw_samples if the samples are deterministic,
+    and therefore always the same. If multiple noise operators are given, then
+    the noise is sampled for each one separately.
+
+    Parameters
+    ----------
+    standard_deviation: List[float], len (n_noise_operators)
+        Standard deviations of the noise assumed on the noise operators.
+
+    n_samples_per_trace: int
+        Number of noise samples per trace.
+
+    n_traces: int, optional
+        Number of noise traces. Default is 1.
+
+    noise_samples: None or np.ndarray, optional
+        shape (n_noise_operators, n_traces, n_samples_per_trace)
+        Precalculated noise samples. Defaults to None.
+
+    sampling_mode: {'uncorrelated_deterministic', 'monte_carlo'}, optional
+        The method by which the quasi static noise samples are drawn. The
+        following are implemented:
+        'uncorrelated_deterministic': No correlations are assumed. Each noise
+        operator is sampled n_traces times deterministically.
+        'monte_carlo': The noise is assumed to be correlated. Samples are drawn
+        by pseudo-randomly. Defaults to 'uncorrelated_deterministic'.
+
+    Attributes
+    ----------
+    standard_deviation: List[float], len (n_noise_operators)
+        Standard deviations of the noise assumed on the noise operators.
+
+    See Also
+    --------
+    noise.NoiseTraceGenerator: Abstract Base Class
+
+    """
+
+    def __init__(self, standard_deviation: List[float],
+                 n_samples_per_trace: int,
+                 n_traces: int = 1,
+                 noise_samples: Optional[np.ndarray] = None,
+                 always_redraw_samples: bool = True,
+                 sampling_mode: str = 'uncorrelated_deterministic',
+                 seed: Optional[int] = None):
+        n_noise_operators = len(standard_deviation)
+        super().__init__(noise_samples=noise_samples,
+                         n_samples_per_trace=n_samples_per_trace,
+                         n_traces=n_traces,
+                         n_noise_operators=n_noise_operators,
+                         always_redraw_samples=always_redraw_samples)
+        self.standard_deviation = jnp.asarray(standard_deviation)
+        
+        self.sampling_mode = sampling_mode
+        self.seed = seed if seed is not None else random.randint(0,2**32-1)
+        self.rnd_key_first = jax.random.PRNGKey(self.seed)
+        self.rnd_key_arr = [self.rnd_key_first]
+        
+    @property
+    def n_traces(self) -> int:
+        """Number of traces.
+
+        The number of requested traces must be multiplied with the number of
+        standard deviations because if standard deviation is sampled
+        separately.
+
+        """
+        if self._n_traces:
+            if self.sampling_mode == 'uncorrelated_deterministic':
+                return self._n_traces * len(self.standard_deviation)
+            elif self.sampling_mode == 'monte_carlo':
+                return self._n_traces
+            else:
+                raise ValueError('Unsupported sampling mode!')
+        else:
+            return self.noise_samples.shape[1]
+
+    def _sample_noise(self) -> None:
+        """
+        Draws quasi static noise samples from a normal distribution.
+
+        Each noise contribution (corresponding to one noise operator) is
+        sampled separately. For each standard deviation n_traces traces are
+        calculated.
+
+        """
+        if self.sampling_mode == 'uncorrelated_deterministic':
+            # self._noise_samples = jnp.zeros(
+            #     (len(self.standard_deviation),
+            #      self._n_traces * len(self.standard_deviation),
+            #      self.n_samples_per_trace))
+            # for i, std in enumerate(self.standard_deviation):
+                
+            n_std_dev = len(self.standard_deviation)
+            _noise_samples = _sample_1dim_gaussian_distribution_jnp(self.standard_deviation, self._n_traces)
+            self._noise_samples = jnp.broadcast_to(jnp.expand_dims(
+                jnp.tile(_noise_samples,n_std_dev)*jnp.repeat(jnp.eye(n_std_dev),self._n_traces,axis=1),2),
+                (n_std_dev,self._n_traces*n_std_dev,self.n_samples_per_trace))
+                # for j in range(self._n_traces):
+                #     self._noise_samples[i, i * self._n_traces + j, :] \
+                #         = samples[j] * np.ones(self.n_samples_per_trace)
+
+        elif self.sampling_mode == 'monte_carlo':
+            
+            self._noise_samples = jnp.einsum(
+                'i,ijk->ijk',
+                self.standard_deviation,
+                jax.random.normal(key=self.rnd_key_arr[-1],shape=(len(self.standard_deviation), self.n_traces, 1))
+            )
+            self._noise_samples = jnp.repeat(
+                self._noise_samples, self.n_samples_per_trace, axis=2)
+            
+            self.rnd_key_arr.append(jax.random.split(self.rnd_key_arr[-1],num=2)[1])
+            
+        else:
+            raise ValueError('Unsupported sampling mode!')
+
+
+def _fast_colored_noise_jnp(spectral_density: Callable, dt: float, n_samples: int,
+                       output_shape: Tuple, key, r_power_of_two=False
+                       ) -> jnp.ndarray:
+    """
+    Generates noise traces of arbitrary colored noise.
+
+    Use this code for validation:
+    >>> from scipy import signal
+    >>> import matplotlib.pyplot as plt
+    >>> traces = fast_colored_noise(spectral_density, dt, n_samples,
+    >>>                             output_shape)
+    >>> f_max = 1 / dt
+    >>> f, S = signal.welch(traces, f_max, axis=-1)
+    >>> plt.loglog(f, spectral_density(f))
+    >>> plt.loglog(f, S.mean(axis=0))
+
+    Parameters
+    ----------
+    spectral_density: Callable
+        The one sided spectral density as function of frequency.
+
+    dt: float
+        Time distance between two samples.
+
+    n_samples: int
+        Number of samples.
+
+    output_shape: tuple of int
+        Shape of the noise traces to be returned.
+
+    r_power_of_two: bool
+        If true, then n_samples is rounded downwards to the next power of 2 for
+        an efficient fast fourier transform.
+
+    Returns
+    -------
+    delta_colored: np.ndarray, shape(output_shape, actual_n_samples)
+        Where actual_n_samples is n_samples or the largest power of 2 smaller
+        than n_samples if r_power_of_two is true.
+
+    """
+    f_max = 1 / dt
+    f_nyquist = f_max / 2
+    s0 = 1 / f_nyquist
+    if r_power_of_two:
+        actual_n_samples = int(2 ** jnp.ceil(jnp.log2(n_samples)))
+    else:
+        actual_n_samples = int(n_samples)
+
+    delta_white = jax.random.normal(key,(*output_shape, actual_n_samples))
+    delta_white_ft = jnp.fft.rfft(delta_white, axis=-1)
+    # Only positive frequencies since FFT is real and therefore symmetric
+    f = jnp.linspace(0, f_nyquist, actual_n_samples // 2 + 1)
+    f = spectral_density(f[1:])
+    f = jnp.pad(f,((1, 0),))
+    delta_colored = jnp.fft.irfft(delta_white_ft * jnp.sqrt(f / s0),
+                                 n=actual_n_samples, axis=-1)
+    # the ifft takes r//2 + 1 inputs to generate r outputs
+
+    return delta_colored
+
+
+class NTGColoredNoiseJAX(NoiseTraceGenerator):
+    """
+    This class draws noise samples from noises of arbitrary colored spectra.
+
+    Parameters
+    ----------
+    n_samples_per_trace: int
+        Number of noise samples per trace.
+
+    n_traces: int, optional
+        Number of noise traces. Default is 1.
+
+    n_noise_operators: int, optional
+        Number of noise operators. Default is 1.
+
+    always_redraw_samples: bool
+        If true. The samples are always redrawn upon request. The stored
+        samples are not returned.
+
+    noise_spectral_density: function
+        The one-sided noise spectral density as function of frequency.
+
+    dt: float
+        Time distance between two adjacent samples.
+
+    low_frequency_extension_ratio: int, optional
+        When creating the time samples, the total time is multiplied with this
+        factor. This allows taking frequencies into account which are lower
+        than 1 / total time. Defaults to 1.
+
+    Attributes
+    ----------
+    noise_spectral_density: function
+        The noise spectral density as function of frequency.
+
+    dt: float
+        Time distance between two adjacent samples.
+
+    Methods
+    -------
+    _sample_noise: None
+        Samples noise from an arbitrary colored spectrum.
+
+    See Also
+    --------
+    noise.NoiseTraceGenerator: Abstract Base Class
+
+    """
+
+    def __init__(self,
+                 n_samples_per_trace: int,
+                 noise_spectral_density: Callable,
+                 dt: float,
+                 n_traces: int = 1,
+                 n_noise_operators: int = 1,
+                 always_redraw_samples: bool = True,
+                 low_frequency_extension_ratio: int = 1,
+                 seed: Optional[int] = None):
+        super().__init__(n_traces=n_traces,
+                         n_samples_per_trace=n_samples_per_trace,
+                         noise_samples=None,
+                         n_noise_operators=n_noise_operators,
+                         always_redraw_samples=always_redraw_samples)
+        self.noise_spectral_density = noise_spectral_density
+        self.dt = dt
+        if low_frequency_extension_ratio < 1:
+            raise ValueError("The low frequency extension ratio must be "
+                             "greater or equal to 1.")
+        self.low_frequency_extension_ratio = low_frequency_extension_ratio
+        if hasattr(dt, "__len__"):
+            raise ValueError('dt is supposed to be a scalar value!')
+            
+        self.seed = seed if seed is not None else random.randint(0,2**32-1)
+        self.rnd_key_first = jax.random.PRNGKey(self.seed)
+        self.rnd_key_arr = [self.rnd_key_first]
+            
+    def _sample_noise(self, **kwargs) -> None:
+        """Samples noise from an arbitrary colored spectrum. """
+        if self._n_noise_operators is None:
+            raise ValueError('Please specify the number of noise operators!')
+        if self._n_traces is None:
+            raise ValueError('Please specify the number of noise traces!')
+        if self._n_samples_per_trace is None:
+            raise ValueError('Please specify the number of noise samples per'
+                             'trace!')
+            
+        
+        noise_samples = _fast_colored_noise_jnp(
+            spectral_density=self.noise_spectral_density,
+            n_samples=
+            self.n_samples_per_trace * self.low_frequency_extension_ratio,
+            output_shape=(self.n_noise_operators, self.n_traces),
+            r_power_of_two=False,
+            dt=self.dt,
+            key=self.rnd_key_arr[-1])
+        self._noise_samples = noise_samples[:, :, :self.n_samples_per_trace]
+        
+        self.rnd_key_arr.append(jax.random.split(self.rnd_key_arr[-1],num=2)[1])
+        
+    def plot_periodogram(self, n_average: int, scaling: str = 'density',
+                         log_plot: Optional[str] = None, draw_plot=True):
+        """Creates noise samples and plots the corresponding periodogram.
+
+        Parameters
+        ----------
+        n_average: int
+            Number of Periodograms which are averaged.
+
+        scaling: {'density', 'spectrum'}, optional
+            If 'density' then the power spectral density in units of V**2/Hz is
+            plotted.
+            If 'spectral' then the power spectrum in units of V**2 is plotted.
+            Defaults to 'density'.
+
+        log_plot: {None, 'semilogy', 'semilogx', 'loglog'}, optional
+            If None, then the plot is not plotted logarithmically. If
+            'semilogy' only the y-axis is plotted logarithmically, if
+            'semilogx' only the x-axis is plotted logarithmically, if 'loglog'
+            both axis are plotted logarithmically. Defaults to None.
+
+        draw_plot: bool, optional
+            If true, then the periodogram is plotted. Defaults to True.
+
+        Returns
+        -------
+        deviation_norm: float
+            The vector norm of the deviation between the actual power spectral
+            density and the power spectral densitry found in the periodogram.
+
+        """
+
+        noise_samples = fast_colored_noise(
+            spectral_density=self.noise_spectral_density,
+            n_samples=self.n_samples_per_trace,
+            output_shape=(n_average,),
+            r_power_of_two=False,
+            dt=self.dt
+        )
+
+        sample_frequencies, spectral_density_or_spectrum = signal.periodogram(
+            x=noise_samples,
+            fs=1 / self.dt,
+            return_onesided=True,
+            scaling=scaling,
+            axis=-1
+        )
+
+        if scaling == 'density':
+            y_label = 'Power Spectral Density (V**2/Hz)'
+        elif scaling == 'spectrum':
+            y_label = 'Power Spectrum (V**2)'
+        else:
+            raise ValueError('Unexpected scaling argument.')
+
+        if draw_plot:
+            plt.figure()
+
+            if log_plot is None:
+                plot_function = plt.plot
+            elif log_plot == 'semilogy':
+                plot_function = plt.semilogy
+            elif log_plot == 'semilogx':
+                plot_function = plt.semilogx
+            elif log_plot == 'loglog':
+                plot_function = plt.loglog
+            else:
+                raise ValueError('Unexpected plotting mode')
+
+            plot_function(sample_frequencies,
+                          np.mean(spectral_density_or_spectrum, axis=0),
+                          label='Periodogram')
+            plot_function(sample_frequencies,
+                          self.noise_spectral_density(sample_frequencies),
+                          label='Spectral Noise Density')
+
+            plt.ylabel(y_label)
+            plt.xlabel('Frequency (Hz)')
+            plt.legend(['Periodogram', 'Spectral Noise Density'])
+            plt.show()
+
+        deviation_norm = np.linalg.norm(
+            np.mean(spectral_density_or_spectrum, axis=0)[1:-1] -
+            self.noise_spectral_density(sample_frequencies)[1:-1])
+        return deviation_norm
+
