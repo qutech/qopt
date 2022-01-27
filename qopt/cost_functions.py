@@ -103,7 +103,8 @@ import filter_functions.numeric
 from qopt import matrix, solver_algorithms
 from qopt.util import needs_refactoring, deprecated
 from qopt.matrix import ket_vectorize_density_matrix, \
-    convert_ket_vectorized_density_matrix_to_square
+    convert_ket_vectorized_density_matrix_to_square, \
+    convert_unitary_to_super_operator
 
 import jax.numpy as jnp
 from jax import jit, vmap
@@ -1451,6 +1452,75 @@ class OperationNoiseInfidelity(CostFunction):
         return np.mean(-derivative, axis=2)
 
 
+class LiouvilleMonteCarloEntanglementInfidelity(CostFunction):
+    """
+    Entanglement infidelity for a combination of Monte Carlo and Liouville
+    description.
+
+    The propagators are first mapped to the super operator formalism in
+    Liouville space. Next, they are averaged and finally we calculate the
+    entanglement infidelity.
+
+    Systematic errors cannot be neglected in the current formulation.
+
+    Parameters
+    ----------
+    solver: `Solver`
+        The time slot computer simulating the systems dynamics.
+
+    target: `ControlMatrix`
+        Unitary target evolution.
+
+    label: list of str
+        Indices of the returned infidelities for distinction in the analysis.
+
+    computational_states: list of int, optional
+        If set, the chosen fidelity is only calculated for the specified
+        subspace.
+
+    """
+
+    def __init__(self,
+                 solver: solver_algorithms.SchroedingerSMonteCarlo,
+                 target: Optional[matrix.OperatorMatrix],
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None):
+        if label is None:
+            label = ['Super Operator M.C. Ent. Infidelity']
+        super().__init__(solver=solver, label=label)
+        self.solver = solver
+        self.target = target
+
+        self.computational_states = computational_states
+
+    def costs(self):
+        """See base class. """
+        n_traces = len(self.solver.forward_propagators_noise)
+        dim = self.solver.forward_propagators_noise[0][0].shape[0]
+        propagator = type(
+            self.solver.forward_propagators_noise[0][0])(
+            np.zeros([dim ** 2, dim ** 2]))
+        for propagators_by_trace in \
+                self.solver.forward_propagators_noise:
+            propagator += convert_unitary_to_super_operator(
+                propagators_by_trace[-1])
+        propagator *= (1 / n_traces)
+
+        infid = 1 - entanglement_fidelity_super_operator(
+            propagator=propagator,
+            target=self.target,
+            computational_states=self.computational_states
+        )
+        return infid
+
+    def grad(self):
+        """See base class. """
+        raise NotImplementedError('The derivative of the cost function '
+                                  'LiouvilleMonteCarloEntanglementInfidelity'
+                                  ' has not been implemented'
+                                  'yet.')
+
+
 class OperatorFilterFunctionInfidelity(CostFunction):
     """
     Calculates the infidelity with the filter function formalism.
@@ -1699,12 +1769,23 @@ class LeakageLiouville(CostFunction):
     verbose: int
         Additional printed output for debugging.
 
+    input_unitary: bool
+        If True, then the input is assumed to be formulated in the standard
+        Hilbert space and thus expressed as unitary propagator. This propagator
+        is then expressed as superoperator.
+
+    monte_carlo: bool
+        If True, then we make a monte carlo simulation and average over the
+        propagators.
+
     """
 
     def __init__(self, solver: solver_algorithms.Solver,
                  computational_states: List[int],
                  label: Optional[List[str]] = None,
-                 verbose: int = 0):
+                 verbose: int = 0,
+                 input_unitary: bool = False,
+                 monte_carlo: bool = False):
         if label is None:
             label = ["Leakage Error Lindblad", ]
         super().__init__(solver=solver, label=label)
@@ -1730,11 +1811,43 @@ class LeakageLiouville(CostFunction):
 
         self.projector_comp_ket = ket_vectorize_density_matrix(projector_comp)
 
+        self.input_unitary = input_unitary
+        self.monte_carlo = monte_carlo
+
     def costs(self):
         """See base class. """
+        if self.input_unitary:
+            if self.monte_carlo:
+                n_traces = len(self.solver.forward_propagators_noise)
+                dim = self.solver.forward_propagators_noise[0][0].shape[0]
+                propagator = type(
+                    self.solver.forward_propagators_noise[0][0])(
+                    np.zeros([dim ** 2, dim ** 2]))
+                for propagators_by_trace in \
+                    self.solver.forward_propagators_noise:
+                    propagator += convert_unitary_to_super_operator(
+                        propagators_by_trace[-1])
+                propagator *= (1 / n_traces)
+            else:
+                propagator = convert_unitary_to_super_operator(
+                    self.solver.forward_propagators[-1])
+        else:
+            if self.monte_carlo:
+                n_traces = len(self.solver.forward_propagators_noise)
+                dim = self.solver.forward_propagators_noise[0][0].shape[0]
+                propagator = type(
+                    self.solver.forward_propagators_noise[0][0])(
+                    np.zeros([dim, dim]))
+                for propagators_by_trace in \
+                    self.solver.forward_propagators_noise:
+                    propagator += propagators_by_trace[-1]
+                propagator *= (1 / n_traces)
+            else:
+                propagator = self.solver.forward_propagators[-1]
+
         leakage = (1 / self.dim_comp) * (
                 self.projector_leakage_bra
-                * self.solver.forward_propagators[-1]
+                * propagator
                 * self.projector_comp_ket
         )
 
