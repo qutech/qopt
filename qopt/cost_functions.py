@@ -2019,13 +2019,14 @@ def _entanglement_fidelity_super_operator_jnp(
         # onto the computational space anyway.
 
         target_inv = jnp.conj(target.T)
-        target_inv_full_space = jnp.zeros((d_leakage, d_leakage))
+        target_inv_full_space = jnp.zeros((d_leakage + dim_comp, d_leakage + dim_comp))
 
         # for i, row in enumerate(computational_states):
         #     for k, column in enumerate(computational_states):
-        target_inv_full_space.at[computational_states] = target_inv[computational_states]
+        target_inv_full_space.at[computational_states].set(target_inv[computational_states])
 
-        target_inv_full_space = jnp.kron(jnp.eye(d_leakage),jnp.conj(target.T))
+        #wrong(?)
+        # target_inv_full_space = jnp.kron(jnp.eye(d_leakage),jnp.conj(target.T))
 
         # Then convert the target unitary into Liouville space.
         
@@ -2559,6 +2560,8 @@ def _state_fidelity_subspace_jnp(
     remove: tuple
 ) -> jnp.float64:
     r"""
+    OUTDATED DOCSTRING
+
     Quantum state fidelity on a subspace.
 
     We assume that the target state is defined only on a subspace of the total
@@ -2597,8 +2600,24 @@ def _state_fidelity_subspace_jnp(
 
     TODO:
         * functions should not change type of input arrays
-
+        
+        
     """
+    
+    
+    leakage_total_dimension = jnp.prod(jnp.asarray(remove))
+    
+    #cannot work as shape depends on propagated state itself?
+    
+    if propagated_state.size >= \
+            (propagated_state.size * leakage_total_dimension) ** 2:
+        # propagated state given as density matrix
+        if propagated_state.shape[1] == 1:
+            # the density matrix is vectorized
+            
+            d = int(jnp.sqrt(propagated_state.size))
+            propagated_state= propagated_state.reshape([d, d]).T
+    
 
     rho = _ptrace_jnp(propagated_state,dims=dims, remove=remove)
 

@@ -1517,7 +1517,7 @@ class ScalarMinimizingOptimizerJAX(OptimizerJAX):
         #TODO: scipy not accepting jax array? explicitly copy? (slow?)
         return np.array(grad,copy=True)
     
-    @profile
+    # @profile
     def run_optimization(self, initial_control_amplitudes: np.array,
                          verbose: bool = False) -> optimization_data.OptimizationResult:
         super().prepare_optimization(

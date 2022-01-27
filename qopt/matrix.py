@@ -2067,13 +2067,15 @@ class DenseOperatorJAX(OperatorMatrix):
 
     """
 
+    __slots__ = ("data",)
+
     def __init__(
             self,
             obj: Union[Qobj, np.ndarray, sp.csr_matrix, 'DenseOperator', jaxlib.xla_extension.DeviceArray]) \
             -> None:
         super().__init__()
         self.data = None
-        if type(obj) is jaxlib.xla_extension.DeviceArray:
+        if isinstance(obj,jnp.ndarray):
             self.data = obj.astype(jnp.complex128)
         elif type(obj) is DenseOperatorJAX:
             self.data = obj.data

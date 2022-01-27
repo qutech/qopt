@@ -3167,7 +3167,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         #     for _ in range(self.noise_trace_generator.n_traces)]
 
         # for fwd_per_trace, prop_per_trace in zip(self._fwd_prop_noise,
-        #                                          self._prop_noise):
+        #                                           self._prop_noise):
         #     for prop in prop_per_trace:
         #         fwd_per_trace.append(prop * fwd_per_trace[-1])
         
@@ -3177,14 +3177,18 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         
         self._fwd_prop_noise_jnp = jnp.append(jnp.broadcast_to(self._initial_state_jnp.copy(),(sh[0],1,*sh[2:])),cum_prop_noise,axis=1)
 
-
+    #TODO: list conversion suuuuuper slow
+    #(theoretically noise conversion could be split up to make it faster)
     @profile
     def _compute_forward_propagation(self) -> None:
         """Computes the forward propagators. """
         super()._compute_forward_propagation()
         # if self._fwd_prop_noise_jnp is None:
         #     self._compute_forward_propagation_jnp()
-            
+        
+        # self._fwd_prop_noise = _convert_DOPJAX_noise(self.forward_propagators_noise_jnp)
+    
+        
         self._fwd_prop_noise = [[matrix.DenseOperatorJAX(p) for p in trace] for trace in self.forward_propagators_noise_jnp]
 
     def _compute_reversed_propagation_jnp(self) -> None:
@@ -3266,6 +3270,22 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
             raise ValueError('Unknown gradient derivative approximation '
                              'method:'
                              + str(self.frechet_deriv_approx_method))
+
+
+# #TEST DenseOpreratorJAX-conversion in vmap
+
+# Nope, can't make it a valid JAX type; jax array apparently also not subclassable
+# @jit
+# def _convert_DOPJAX_loop(data):
+#     return matrix.DenseOperatorJAX(data)
+
+# @jit
+# def _convert_DOPJAX_t(data):
+#     return vmap(_convert_DOPJAX_loop,in_axes=(0,))(data)
+
+# @jit
+# def _convert_DOPJAX_noise(data):
+#     return vmap(_convert_DOPJAX_t,in_axes=(0,))(data)
 
 
 class SchroedingerSMCControlNoiseJAX(SchroedingerSMonteCarloJAX):
