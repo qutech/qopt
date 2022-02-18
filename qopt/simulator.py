@@ -59,11 +59,6 @@ from qopt import cost_functions, performance_statistics, solver_algorithms
 
 from qopt.util import needs_refactoring
 
-# import jax
-# from jax import jit, vmap
-import jax.numpy as jnp
-# from functools import partial
-
 class Simulator(object):
     """
     The Dynamics class provides the interface for the Optimizer class.
@@ -396,56 +391,163 @@ class Simulator(object):
 
 ###############################################################################
 
+try:
+    import jax.numpy as jnp
+    _HAS_JAX = True
+except ImportError:
+    from unittest import mock
+    jnp = mock.Mock()
+    _HAS_JAX = False
 
 class SimulatorJAX(Simulator):
+    """See docstring of class w/o JAX. Requires solver with JAX"""
+
+    def __init__(
+            self,
+            solvers: Optional[Sequence[solver_algorithms.SolverJAX]],
+            cost_funcs: Optional[Sequence[cost_functions.CostFunction]],
+            optimization_parameters=None,
+            num_ctrl=None,
+            times=None,
+            num_times=None,
+            record_performance_statistics: bool = True,
+            numeric_jacobian: bool = False
+    ):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
+        super().__init__(solvers,cost_funcs,optimization_parameters,num_ctrl,
+                         times,num_times,record_performance_statistics,
+                         numeric_jacobian)
+
+    def wrapped_cost_functions(self, pulse=None):
+        """
+        Wraps the cost functions of the fidelity computer.
+
+        This function coordinates the complete simulation including the
+        application of the transfer function, the execution of the time
+        slot computer and the evaluation of the actual cost functions.
+
+        Parameters
+        ----------
+        pulse: (j)np array optional
+            If no pulse is specified the cost function is evaluated for the
+            attribute pulse.
+
+        Returns
+        -------
+        costs: jnp array, shape (n_fun)
+            Array of costs (i.e. infidelities).
+
+        costs_indices: list of str
+            Names of the costs.
+
+        """
+        if pulse is None:
+            pulse = self.pulse
+
+        for solver in self.solvers:
+            solver.set_optimization_parameters(pulse)
+
+        costs = []
+
+        if self.stats:
+            self.stats.cost_func_eval_times.append([])
+            for i, cost_func in enumerate(self.cost_funcs):
+                t_start = time.time()
+                cost = cost_func.costs()
+                t_end = time.time()
+                self.stats.cost_func_eval_times[-1].append(t_end - t_start)
+
+                # reimplement the block below
+                costs.append(jnp.asarray(cost).flatten())
+
+                """
+                I do not understand this block anymore. The cost can be an 
+                array or a scalar, but the scalar can not be reshaped.
+                if hasattr(cost, "__len__"):
+                    costs.append(cost)
+                else:
+                    costs.append(cost.reshape(1))
+                """
+            costs = jnp.concatenate(costs, axis=0)
+        else:
+            for i, cost_func in enumerate(self.cost_funcs):
+                cost = cost_func.costs()
+
+                costs.append(jnp.asarray(cost).flatten())
+                """
+                if hasattr(cost, "__len__"):
+                    costs.append(cost)
+                else:
+                    costs.append(cost.reshape(1))
+                """
+            costs = jnp.concatenate(costs, axis=0)
+
+        return jnp.asarray(costs)
+
+    def wrapped_jac_function(self, pulse=None):
+        """
+        Wraps the gradient calculation functions of the fidelity computer.
+
+        Parameters
+        ----------
+        pulse: (j)np array, optional
+            shape: (num_t, num_ctrl) If no pulse is specified the cost function
+            is evaluated for the attribute pulse.
+
+        Returns
+        -------
+        jac: jnp array
+            Array of gradients of shape (num_t, num_func, num_amp).
+        """
+
+        if self.numeric_jacobian:
+            return self.numeric_gradient(pulse=pulse)
+
+        if pulse is None:
+            pulse = self.pulse
+
+        for solver in self.solvers:
+            solver.set_optimization_parameters(pulse)
+
+        jacobians = []
+
+        record_evaluation_times = bool(self.stats)
+
+        if record_evaluation_times:
+            self.stats.grad_func_eval_times.append([])
+
+        for i, cost_func in enumerate(self.cost_funcs):
+            if record_evaluation_times:
+                t_start = time.time()
+            jac_u = cost_func.grad()
+
+            # if the cost function is scalar, an extra dimension is inserted
+            if len(jac_u.shape) == 2:
+                jac_u = jnp.expand_dims(jac_u, axis=1)
+
+            # apply the chain rule to the derivatives
+            jac_x = cost_func.solver.amplitude_function.derivative_by_chain_rule(
+                jac_u, cost_func.solver.transfer_function(pulse))
+            jac_x_transferred = \
+                cost_func.solver.transfer_function.gradient_chain_rule(
+                    jac_x
+                )
+            jacobians.append(jac_x_transferred)
+            if record_evaluation_times:
+                t_end = time.time()
+                self.stats.grad_func_eval_times[-1].append(t_end - t_start)
+
+        # two dimensional form as required by scipy solvers
+        total_jac = jnp.concatenate(jacobians, axis=1)
+
+        return total_jac
+
+###############################################################################
+
+class SimulatorJAXSpecial(SimulatorJAX):
     """
-    The Dynamics class provides the interface for the Optimizer class.
 
-    It wraps the cost functions and optionally the gradient of the infidelity.
-
-    Parameters
-    ----------
-    solvers: Solver
-        This object calculates the evolution of the system under
-        consideration.
-
-    cost_funcs: List[FidelityComputer]
-        These are the parameters which are optimized.
-
-    optimization_parameters: numpy array, optional
-        The initial pulse of shape (N_t, N_c) where N_t is the
-        number of time steps and N_c the number of controlled parameters.
-
-    num_ctrl: int, optional
-        The number of controlled parameters N_c.
-
-    times: numpy array or list, optional
-        A one dimensional numpy array of the discrete time steps.
-
-    num_times: int, optional
-        The number of time steps N_t. Mainly for consistency checks.
-
-    record_performance_statistics: bool
-        If True, then the evaluation times of the cost functions and their
-        gradients are stored.
-
-    Attributes
-    ----------
-    solvers: list of `Solver`
-        Instances of the time slot computers used by the cost functions.
-
-    cost_funcs: list of `CostFunction`
-        Instances of the cost functions which are to be optimized.
-
-    stats: Stats
-        Performance statistics.
-
-    TODO:
-        * properly implement check method as parser
-        * flags controlling how much data is saved
-        * is the pulse attribute useful?
-        * check attributes for duplication: should times, num_ctrl and
-            num_times be saved at this level?
 
     """
 
@@ -497,7 +599,11 @@ class SimulatorJAX(Simulator):
             self.stats.cost_func_eval_times.append([])
             for i, cost_func in enumerate(self.cost_funcs):
                 t_start = time.time()
-                cost = cost_func.costs()
+                if type(cost_func).__name__ == "OperationInfidelityJAXSpecial" or type(cost_func).__name__ == "OperationNoiseInfidelityJAXSpecial" :
+                    cost = cost_func.costs(pulse[0][-1])
+                else:
+                    raise RuntimeError
+                    
                 t_end = time.time()
                 self.stats.cost_func_eval_times[-1].append(t_end - t_start)
 
@@ -515,7 +621,10 @@ class SimulatorJAX(Simulator):
             costs = jnp.concatenate(costs, axis=0)
         else:
             for i, cost_func in enumerate(self.cost_funcs):
-                cost = cost_func.costs()
+                if type(cost_func).__name__ == "OperationInfidelityJAXSpecial" or type(cost_func).__name__ == "OperationNoiseInfidelityJAXSpecial" :
+                    cost = cost_func.costs(pulse[0][-1])
+                else:
+                    raise RuntimeError
 
                 costs.append(jnp.asarray(cost).flatten())
                 """
@@ -527,101 +636,6 @@ class SimulatorJAX(Simulator):
             costs = jnp.concatenate(costs, axis=0)
 
         return jnp.asarray(costs)
-    
-    ###not able to implement jax.scipy.minimize due to unhashable types
-    # @partial(jit,static_argnums=(0,2,3,4,5,6,7,8,9,10,11,12,13,14))
-    # def wrapped_cost_functions_pure(self, pulse, solver, cost_funcs,
-    #                                 fidelity_measure,
-    #                                 super_operator,
-    #                                 target_jnp,
-    #                                 computational_states,
-    #                                 map_to_closest_unitary,
-    #                                 h_drift_jnp,
-    #                                 h_ctrl_jnp,
-    #                                 _transferred_time_jnp,
-    #                                 transfer_function,
-    #                                 amplitude_function,
-    #                                 _initial_state_jnp,
-    #                                 ):
-    #     #different behavior: only one solver
-    #     """
-    #     Wraps the cost functions of the fidelity computer.
-    
-    #     This function coordinates the complete simulation including the
-    #     application of the transfer function, the execution of the time
-    #     slot computer and the evaluation of the actual cost functions.
-    
-    #     Parameters
-    #     ----------
-    #     pulse: numpy array optional
-    #         If no pulse is specified the cost function is evaluated for the
-    #         attribute pulse.
-    
-    #     Returns
-    #     -------
-    #     costs: numpy array, shape (n_fun)
-    #         Array of costs (i.e. infidelities).
-    
-    #     costs_indices: list of str
-    #         Names of the costs.
-    
-    #     """
-    #     #shouldn't be?
-    #     # if pulse is None:
-    #     #     pulse = self.pulse
-    
-    #     #Doesnt work
-    #     # for solver in solvers:
-    #     #     solver.set_optimization_parameters(pulse)
-    
-    #     costs = []
-    
-    #     # if self.stats:
-    #     #     self.stats.cost_func_eval_times.append([])
-    #     #     for i, cost_func in enumerate(self.cost_funcs):
-    #     #         t_start = time.time()
-    #     #         cost = cost_func.costs()
-    #     #         t_end = time.time()
-    #     #         self.stats.cost_func_eval_times[-1].append(t_end - t_start)
-    
-    #     #         # reimplement the block below
-    #     #         costs.append(jnp.asarray(cost).flatten())
-    
-    #     #         """
-    #     #         I do not understand this block anymore. The cost can be an 
-    #     #         array or a scalar, but the scalar can not be reshaped.
-    #     #         if hasattr(cost, "__len__"):
-    #     #             costs.append(cost)
-    #     #         else:
-    #     #             costs.append(cost.reshape(1))
-    #     #         """
-    #     #     costs = jnp.concatenate(costs, axis=0)
-    #     # else:
-    #     for cost_func in cost_funcs:
-    #         cost = cost_func.costs_pure(solver,
-    #                         fidelity_measure,
-    #                         super_operator,
-    #                         target_jnp,
-    #                         computational_states,
-    #                         map_to_closest_unitary,
-    #                         h_drift_jnp,
-    #                         h_ctrl_jnp,
-    #                         _transferred_time_jnp,
-    #                         transfer_function,
-    #                         amplitude_function,
-    #                         _initial_state_jnp,
-    #                         pulse)
-
-    #         costs.append(jnp.asarray(cost).flatten())
-    #         """
-    #         if hasattr(cost, "__len__"):
-    #             costs.append(cost)
-    #         else:
-    #             costs.append(cost.reshape(1))
-    #         """
-    #     costs = jnp.concatenate(costs, axis=0)
-                
-    #     return jnp.asarray(costs)
 
     def wrapped_jac_function(self, pulse=None):
         """
@@ -658,7 +672,12 @@ class SimulatorJAX(Simulator):
         for i, cost_func in enumerate(self.cost_funcs):
             if record_evaluation_times:
                 t_start = time.time()
-            jac_u = cost_func.grad()
+                
+            if type(cost_func).__name__ == "OperationInfidelityJAXSpecial":
+                jac_u = cost_func.grad(pulse[0][-1])
+            else:
+                raise RuntimeError   
+
 
             # if the cost function is scalar, an extra dimension is inserted
             if len(jac_u.shape) == 2:
@@ -671,6 +690,11 @@ class SimulatorJAX(Simulator):
                 cost_func.solver.transfer_function.gradient_chain_rule(
                     jac_x
                 )
+                
+            if type(cost_func).__name__ == "OperationInfidelityJAXSpecial":
+                # jac_x_transferred.at[0,0,-1].set(jac_x_transferred.at[0,0,-1] + cost_func.der_time_fact(pulse[0][-1]))
+                jac_x_transferred[0,0,-1] += cost_func.der_time_fact(pulse[0][-1])
+                
             jacobians.append(jac_x_transferred)
             if record_evaluation_times:
                 t_end = time.time()
@@ -680,101 +704,3 @@ class SimulatorJAX(Simulator):
         total_jac = jnp.concatenate(jacobians, axis=1)
 
         return total_jac
-
-    # def compare_numeric_to_analytic_gradient(
-    #         self, pulse: Optional[np.ndarray] = None,
-    #         delta_eps: float = 1e-8,
-    #         symmetric: bool = False
-    # ):
-    #     """
-    #     This function compares the numerical to the analytical gradient in order
-    #     to serve as a consistency check.
-
-    #     Parameters
-    #     ----------
-    #     pulse: array
-    #         The pulse at which the gradient is evaluated.
-
-    #     delta_eps: float
-    #         The finite difference.
-
-    #     symmetric: bool
-    #         If True, then the finite differences are evaluated symmetrically
-    #         around the pulse. Otherwise by forward finite differences.
-
-    #     Returns
-    #     -------
-    #     gradient_difference_norm: float
-    #         The matrix norm of the difference between the numeric and analytic
-    #         gradient.
-
-    #     gradient_difference_relative: float
-    #         The relation of the aforementioned norm of the difference matrix
-    #         and the average norm of the numeric and analytic gradient.
-
-    #     """
-    #     numeric_gradient = self.numeric_gradient(pulse=pulse,
-    #                                              delta_eps=delta_eps,
-    #                                              symmetric=symmetric)
-    #     analytic_gradient = self.wrapped_jac_function(pulse=pulse)
-
-    #     diff_norm = np.linalg.norm(numeric_gradient - analytic_gradient)
-    #     relative_difference = 2 * diff_norm \
-    #         / (np.linalg.norm(numeric_gradient)
-    #            + np.linalg.norm(analytic_gradient))
-    #     return diff_norm, relative_difference
-
-    # def numeric_gradient(
-    #         self, pulse: Optional[np.ndarray] = None,
-    #         delta_eps: float = 1e-8,
-    #         symmetric: bool = False
-    # ) -> np.ndarray:
-    #     """
-    #     This function calculates the gradient numerically and analytically
-    #     in order to serve as a consistency check.
-
-    #     Parameters
-    #     ----------
-    #     pulse: array
-    #         The pulse at which the gradient is evaluated.
-
-    #     delta_eps: float
-    #         The finite difference.
-
-    #     symmetric: bool
-    #         If True, then the finite differences are evaluated symmetrically
-    #         around the pulse. Otherwise by forward finite differences.
-
-    #     Returns
-    #     -------
-    #     gradients: array
-    #         The gradients as numpy array of shape (n_time, n_func, n_opers).
-
-    #     """
-    #     if pulse is None:
-    #         test_pulse = self.pulse
-    #     else:
-    #         test_pulse = pulse
-
-    #     central_costs = self.wrapped_cost_functions(pulse=test_pulse)
-
-    #     n_times, n_operators = test_pulse.shape
-    #     n_cost_funcs = len(central_costs)
-
-    #     gradients = np.zeros((n_times, n_cost_funcs, n_operators))
-
-    #     for n_time in range(n_times):
-    #         for n_operator in range(n_operators):
-    #             delta = np.zeros_like(test_pulse, dtype=float)
-    #             delta[n_time, n_operator] = delta_eps
-    #             fwd_val = self.wrapped_cost_functions(test_pulse + delta)
-    #             if symmetric:
-    #                 bck_val = self.wrapped_cost_functions(test_pulse - delta)
-    #                 gradients[n_time, :, n_operator] = (fwd_val - bck_val) / (
-    #                         2 * delta_eps)
-    #             else:
-    #                 gradients[n_time, :, n_operator] = \
-    #                     (fwd_val - central_costs) / delta_eps
-
-    #     return gradients
-

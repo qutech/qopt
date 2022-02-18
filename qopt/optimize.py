@@ -81,36 +81,6 @@ from warnings import warn
 
 from qopt import optimization_data, simulator, performance_statistics
 
-import jax.numpy as jnp
-from jax import grad, jit, vmap
-import jax
-import jax.scipy.optimize as jsco
-# from functools import partial
-
-import cProfile, pstats, io
-
-def profile(fnc):
-    
-    """A decorator that uses cProfile to profile a function"""
-    
-    def inner(*args, **kwargs):
-        
-        pr = cProfile.Profile()
-        pr.enable()
-        retval = fnc(*args, **kwargs)
-        pr.disable()
-        s = io.StringIO()
-        sortby = 'cumulative'
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats()
-        print(s.getvalue())
-        return retval
-
-    return inner
-
-
-
-
 try:
     import simanneal
 except ImportError:
@@ -980,66 +950,34 @@ class SimulatedAnnealingScipy(Optimizer):
 
 ###############################################################################
 
+try:
+    import jax.numpy as jnp
+    from jax import jit, vmap
+    import jax
+    _HAS_JAX = True
+except ImportError:
+    from unittest import mock
+    jit = mock.Mock()
+    jnp = mock.Mock()
+    vmap = mock.Mock()
+    jax = mock.Mock()
+    _HAS_JAX = False
+
 
 class OptimizerJAX(ABC):
-    """ Abstract base class for the optimizer.
-
-    Parameters
-    ----------
-    system_simulator : Simulator
-        The simulator is the interface to the simulation.
-
-    termination_cond: dict, optional
-        The termination conditions of the optimization.
-
-    save_intermediary_steps: bool, optional
-        If True, then the results from intermediary steps are stored. Defaults
-        to True.
-
-    cost_func_weights: list of float, optional
-        The cost functions are multiplied with these weights during the
-        optimisation.
-
-    use_jacobian_function: bool, optional
-        If set to true, then the jacobians are calculated analytically.
-        Defaults to True.
-
-    store_optimizer: bool, optional
-        If True, then the optimizer stores itself in the result class.
-        Defaults to False
-
-
-    Attributes
-    ----------
-    system_simulator : Simulator
-        The simulator is the interface to the simulation.
-
-    pulse_shape : Tuple of int
-        The shape of the control amplitudes is saved and used for the
-        cost functions while the optimization function might need them flatted.
-
-    cost_func_weights: list of float, optional
-        The cost functions are multiplied with these weights during the
-        optimisation.
-
-    use_jacobian_function: bool, optional
-        If set to true, then the jacobians are calculated analytically.
-
-    store_optimizer: bool, optional
-        If True, then the optimizer stores itself in the result class.
-        Defaults to False
-
-    """
+    """See docstring of class w/o JAX. Requires simulator with JAX"""
 
     def __init__(
             self,
-            system_simulator: Optional[simulator.Simulator] = None,
+            system_simulator: Optional[simulator.SimulatorJAX] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = True,
             cost_func_weights: Optional[Sequence[float]] = None,
             use_jacobian_function=True,
             store_optimizer: bool = False
     ):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
         self.system_simulator = system_simulator
         self.use_jacobian_function = use_jacobian_function
         self.termination_conditions = default_termination_conditions
@@ -1078,12 +1016,12 @@ class OptimizerJAX(ABC):
 
         Parameters
         ----------
-        optimization_parameters: np.array
+        optimization_parameters: Union[np.array, jnp.ndarray]
             Raw optimization parameters in a linear array.
 
         Returns
         -------
-        costs: np.array, shape (n_fun)
+        costs: jnp.array, shape (n_fun)
             Cost values.
 
         """
@@ -1112,77 +1050,6 @@ class OptimizerJAX(ABC):
         self._n_cost_fkt_eval += 1
         return costs
     
-    ###not able to implement jax.scipy.minimize due to unhashable types
-    # @partial(jit,static_argnums=(0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17))
-    # def cost_func_wrapper_pure(self, optimization_parameters,system_simulator,pulse_shape,cost_func_weights,
-    #                             solver,
-    #                             cost_funcs,
-    #                             fidelity_measure,
-    #                             super_operator,
-    #                             target_jnp,
-    #                             computational_states,
-    #                             map_to_closest_unitary,
-    #                             h_drift_jnp,
-    #                             h_ctrl_jnp,
-    #                             _transferred_time_jnp,
-    #                             transfer_function,
-    #                             amplitude_function,
-    #                             _initial_state_jnp):
-    #     """Wraps the cost function given by the simulator class.
-
-    #     The relevant information for the analysis is saved.
-
-    #     Parameters
-    #     ----------
-    #     optimization_parameters: np.array
-    #         Raw optimization parameters in a linear array.
-
-    #     Returns
-    #     -------
-    #     costs: np.array, shape (n_fun)
-    #         Cost values.
-
-    #     """
-    #     #TODO: how to implement walltime?
-    #     # if (time.time() - self._opt_start_time) \
-    #     #         > self.termination_conditions['max_wall_time']:
-    #     #     raise WallTimeExceeded
-
-    #     costs = system_simulator.wrapped_cost_functions_pure(
-    #         optimization_parameters.reshape(pulse_shape[::-1]).T,
-    #                                         solver,
-    #                                         cost_funcs,
-    #                                         fidelity_measure,
-    #                                         super_operator,
-    #                                         target_jnp,
-    #                                         computational_states,
-    #                                         map_to_closest_unitary,
-    #                                         h_drift_jnp,
-    #                                         h_ctrl_jnp,
-    #                                         _transferred_time_jnp,
-    #                                         transfer_function,
-    #                                         amplitude_function,
-    #                                         _initial_state_jnp)
-        
-    #     #TODO: how to implement intermediate steps? (doesn't seem to be possible?)
-    #     # if self.save_intermediary_steps:
-    #     #     self.optim_iter_summary.iter_num += 1
-    #     #     self.optim_iter_summary.costs.append(costs)
-    #     #     self.optim_iter_summary.parameters.append(
-    #     #         optimization_parameters.reshape(self.pulse_shape[::-1]).T
-    #     #     )
-    #     # if jnp.linalg.norm(costs) < jnp.linalg.norm(self._min_costs):
-    #     #     self._min_costs = costs
-    #     #     self._min_costs_par = optimization_parameters.reshape(
-    #     #         self.pulse_shape[::-1]).T
-
-    #     # apply the cost function weights after saving the values.
-    #     if cost_func_weights is not None:
-    #         costs *= cost_func_weights
-
-    #     # self._n_cost_fkt_eval += 1
-    #     return costs
-    
     def cost_jacobian_wrapper(self, optimization_parameters):
         """Wraps the cost Jacobian function given by the simulator class.
 
@@ -1190,12 +1057,12 @@ class OptimizerJAX(ABC):
 
         Parameters
         ----------
-        optimization_parameters: np.array
+        optimization_parameters: Union[np.array, jnp.ndarray]
             Raw optimization parameters in a linear array.
 
         Returns
         -------
-        jacobian: np.array, shape (num_func, num_t * num_amp)
+        jacobian: jnp.array, shape (num_func, num_t * num_amp)
             Jacobian of the cost functions.
 
         """
@@ -1219,8 +1086,10 @@ class OptimizerJAX(ABC):
         return jacobian
 
     @abstractmethod
-    def run_optimization(self, initial_control_amplitudes: np.ndarray,
-                         verbose) \
+    def run_optimization(
+            self,
+            initial_control_amplitudes: Union[np.ndarray,jnp.ndarray],
+            verbose) \
             -> optimization_data.OptimizationResult:
         """Runs the optimization of the control amplitudes.
 
@@ -1239,8 +1108,9 @@ class OptimizerJAX(ABC):
         """
         pass
 
-    def prepare_optimization(self,
-                             initial_optimization_parameters: np.ndarray):
+    def prepare_optimization(
+            self,
+            initial_optimization_parameters: Union[np.ndarray,jnp.ndarray]):
         """Prepare for the next optimization.
 
         Parameters
@@ -1312,31 +1182,10 @@ class OptimizerJAX(ABC):
         return optim_result
 
 
-#only changes are np.array() on jax arrays in the end to be picklable, jax.scipy.optimize not usable in qopt workflow (?)
+#only changes are np.array() on jax arrays in the end to be picklable,
+#jax.scipy.optimize not usable in qopt workflow (?)
 class LeastSquaresOptimizerJAX(OptimizerJAX):
-    """
-    Uses the scipy least squares method for optimization.
-
-    Parameters
-    ----------
-    system_simulator: `Simulator`
-        The systems simulator.
-
-    termination_cond: dict
-        Termination conditions.
-
-    save_intermediary_steps: bool, optional
-        If False, only the simulation result is stored. Defaults to False.
-
-    method: str, optional
-        The optimization method used. Currently implemented are:
-        - 'trf': A trust region optimization algorithm. This is the default.
-
-    bounds: array or list of boundaries, optional
-        The boundary conditions for the pulse optimizations. If none are given
-        then the pulse is assumed to take any real value.
-
-    """
+    """See docstring of class w/o JAX."""
 
     def __init__(
             self,
@@ -1347,7 +1196,8 @@ class LeastSquaresOptimizerJAX(OptimizerJAX):
             bounds: Union[np.ndarray, jnp.array, List, None] = None,
             use_jacobian_function=True,
             cost_func_weights: Optional[Sequence[float]] = None,
-            store_optimizer: bool = False):
+            store_optimizer: bool = False,
+            x_scale = None):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,
@@ -1356,9 +1206,12 @@ class LeastSquaresOptimizerJAX(OptimizerJAX):
                          store_optimizer=store_optimizer)
         self.method = method
         self.bounds = bounds
-
-    def run_optimization(self, initial_control_amplitudes: Union[np.array,jnp.array],
-                         verbose: int = 0) -> optimization_data.OptimizationResult:
+        self.x_scale = x_scale
+        
+    def run_optimization(self,
+                         initial_control_amplitudes: Union[np.array,jnp.array],
+                         verbose: int = 0
+                         ) -> optimization_data.OptimizationResult:
         """See base class. """
         super().prepare_optimization(
             initial_optimization_parameters=initial_control_amplitudes)
@@ -1379,7 +1232,8 @@ class LeastSquaresOptimizerJAX(OptimizerJAX):
                 xtol=self.termination_conditions["min_amplitude_change"],
                 gtol=self.termination_conditions["min_gradient_norm"],
                 max_nfev=self.termination_conditions["max_iterations"],
-                verbose=verbose
+                verbose=verbose,
+                x_scale=self.x_scale
             )
 
             if self.system_simulator.stats is not None:
@@ -1410,26 +1264,18 @@ class LeastSquaresOptimizerJAX(OptimizerJAX):
 
 
 class ScalarMinimizingOptimizerJAX(OptimizerJAX):
-    """ Interfaces to the minimize functions of the optimization package in
-    scipy.
+    """See docstring of class w/o JAX."""
 
-    Parameters
-    ----------
-    method: string
-        Takes methods implemented by scipy.optimize.minimize.
-
-    """
     def __init__(
             self,
-            system_simulator: Optional[simulator.Simulator] = None,
+            system_simulator: Optional[simulator.SimulatorJAX] = None,
             termination_cond: Optional[Dict] = None,
             save_intermediary_steps: bool = True,
             method: str = 'L-BFGS-B',
             bounds: Union[np.ndarray, List, None] = None,
-            #jax uses autodiff?
             use_jacobian_function=True,
             cost_func_weights: Optional[Sequence[float]] = None,
-            store_optimizer: bool = False
+            store_optimizer: bool = False,
     ):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
@@ -1437,14 +1283,9 @@ class ScalarMinimizingOptimizerJAX(OptimizerJAX):
                          cost_func_weights=cost_func_weights,
                          use_jacobian_function=use_jacobian_function,
                          store_optimizer=store_optimizer)
-        # if method != "BFGS": raise RuntimeWarning("Only BFGS in jax")
         self.method = method
         self.bounds = bounds
         
-        # if self.bounds is not None:
-        #     print("no bounds in jax")
-        # if "ftol" in termination_cond.keys():
-        #     print("no ftol in jax")
         
     def cost_func_wrapper(self, optimization_parameters):
         """ Evalutes the cost function.
@@ -1456,48 +1297,6 @@ class ScalarMinimizingOptimizerJAX(OptimizerJAX):
         scalar_costs = jnp.sum(costs)
         #need to convert devicearray to float (?)
         return float(scalar_costs)
-    
-    ###not able to implement jax.scipy.minimize due to unhashable types
-    # @partial(jit,static_argnums=(0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17))
-    # def cost_func_wrapper_pure(self, optimization_parameters,
-    #                             system_simulator,
-    #                             pulse_shape,
-    #                             cost_func_weights,
-    #                             solver,
-    #                             cost_funcs,
-    #                             fidelity_measure,
-    #                             super_operator,
-    #                             target_jnp,
-    #                             computational_states,
-    #                             map_to_closest_unitary,
-    #                             h_drift_jnp,
-    #                             h_ctrl_jnp,
-    #                             _transferred_time_jnp,
-    #                             transfer_function,
-    #                             amplitude_function,
-    #                             _initial_state_jnp):
-    #     """ Evalutes the cost function.
-
-    #      The total cost function is defined as the sum of cost functions.
-
-    #      """
-    #     costs = super().cost_func_wrapper_pure(optimization_parameters,system_simulator,pulse_shape,cost_func_weights,
-    #                                 solver,
-    #                                 cost_funcs,
-    #                                 fidelity_measure,
-    #                                 super_operator,
-    #                                 target_jnp,
-    #                                 computational_states,
-    #                                 map_to_closest_unitary,
-    #                                 h_drift_jnp,
-    #                                 h_ctrl_jnp,
-    #                                 _transferred_time_jnp,
-    #                                 transfer_function,
-    #                                 amplitude_function,
-    #                                 _initial_state_jnp)
-    #     scalar_costs = jnp.sum(costs)
-    #     #need to convert devicearray to float (?)
-    #     return scalar_costs
     
     def cost_jacobian_wrapper(self, optimization_parameters):
         """ The Jacobian reduced to the gradient.
@@ -1517,9 +1316,10 @@ class ScalarMinimizingOptimizerJAX(OptimizerJAX):
         #TODO: scipy not accepting jax array? explicitly copy? (slow?)
         return np.array(grad,copy=True)
     
-    # @profile
-    def run_optimization(self, initial_control_amplitudes: np.array,
-                         verbose: bool = False) -> optimization_data.OptimizationResult:
+    def run_optimization(self,
+                         initial_control_amplitudes: Union[np.array,jnp.array],
+                         verbose: bool = False
+                         ) -> optimization_data.OptimizationResult:
         super().prepare_optimization(
             initial_optimization_parameters=initial_control_amplitudes)
 
@@ -1564,89 +1364,6 @@ class ScalarMinimizingOptimizerJAX(OptimizerJAX):
                 )
             except WallTimeExceeded:
                 optim_result = self.write_state_to_result()
-                
-        # elif self.method == 'JAX':
-        #     if self.bounds is not None:
-        #         print("no bounds in jax")
-        #     if "ftol" in self.termination_conditions.keys():
-        #         print("no ftol in jax")
-        #     try:
-        #         for i in range(len(self.system_simulator.cost_funcs)):
-        #             if hasattr(self.system_simulator.cost_funcs[i], 'fidelity_measure'):
-        #                 fidelity_measure = self.system_simulator.cost_funcs[i].fidelity_measure
-        #             else:
-        #                 fidelity_measure = None
-                        
-        #             if hasattr(self.system_simulator.cost_funcs[i], 'super_operator'):
-        #                 super_operator = self.system_simulator.cost_funcs[i].super_operator
-        #             else:
-        #                 super_operator = None
-                        
-        #             if hasattr(self.system_simulator.cost_funcs[i], 'map_to_closest_unitary'):
-        #                 map_to_closest_unitary = self.system_simulator.cost_funcs[i].map_to_closest_unitary
-        #             else:
-        #                 map_to_closest_unitary = None
-                        
-        #             if hasattr(self.system_simulator.cost_funcs[i], 'computational_states'):
-        #                 computational_states = self.system_simulator.cost_funcs[i].computational_states
-        #             else:
-        #                 computational_states = None
-                        
-        #         #TODO: could be different, but should not (?)
-        #         target_jnp = self.system_simulator.cost_funcs[0]._target_jnp
-                
-        #         result = jsco.minimize(
-        #             fun=self.cost_func_wrapper_pure,
-        #             x0=jnp.array(initial_control_amplitudes.T.flatten()),
-        #             # jac=jac,
-        #             # bounds=self.bounds,
-        #             method="BFGS",
-        #             args=(self.system_simulator,jnp.array(self.pulse_shape),self.cost_func_weights,
-        #                                         self.system_simulator.solvers[0],
-        #                                         self.system_simulator.cost_funcs,
-        #                                         fidelity_measure, 
-        #                                         super_operator,
-        #                                         target_jnp,
-        #                                         computational_states,
-        #                                         map_to_closest_unitary,
-        #                                         self.system_simulator.solvers[0]._h_drift_jnp,
-        #                                         self.system_simulator.solvers[0]._h_ctrl_jnp,
-        #                                         self.system_simulator.solvers[0]._transferred_time_jnp,
-        #                                         self.system_simulator.solvers[0].transfer_function,
-        #                                         self.system_simulator.solvers[0].amplitude_function,
-        #                                         self.system_simulator.solvers[0]._initial_state_jnp),
-        #             options={
-        #                 # 'ftol': self.termination_conditions["min_cost_gain"],
-        #                 'gtol': self.termination_conditions["min_gradient_norm"],
-        #                 'maxiter': self.termination_conditions["max_iterations"],
-        #                 # 'disp': verbose
-        #             }
-        #         )
-
-        #         if self.store_optimizer:
-        #             storage_opt = self
-        #         else:
-        #             storage_opt = None
-
-        #         optim_result = optimization_data.OptimizationResult(
-        #             #TODO: .val only workaround? problem underneath?
-        #             final_cost=np.asarray(result.fun.val),
-        #             indices=self.system_simulator.cost_indices,
-        #             final_parameters=np.asarray(result.x.reshape(
-        #                 self.pulse_shape[::-1]).T.val),
-        #             final_grad_norm=np.linalg.norm(np.asarray(result.jac.val)),
-        #             num_iter=result.nfev,
-        #             termination_reason=result.status,
-        #             status=result.status,
-        #             optimizer=storage_opt,
-        #             optim_summary=self.optim_iter_summary,
-        #             optimization_stats=self.system_simulator.stats
-        #         )
-
-        #     except WallTimeExceeded:
-        #         #TODO: doesn't work
-        #         optim_result = self.write_state_to_result()
-        
 
         elif self.method == 'Nelder-Mead':
             try:
