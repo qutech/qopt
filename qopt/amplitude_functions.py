@@ -69,8 +69,6 @@ from typing import Callable, Optional
 import numpy as np
 
 from typing import Union
-import jax.numpy as jnp
-from jax import jit
 
 class AmplitudeFunction(ABC):
     """Abstract Base class of the amplitude function. """
@@ -225,55 +223,62 @@ class CustomAmpFunc(AmplitudeFunction):
 
 ###############################################################################
 
+try:
+    import jax.numpy as jnp
+    from jax import jit
+    _HAS_JAX = True
+except ImportError:
+    from unittest import mock
+    jit = mock.Mock()
+    jnp = mock.Mock()
+    _HAS_JAX = False
+
 
 class IdentityAmpFuncJAX(AmplitudeFunction):
-    """The control amplitudes are identical with the optimization parameters.
-
+    """See docstring of class without JAX.
+    Designed to return jax-numpy-arrays.
     """
-    def __init__(self):
-        pass
 
-    def __call__(self, x: Union[np.ndarray,jnp.ndarray]) -> jnp.ndarray:
+    def __init__(self):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
+
+    def __call__(self, x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
         """See base class. """
         #TODO: is asarray the best way, or rather array with default copying?
         return jnp.asarray(x)
 
-    def derivative_by_chain_rule(self, deriv_by_ctrl_amps: Union[np.ndarray,jnp.ndarray],
-                                 x: Union[np.ndarray,jnp.ndarray]) -> jnp.ndarray:
+    def derivative_by_chain_rule(
+            self,
+            deriv_by_ctrl_amps: Union[np.ndarray,jnp.ndarray],
+            x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
         """See base class. """
         return jnp.asarray(deriv_by_ctrl_amps)
 
 
 class UnaryAnalyticAmpFuncJAX(AmplitudeFunction):
-    """A unary analytic amplitude function which is applied to each amplitude
-    value. This class can be used for every application case where all
-    transferred parameters are mapped one-to-one to the control amplitudes
-    by a single unary function.
-
-    Parameters
-    ----------
-    value_function : Callable float to float
-        This scalar function expresses the functional dependency of the control
-        amplitudes on the optimization parameters. The function is vectorized
-        internally.
-
-    derivative_function : Callable float to float
-        This scalar function describes the derivative of the control
-        amplitudes. The function is vectorized internally.
-
+    """See docstring of class without JAX.
+    Designed to return jax-numpy-arrays.
+    Functions need to be compatible with jit.
     """
-    #TODO: does this work with jax.grad? - Doesn't seem so as functions don't return scalars
+    #TODO: does this work with jax.grad? - Doesn't seem so as functions don't
+    #return scalars
+
     def __init__(self,
                  value_function: Callable[[float, ], float],
                  derivative_function: [Callable[[float, ], float]]):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
         self.value_function = jit(jnp.vectorize(value_function))
         self.derivative_function = jit(jnp.vectorize(derivative_function))
 
-    def __call__(self, x: Union[np.ndarray,jnp.ndarray]) -> jnp.ndarray:
+    def __call__(self, x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
         """See base class. """
         return jnp.asarray(self.value_function(x))
 
-    def derivative_by_chain_rule(self, deriv_by_ctrl_amps: Union[np.ndarray,jnp.ndarray], x):
+    def derivative_by_chain_rule(
+            self,
+            deriv_by_ctrl_amps: Union[np.ndarray, jnp.ndarray], x):
         """See base class. """
         du_by_dx = self.derivative_function(x)
         # du_by_dx shape: (n_time, n_ctrl)
@@ -284,42 +289,32 @@ class UnaryAnalyticAmpFuncJAX(AmplitudeFunction):
 
 
 class CustomAmpFuncJAX(AmplitudeFunction):
-    """A general amplitude function which is applied to the amplitude
-    values.
-
-    Parameters
-    ----------
-    value_function : Callable array to array
-        This function expresses the functional dependency of the control
-        amplitudes on the optimization parameters. The function receives the
-        optimization parameters x as array of the shape (num_t, num_par) and
-        must return the control amplitudes u as array of the shape
-        (num_t, num_ctrl). Where num_t is the number of time slices,
-        num_par the number of optimization parameters and num_ctrl the number
-        of control operators in the Hamiltonian.
-
-    derivative_function : Callable array to array
-        This function describes the derivative of the control amplitudes by the
-        optimization parameters.
-        The function receives the optimisation parameters x as array
-        of shape (num_t, num_par) and must return the derivatives of the
-        control amplitudes by the optimization parameters as array of shape
-        (num_t, num_par, num_ctrl).
-
+    """See docstring of class without JAX.
+    Designed to return jax-numpy-arrays.
+    Functions need to be compatible with jit.
     """
-    def __init__(self,
-                 value_function: Callable[[Union[np.ndarray,jnp.ndarray], ], Union[np.ndarray,jnp.ndarray]],
-                 derivative_function: Callable[[Union[np.ndarray,jnp.ndarray], ], Union[np.ndarray,jnp.ndarray]]):
+
+    def __init__(
+            self,
+            value_function: Callable[[Union[np.ndarray, jnp.ndarray],],
+                                      Union[np.ndarray, jnp.ndarray]],
+            derivative_function: Callable[[Union[np.ndarray, jnp.ndarray],],
+                                           Union[np.ndarray, jnp.ndarray]]):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
         self.value_function = jit(value_function)
         self.derivative_function = jit(derivative_function)
 
-    def __call__(self, x: Union[np.ndarray,jnp.ndarray]) -> jnp.ndarray:
-        #TODO: potentially cases where jnp array causes errors when passed to custom func only supporting np?
+    def __call__(self, x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
+        #TODO: potentially cases where jnp array causes errors
+        #when passed to custom func only supporting np?
         """See base class. """
         return jnp.asarray(self.value_function(x))
 
-    def derivative_by_chain_rule(self, deriv_by_ctrl_amps: Union[np.ndarray,jnp.ndarray],
-                                 x: Union[np.ndarray,jnp.ndarray]) -> jnp.ndarray:
+    def derivative_by_chain_rule(
+            self,
+            deriv_by_ctrl_amps: Union[np.ndarray, jnp.ndarray],
+            x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
         """See base class. """
         du_by_dx = self.derivative_function(x)
         # du_by_dx: shape (time, par, ctrl)
