@@ -61,14 +61,14 @@ def vector_color_map(vectors: np.array):
 
     """
     assert len(vectors.shape) == 2
-    
-    points_on_cmap = np.linspace(0, 1, vectors.shape[-1]) # The ends of 'gist_rainbow' are very similar, thus 'gist_rainbow' will only be queried up to the blue tones. If one wants to use 'rainbow', one might want to change the range to [0, 1]
+
+    points_on_cmap = np.linspace(0, 1, vectors.shape[-1])
     basis_colors = mpl.cm.get_cmap('brg')(points_on_cmap)
     basis_colors = np.array(basis_colors)[:, :-1]
     
     values = np.einsum('ij, ni -> nj', basis_colors, np.abs(vectors))
 
-    # in this basis, the normalization to the rgb range is not preserved, thus it needs to be renormalized. But the colors get very bland/grey.
+    # in this basis, the normalization to the rgb range is not preserved, thus it needs to be renormalized. 
     values /= np.max(values, axis=-1)[..., None]
 
     return values
