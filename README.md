@@ -6,7 +6,10 @@ The documentation can be found on
 It features an API documentation and an introduction in the 
 form of jupyter notebooks demonstrating how to utilize the package. A 
 complementary theoretical introduction is given in the
-[qopt paper](https://arxiv.org/abs/2110.05873).
+qopt paper on 
+[Phys. Rev. Applied](https://doi.org/10.1103/PhysRevApplied.17.034036) and  an 
+older version can be found on the 
+[Arxiv](https://arxiv.org/abs/2110.05873).
 
 ## Applications
 

@@ -17,7 +17,9 @@ know about qopt to simulate qubits and apply optimal control techniques. You
 can find the source code and install instructions on
 https://github.com/qutech/qopt.
 
-A complementary publication about the software can be found at
+A complementary publication about the software can be found at Phys. Rev.
+Applied https://doi.org/10.1103/PhysRevApplied.17.034036 and an older version
+on the Arxiv
 https://arxiv.org/abs/2110.05873. This paper gives a sound introduction to the
 topic of qubit simulation and quantum optimal control. It also provides a
 systematic theoretical introduction of simulation methods to give a profound
