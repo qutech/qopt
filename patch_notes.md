@@ -61,3 +61,5 @@ states in Liouville space
 
 Optimizer:
 - improve storage. The optimizer is only stored in the result on request.
+
+### Version 1.2 to 1.3
