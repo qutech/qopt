@@ -1197,7 +1197,7 @@ class LeastSquaresOptimizerJAX(OptimizerJAX):
             use_jacobian_function=True,
             cost_func_weights: Optional[Sequence[float]] = None,
             store_optimizer: bool = False,
-            x_scale = None):
+            x_scale = 1.):
         super().__init__(system_simulator=system_simulator,
                          termination_cond=termination_cond,
                          save_intermediary_steps=save_intermediary_steps,

@@ -1614,7 +1614,7 @@ class DenseOperatorJAX(OperatorMatrix):
 
     def __setitem__(self, key, value) -> None:
         """See base class. """
-        self.data.at[key].set(value)
+        self.data = self.data.at[key].set(value)
 
     def __repr__(self):
         """Representation as numpy array. """

@@ -3044,7 +3044,7 @@ class SchroedingerSMCControlNoiseJAX(SchroedingerSMonteCarloJAX):
             for trace_num in range(noise_samples.shape[1]):
                 #jnp cannot be updated in place
                 #->copy every time; inefficient in for loop?
-                noise_amplitudes.at[:,trace_num,:].set(self.amplitude_function(
+                noise_amplitudes = noise_amplitudes.at[:,trace_num,:].set(self.amplitude_function(
                     transferred_parameters + noise_samples[:, trace_num, :]) \
                     - control_amplitudes)
             return noise_amplitudes

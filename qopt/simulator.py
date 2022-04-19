@@ -692,7 +692,7 @@ class SimulatorJAXSpecial(SimulatorJAX):
                 )
                 
             if type(cost_func).__name__ == "OperationInfidelityJAXSpecial":
-                # jac_x_transferred.at[0,0,-1].set(jac_x_transferred.at[0,0,-1] + cost_func.der_time_fact(pulse[0][-1]))
+                ### jac_x_transferred=jac_x_transferred.at[0,0,-1].set(jac_x_transferred.at[0,0,-1] + cost_func.der_time_fact(pulse[0][-1]))
                 jac_x_transferred[0,0,-1] += cost_func.der_time_fact(pulse[0][-1])
                 
             jacobians.append(jac_x_transferred)
