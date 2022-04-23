@@ -63,3 +63,12 @@ Optimizer:
 - improve storage. The optimizer is only stored in the result on request.
 
 ### Version 1.2 to 1.3
+
+GaussianMTF:
+- made the deprecation explicit
+
+Transfer Function:
+- new internal check function has more explicit error messages than previous
+  assertions.
+
+

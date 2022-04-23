@@ -1529,7 +1529,7 @@ class LindbladSolver(SchroedingerSolver):
 
     Parameters
     ----------
-    initial_diss_super_op: List[ControlMatrix], len num_l
+    initial_diss_super_op: List[ControlMatrix], len num_t
         Initial dissipation super operator; num_l is the number of
         Lindbladians. Set if you want to use (1.) (See documentation above!).
         The control matrices are expected to be of shape (dim, dim) where dim

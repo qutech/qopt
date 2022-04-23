@@ -349,7 +349,7 @@ class TestTransferFunctions(unittest.TestCase):
         ex.set_times(x_times)
 
         # test application of the transfer function
-        x = np.asarray([[1, 3, 2, 4],
+        x = np.asarray([[1., 3, 2, 4],
                         [1, 3, 2, 4]]).T
         u = ex(x)
 

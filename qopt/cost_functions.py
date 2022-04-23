@@ -117,7 +117,9 @@ class CostFunction(ABC):
         Object that compute the forward/backward evolution and propagator.
 
     label: list of str
-        Indices of the returned infidelities for distinction in the analysis.
+        The label serves as internal name of the cost function values. The
+        DataContainer class uses the label to distinct cost functions when
+        storing the data.
 
     """
 
