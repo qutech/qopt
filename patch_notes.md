@@ -71,4 +71,6 @@ Transfer Function:
 - new internal check function has more explicit error messages than previous
   assertions.
 
-
+Energy Spectrum:
+- plotting reworked to be applicable to a larger number of dimensions in the 
+  Hamiltonian
