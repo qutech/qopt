@@ -103,8 +103,9 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
         eigenvalues[i, :] = eig_val
         eigenvectors[i, :, :] = np.abs(eig_vec)
 
-    plt.figure()
+    fig, ax = plt.subplots()
     for i in range(d):
-        plt.scatter(x=x_val, y=eigenvalues[:, i],
-                    c=vector_color_map(eigenvectors[:, :, i]))
-    plt.xlabel(xlabel=x_label)
+        ax.scatter(x=x_val, y=eigenvalues[:, i],
+                   c=vector_color_map(eigenvectors[:, :, i]))
+    ax.set_xlabel(x_label)
+    return fig, ax
