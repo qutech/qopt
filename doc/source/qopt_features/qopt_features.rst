@@ -15,3 +15,4 @@ from *Doc/source/qopt_features* using `jupyter notebook`.
    parallelization
    numerics
    energy_spectra_analyser
+   filter_function_basic
