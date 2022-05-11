@@ -86,3 +86,8 @@ Read the docs:
 - Add a new notebook about the basic use of filter functions in optimal control
 - Rework the notebook about the numerics. Now focused on the matrix class and 
 put at the start.
+- Add a new notebook about the use of filter functions in the optimization of 
+amplitude, frequency and phase noise.
+
+Optimizer:
+- Fix a false dimension check for the cost function weights.
