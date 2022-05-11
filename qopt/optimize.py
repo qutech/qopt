@@ -190,10 +190,6 @@ class Optimizer(ABC):
                 self.cost_func_weights).flatten()
             if len(self.cost_func_weights) == 0:
                 self.cost_func_weights = None
-            elif not len(self.system_simulator.cost_funcs) == len(
-                    self.cost_func_weights):
-                raise ValueError('A cost function weight must be specified for'
-                                 'each cost function or for none at all.')
 
     def cost_func_wrapper(self, optimization_parameters):
         """Wraps the cost function given by the simulator class.
