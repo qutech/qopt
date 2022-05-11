@@ -118,7 +118,7 @@ def sample_1dim_gaussian_distribution(std1: float,
 
     Returns
     -------
-    selected_x: np.ndarray
+    selected_x: list of float
         Noise samples.
 
     """

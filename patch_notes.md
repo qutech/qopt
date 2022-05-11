@@ -63,3 +63,31 @@ Optimizer:
 - improve storage. The optimizer is only stored in the result on request.
 
 ### Version 1.2 to 1.3
+
+GaussianMTF:
+- made the deprecation explicit
+
+Transfer Function:
+- new internal check function has more explicit error messages than previous
+  assertions.
+
+Energy Spectrum:
+- plotting reworked to be applicable to a larger number of dimensions in the 
+  Hamiltonian
+- Plotting function returns the figure and axis.
+
+Solver Algorithm:
+- the filter_function_h_n and noise_coeffs_derivatives change their signature, 
+now then are called with the optimization parameters, the transferred 
+parameters and the control amplitudes. Previously only with the control 
+amplitudes.
+
+Read the docs:
+- Add a new notebook about the basic use of filter functions in optimal control
+- Rework the notebook about the numerics. Now focused on the matrix class and 
+put at the start.
+- Add a new notebook about the use of filter functions in the optimization of 
+amplitude, frequency and phase noise.
+
+Optimizer:
+- Fix a false dimension check for the cost function weights.

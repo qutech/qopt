@@ -70,7 +70,8 @@ from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 
-from filter_functions import pulse_sequence, plotting, basis, numeric
+from filter_functions import pulse_sequence, basis, numeric
+from filter_functions import plotting as ff_plotting
 
 from qopt import noise, matrix, matrix as q_mat
 from qopt.transfer_function import TransferFunction, IdentityTF
@@ -115,7 +116,11 @@ class Solver(ABC):
 
         The operators may be given either as NumPy arrays or QuTiP Qobjs
         and each coefficient array should have the same number of elements
-        as *dt*, and should be given in units of :math:`\hbar`. If not every
+        as *dt*, and should be given in units of :math:`\hbar`. Alternatively,
+        the argument can be a callable. This should have the signature of three
+        input arguments, which are (Optimization parameters, transferred
+        parameters, control amplitudes). The callable should return an nested
+        list of the form given above. If not every
         sublist (read operator) was given a identifier, they are automatically
         filled up with 'A_i' where i is the position of the operator.
         Alternatively the create_ff_h_n may be a function handle creating
@@ -537,7 +542,17 @@ class Solver(ABC):
         if self.filter_function_n_coeffs_deriv is None:
             return None
         else:
-            return self.filter_function_n_coeffs_deriv(self._ctrl_amps)
+            try:
+                return self.filter_function_n_coeffs_deriv(
+                    self._opt_pars, self.transferred_parameters,
+                    self._ctrl_amps)
+            except TypeError:
+                print("Warning, you are used the old interface for the "
+                      "filter_functio_h_n. If you choose it as callable,"
+                      "it should receive the three arguments "
+                      "(optimization parameters, transferred parameters,"
+                      "control amplitudes). ")
+                return self.filter_function_n_coeffs_deriv(self._ctrl_amps)
 
     @property
     def create_ff_h_n(self) -> list:
@@ -552,7 +567,17 @@ class Solver(ABC):
         if type(self._filter_function_h_n) == list:
             h_n = self._filter_function_h_n
         else:
-            h_n = self._filter_function_h_n(self._ctrl_amps)
+            try:
+                h_n = self._filter_function_h_n(
+                    self._opt_pars, self.transferred_parameters,
+                    self._ctrl_amps)
+            except TypeError:
+                print("Warning, you are used the old interface for the "
+                      "filter_functio_h_n. If you choose it as callable,"
+                      "it should receive the three arguments "
+                      "(optimization parameters, transferred parameters,"
+                      "control amplitudes). ")
+                h_n = self._filter_function_h_n(self._ctrl_amps)
 
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
@@ -656,6 +681,7 @@ class Solver(ABC):
                 raise ValueError('No optimization parameters set. '
                                  'Please supply new_amps argument')
 
+
         if ff_basis is not None:
             basis = ff_basis
         elif self.filter_function_basis is not None:
@@ -718,9 +744,10 @@ class Solver(ABC):
         """
         # Already takes care of updating and cleaning the PulseSequence object
         pulse_sequence = self.create_pulse_sequence(new_amps=new_amps)
-        return plotting.plot_bloch_vector_evolution(pulse_sequence,
-                                                    n_samples=500,
-                                                    return_Bloch=return_Bloch)
+        return ff_plotting.plot_bloch_vector_evolution(
+            pulse_sequence,
+            n_samples=500,
+            return_Bloch=return_Bloch)
 
 
 class SchroedingerSolver(Solver):
@@ -1529,7 +1556,7 @@ class LindbladSolver(SchroedingerSolver):
 
     Parameters
     ----------
-    initial_diss_super_op: List[ControlMatrix], len num_l
+    initial_diss_super_op: List[ControlMatrix], len num_t
         Initial dissipation super operator; num_l is the number of
         Lindbladians. Set if you want to use (1.) (See documentation above!).
         The control matrices are expected to be of shape (dim, dim) where dim
