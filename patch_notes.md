@@ -91,3 +91,5 @@ amplitude, frequency and phase noise.
 
 Optimizer:
 - Fix a false dimension check for the cost function weights.
+
+### Version 1.2 to 1.3
