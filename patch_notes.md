@@ -92,4 +92,14 @@ amplitude, frequency and phase noise.
 Optimizer:
 - Fix a false dimension check for the cost function weights.
 
-### Version 1.2 to 1.3
+Github Actions:
+- Continuous Deployment to Pypi
+
+### Version 1.3 to 1.4
+
+Github Actions:
+- Continuous Integration by running unittests
+
+Filter Functions:
+- Add docstring describing that the filter function package sorts the noise
+Hamiltonians in lexicographic order.
