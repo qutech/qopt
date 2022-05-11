@@ -579,7 +579,6 @@ class Solver(ABC):
                       "control amplitudes). ")
                 h_n = self._filter_function_h_n(self._ctrl_amps)
 
-
         if not h_n:
             h_n = [[np.zeros(self.h_ctrl[0].shape),
                     np.zeros((len(self.transferred_time),))]]
