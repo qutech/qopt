@@ -8,7 +8,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
+      with:
+        ref: release
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
