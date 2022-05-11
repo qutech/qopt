@@ -125,6 +125,9 @@ class Solver(ABC):
         filled up with 'A_i' where i is the position of the operator.
         Alternatively the create_ff_h_n may be a function handle creating
         such an object when called with the optimization parameters.
+        ATTENTION: The filter function package sorts the noise operators in
+        lexicographic order! The order chosen in the `filter_function_h_n` must
+        correspond to the order in `filter_function_n_coeffs_deriv`,
 
     filter_function_basis: Basis, shape (d**2, d, d), optional
         The operator basis in which to calculate. If a Generalized Gell-Mann
@@ -139,6 +142,9 @@ class Solver(ABC):
         the filter function formalism. It receives the optimization parameters
         as array of shape (num_opt, num_t) and returns the derivatives as array
         of shape (num_noise_op, n_ctrl, num_t).
+        ATTENTION: The filter function package sorts the noise operators in
+        lexicographic order! The order chosen in the `filter_function_h_n` must
+        correspond to the order in `filter_function_n_coeffs_deriv`,
 
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
