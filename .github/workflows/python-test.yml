@@ -33,3 +33,11 @@ jobs:
     - name: Run the tests
       run: |
         pytest qopt_tests/unittests
+        
+    - name: Upload code coverage
+      uses: codecov/codecov-action@v2
+      with:
+        file: ./coverage.xml
+        name: ${{ matrix.python-version }}
+        env_vars: OS,PYTHON
+        fail_ci_if_error: true
