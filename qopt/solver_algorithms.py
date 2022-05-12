@@ -1080,6 +1080,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Frechet derivatives of the propagators by the control amplitudes for
         the individual noise traces.
 
+    create_ff_h_n(self): List[List[np.ndarray, list, str]], 
+        shape [[]]*num_noise_operators
+        Creates the noise hamiltonian of the filter function formalism.
+
     """
     def __init__(
             self, h_drift: List[q_mat.OperatorMatrix],
@@ -1420,6 +1424,30 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             raise ValueError('Unknown gradient derivative approximation '
                              'method:'
                              + str(self.frechet_deriv_approx_method))
+
+    @property
+    def create_ff_h_n(self) -> list:
+        """Creates the noise hamiltonian of the filter function formalism.
+
+        Returns
+        -------
+        create_ff_h_n: nested list
+            Noise Hamiltonian of the filter function formalism.
+
+        """
+        if type(self._filter_function_h_n) == list:
+            h_n = self._filter_function_h_n
+        else:
+            h_n = self._filter_function_h_n(self._opt_pars)
+
+        if not h_n:
+            h_n = []
+            for i, noise_operator in enumerate(self.h_noise):
+                if type(noise_operator) == matrix.DenseOperator:
+                    noise_operator = noise_operator.data
+                h_n += [[noise_operator, len(self.transferred_time) * [1], 'Noise' + str(i)], ]
+
+        return h_n
 
 
 class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
