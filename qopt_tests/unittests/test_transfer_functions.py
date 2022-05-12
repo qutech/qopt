@@ -8,7 +8,7 @@ import unittest
 from typing import Union
 
 from qopt import transfer_function
-from qopt_tests import testutil
+from qopt_tests.testutil import calculate_jacobian
 
 
 def exp_saturation(t, t_rise, val_1, val_2):
@@ -509,7 +509,7 @@ class TestTransferFunctions(unittest.TestCase):
             y = deriv_quadratic_sum(x)
             return ef_ov_tf.gradient_chain_rule(y)
 
-        grad_numeric = testutil.calculate_jacobian(
+        grad_numeric = calculate_jacobian(
             test_function, x0=x0, delta_x=1e-6)
         grad_analytic = analytic_grad(transferred)
         np.testing.assert_array_almost_equal(
@@ -545,7 +545,7 @@ class TestTransferFunctions(unittest.TestCase):
             y = deriv_quadratic_sum(x)
             return conv_tf.gradient_chain_rule(y)
 
-        grad_numeric = testutil.calculate_jacobian(
+        grad_numeric = calculate_jacobian(
             test_function, x0=x0, delta_x=1e-6)
         grad_analytic = analytic_grad(conv_tf(x0))
 
@@ -577,7 +577,7 @@ class TestTransferFunctions(unittest.TestCase):
 
         x0 = np.asarray([[1, 2, 3, 4, 5]], dtype=np.float64).T
 
-        grad_numeric = testutil.calculate_jacobian(
+        grad_numeric = calculate_jacobian(
             test_function, x0=x0, delta_x=1e-6)
         grad_analytic = analytic_grad(concatenated_tf(x0))
 
