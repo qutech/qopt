@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='qopt',
     version='1.3',
-    packages=['qopt'],
+    packages=['qopt', 'qopt_tests'],
     url='https://github.com/qutech/qopt',
     license='GLP3',
     author='Julian Teske',
@@ -14,7 +14,7 @@ setup(
     extras_require={
         'doc': ['ipython', 'ipykernel', 'nbsphinx', 'numpydoc', 'sphinx',
                 'jupyter_client', 'sphinx_rtd_theme'],
-        'qopt_tests': ['pytest'],
+        'qopt_tests': ['pytest', ],
     },
     test_suite='qopt_tests',
     classifiers=[
