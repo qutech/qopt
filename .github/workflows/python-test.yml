@@ -11,4 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version
+        python-version: ['3.7', '3.8', '3.9', '3.10']
+        
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      # The action checks out the branch, which triggered the event by default.
+      
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with: 
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Run the tests
+      run: |
+        pytest qopt_tests/unittests
