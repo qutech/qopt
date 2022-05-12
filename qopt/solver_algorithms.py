@@ -1429,6 +1429,11 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
     def create_ff_h_n(self) -> list:
         """Creates the noise hamiltonian of the filter function formalism.
 
+        If `filter_function_h_n` is None, then the filter function noise
+        Hamiltonian is created from the Monte Carlo noise Hamiltonian by
+        directly using the Operators and assuming all noise susceptibilities
+        equal 1.
+
         Returns
         -------
         create_ff_h_n: nested list
