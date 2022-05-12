@@ -33,7 +33,7 @@ jobs:
         
     - name: Run the tests
       run: |
-        python -m pytest qopt_tests/unittests --cov=./ --cov-report=xml
+        python -m pytest qopt_tests/unittests --cov=qopt --cov-report=xml
         # it is important to use python -m because it adds the current directory to the path!
         
     - name: Upload code coverage
