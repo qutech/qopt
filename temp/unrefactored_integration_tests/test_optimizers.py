@@ -11,26 +11,26 @@ class TestOptimizers(unittest.TestCase):
     def test_assure_convergence_rabi_optimization(self):
         simulator = Simulator(
             solvers=[rabi_setup.solver_qs_noise_xy, ],
-            cost_fktns=[rabi_setup.entanglement_infid_xy,
+            cost_funcs=[rabi_setup.entanglement_infid_xy,
                         rabi_setup.entanglement_infid_qs_noise_xy]
         )
 
         optimizer = ScalarMinimizingOptimizer(
             system_simulator=simulator,
-            cost_fktn_weights=[1, 1e2],
+            cost_func_weights=[1, 1e2],
             bounds=rabi_setup.bounds_xy
         )
 
         optimizer_no_jac = ScalarMinimizingOptimizer(
             system_simulator=simulator,
-            cost_fktn_weights=[1, 1e2],
+            cost_func_weights=[1, 1e2],
             use_jacobian_function=False,
             bounds=rabi_setup.bounds_xy
         )
 
         optimizer_least_squares = LeastSquaresOptimizer(
             system_simulator=simulator,
-            cost_fktn_weights=[1, 1e2],
+            cost_func_weights=[1, 1e2],
             bounds=rabi_setup.bounds_xy_least_sq
         )
 
