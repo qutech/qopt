@@ -13,7 +13,7 @@ from *Doc/source/qopt_features* using `jupyter notebook`.
    pulse_parameterization
    monte_carlo_experiments
    open_quantum_systems
+   filter_functions_basic
+   energy_spectra_analyser
    parallelization
    numerics
-   energy_spectra_analyser
-   filter_functions_basic
