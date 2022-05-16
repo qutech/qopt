@@ -24,35 +24,45 @@ exchange quantum simulation and optimal control applications implemented using
 qopt.
 
 ## Introduction
-In current quantum computer prototypes information is stored an processed in 
-quantum bits or qubits which are controlled by electric pulses. In order to 
-find the optimal control pulse for a given operation, this package simulates 
-the system under control and applies optimization algorithms to the pulses. 
-These include gradient based algorithms generalizing the GRAPE algorithm [1].
-
-The package sets a focus on realistic noise models to enable noise mitigation
-through pulse tailoring. Imperfections of the control electronics can also be
-included in the simulations.
+Realistic modelling of qubit systems including noise and constraints imposed
+by control hardware is required for performance prediction and control
+optimization of quantum processors.
+qopt is a software framework for simulating qubit dynamics and
+robust quantum optimal control considering  common experimental situations.
+It supports modelling of open and closed qubit systems with a focus on the
+simulation of realistic noise characteristics and experimental constraints.
+Specifically, the influence of noise can be calculated using Monte Carlo
+methods, effective master equations or with the filter function formalism,
+enabling the investigation and mitigation of auto-correlated noise. In
+addition, limitations of control electronics including finite bandwidth
+effects can be considered. The calculation of gradients based on analytic
+results is implemented to facilitate the efficient optimization of control
+pulses. The software is published under an open source license, well-tested
+and features a detailed documentation.
 
 ## Installation
-The recommended way is to use conda for the installation.
-To avoid difficulties, QuTiP needs to be installed first. To do so, follow 
-[their instructions](http://qutip.org/docs/latest/installation.html) or these
-instructions. Usually it is most convenient to create a new environment. The 
-package was written and tested using python 3.7.
 
-    conda create --name qopt_env python=3.7
-    conda activate qopt_env
+Qopt is available on github and the python index Pypi.
+To install qopt directly from the python index, you can use pip: 
 
-Start with all required dependencies including 
-[filter_functions package](https://github.com/qutech/filter_functions): 
+    pip install qopt
 
-    conda install numpy scipy matplotlib
-    pip install filter_functions
+or alternatively download the source code, navigate to the folder containing
+qopt and install by
+
+    pip install . 
+
+or append the command -e to install qopt with symlinks
+
+    pip -e install . 
+
+The -e stands for edible as the symlinks allow you to make local changes to
+the sourcecode.
 
 ### Optional packages
 
-If you wish to use the plotting features of QuTiP, then install additionally:
+If you wish to use the plotting features of the quantum toolbox in pythen 
+(QuTiP), then you need to install additional dependencies:
 
     conda install cython pytest pytest-cov jupyter
 
@@ -69,35 +79,20 @@ discrete optimization:
 
     conda install simanneal
 
-### qopt installation
-    
-Either install qopt via pip 
-
-    pip install qopt
-
-or alternatively download the source code and use
-`python setup.py develop` to install using symlinks or 
-`python setup.py install` without.
-
 ## Feature Requests
 
 If you require an additional feature for your work, then please open an issue
 on github or reach out to me via e-mail j.teske@fz-juelich.de.
-There is a list in markdown format with possible extensions in the package.
+There is a list in markdown format with possible extensions to the package.
 
 ## Patch Notes
 
-You can find the patch Notes in a markdown list in the package. Please be aware
-that the github repo is updated more frequently than the version on pypi.
+You can find the patch Notes in a markdown file in the root folder of the 
+package. You can also find it on 
+[github](https://github.com/qutech/qopt/blob/master/patch_notes.md).
 
 ## Citing
 
 If you are using qopt for your work then please cite the 
-[qopt paper](https://arxiv.org/abs/2110.05873), as the funding of the 
-development depends on the public impact.
-
-## References
-[1]: Khaneja, N., Reiss, T., Kehlet, C., Schulte-Herbrüggen, T., Glaser, S.
-(2004). Optimal control of coupled spin dynamics: design of NMR pulse sequences
-gy gradient ascent algorithms 
-[https://doi.org/10.1016/j.jmr.2004.11.004](https://doi.org/10.1016/j.jmr.2004.11.004)
+[qopt paper](https://doi.org/10.1103/PhysRevApplied.17.034036), as the funding 
+of the development depends on the public impact.
