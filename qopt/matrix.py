@@ -1235,7 +1235,7 @@ class DenseOperator(OperatorMatrix):
             d_m = (self.data + epsilon * direction.data) * tau
             dprop = la.expm(d_m)
             prop = self.exp(tau)
-            prop_grad = (dprop - prop) * (1 / epsilon)
+            prop_grad = (DenseOperator(dprop) - prop) * (1 / epsilon)
 
         elif method == "first_order":
             if compute_expm:

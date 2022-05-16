@@ -99,7 +99,12 @@ Github Actions:
 
 Github Actions:
 - Continuous Integration by running unittests
+- github badges
 
 Filter Functions:
 - Add docstring describing that the filter function package sorts the noise
 Hamiltonians in lexicographic order.
+
+Read the docs:
+- Include new notebook on the operator class. The numerics notebook
+now focuses on the matrix exponentials.
