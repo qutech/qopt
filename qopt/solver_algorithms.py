@@ -125,6 +125,9 @@ class Solver(ABC):
         filled up with 'A_i' where i is the position of the operator.
         Alternatively the create_ff_h_n may be a function handle creating
         such an object when called with the optimization parameters.
+        ATTENTION: The filter function package sorts the noise operators in
+        lexicographic order! The order chosen in the `filter_function_h_n` must
+        correspond to the order in `filter_function_n_coeffs_deriv`,
 
     filter_function_basis: Basis, shape (d**2, d, d), optional
         The operator basis in which to calculate. If a Generalized Gell-Mann
@@ -139,6 +142,9 @@ class Solver(ABC):
         the filter function formalism. It receives the optimization parameters
         as array of shape (num_opt, num_t) and returns the derivatives as array
         of shape (num_noise_op, n_ctrl, num_t).
+        ATTENTION: The filter function package sorts the noise operators in
+        lexicographic order! The order chosen in the `filter_function_h_n` must
+        correspond to the order in `filter_function_n_coeffs_deriv`,
 
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
@@ -438,9 +444,12 @@ class Solver(ABC):
 
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
-                raise ValueError("The drift hamiltonian must have exactly one "
-                                 "entry for each transferred time step or no "
-                                 "entry at all or a single entry.")
+                raise ValueError(
+                    "The drift hamiltonian must have exactly one entry for "
+                    "each transferred time step or no entry at all or a single"
+                    " entry. Your transferred time has " + str(n_time_steps)
+                    + " steps."
+                )
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
@@ -1074,6 +1083,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         Frechet derivatives of the propagators by the control amplitudes for
         the individual noise traces.
 
+    create_ff_h_n(self): List[List[np.ndarray, list, str]], 
+        shape [[]]*num_noise_operators
+        Creates the noise hamiltonian of the filter function formalism.
+
     """
     def __init__(
             self, h_drift: List[q_mat.OperatorMatrix],
@@ -1414,6 +1427,35 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
             raise ValueError('Unknown gradient derivative approximation '
                              'method:'
                              + str(self.frechet_deriv_approx_method))
+
+    @property
+    def create_ff_h_n(self) -> list:
+        """Creates the noise hamiltonian of the filter function formalism.
+
+        If `filter_function_h_n` is None, then the filter function noise
+        Hamiltonian is created from the Monte Carlo noise Hamiltonian by
+        directly using the Operators and assuming all noise susceptibilities
+        equal 1.
+
+        Returns
+        -------
+        create_ff_h_n: nested list
+            Noise Hamiltonian of the filter function formalism.
+
+        """
+        if type(self._filter_function_h_n) == list:
+            h_n = self._filter_function_h_n
+        else:
+            h_n = self._filter_function_h_n(self._opt_pars)
+
+        if not h_n:
+            h_n = []
+            for i, noise_operator in enumerate(self.h_noise):
+                if type(noise_operator) == matrix.DenseOperator:
+                    noise_operator = noise_operator.data
+                h_n += [[noise_operator, len(self.transferred_time) * [1], 'Noise' + str(i)], ]
+
+        return h_n
 
 
 class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):

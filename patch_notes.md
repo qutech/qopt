@@ -92,4 +92,23 @@ amplitude, frequency and phase noise.
 Optimizer:
 - Fix a false dimension check for the cost function weights.
 
-### Version 1.2 to 1.3
+Github Actions:
+- Continuous Deployment to Pypi
+
+### Version 1.3 to 1.3.1
+
+Github Actions:
+- Continuous Integration by running unittests
+- github badges
+
+Filter Functions:
+- Add docstring describing that the filter function package sorts the noise
+Hamiltonians in lexicographic order.
+
+Read the docs:
+- Include new notebook on the operator class. The numerics notebook
+now focuses on the matrix exponentials.
+- Rework the notebooks describing qopt features.
+
+Transfer Function:
+- Fixes an assertion controlling the common shape in the ParallelTF

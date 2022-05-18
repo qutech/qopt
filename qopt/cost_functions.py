@@ -1524,6 +1524,11 @@ class OperatorFilterFunctionInfidelity(CostFunction):
     """
     Calculates the infidelity with the filter function formalism.
 
+    ATTENTION: The filter function package sorts the noise operators in
+    lexicographic order! The order chosen in the `filter_function_h_n` must
+    correspond to the order in `filter_function_n_coeffs_deriv` and
+    the one in `noise_power_spec_density`.
+
     Parameters
     ----------
     solver: `Solver`
@@ -1538,6 +1543,9 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         case, the same spectrum is taken for all noise operators, in the
         second, it is assumed that there are no correlations between different
         noise sources and thus there is one spectrum for each noise operator.
+        ATTENTION: The filter function package sorts the noise operators in
+        lexicographic order! The order chosen in the `filter_function_h_n` must
+        correspond to the order in `noise_power_spec_density`
 
     omega: Sequence[float]
         The frequencies at which the integration is to be carried out.

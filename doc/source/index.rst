@@ -200,9 +200,9 @@ signatures.
 Citing
 ======
 
-If you are using qopt for your work then please cite the qopt paper
-(https://arxiv.org/abs/2110.05873 ) as the funding of the development depends
-on the public impact.
+If you are using qopt for your work then please cite the
+[qopt paper](https://doi.org/10.1103/PhysRevApplied.17.034036), as the funding
+of the development depends on the public impact.
 
 
 .. toctree::

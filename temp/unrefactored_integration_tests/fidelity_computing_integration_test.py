@@ -37,7 +37,7 @@ class TestFidelitySchroedingerEq(unittest.TestCase):
 
         simulator = Simulator(
             solvers=[schroedinger_solver, ],
-            cost_fktns=[cost_fkt, ]
+            cost_funcs=[cost_fkt, ]
         )
 
         np.random.seed(0)
