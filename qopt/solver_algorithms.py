@@ -444,9 +444,12 @@ class Solver(ABC):
 
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
-                raise ValueError("The drift hamiltonian must have exactly one "
-                                 "entry for each transferred time step or no "
-                                 "entry at all or a single entry.")
+                raise ValueError(
+                    "The drift hamiltonian must have exactly one entry for "
+                    "each transferred time step or no entry at all or a single"
+                    " entry. Your transferred time has " + str(n_time_steps)
+                    + " steps."
+                )
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
