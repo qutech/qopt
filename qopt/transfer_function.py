@@ -446,7 +446,6 @@ class TransferFunction(ABC):
 
     def plot_pulse(self, y: np.array) -> None:
         """
-
         Plot the control amplitudes corresponding to the given optimisation
         variables.
 
@@ -464,8 +463,8 @@ class TransferFunction(ABC):
             plt.bar(np.cumsum(self.x_times) - .5 * self.x_times[0],
                     x_per_control, self.x_times[0])
             plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
-                    + np.cumsum(self._y_times)[n_padding_start]
-                    - self._y_times[n_padding_start],
+                    + np.cumsum(self.x_times)[n_padding_start]
+                    - self.x_times[n_padding_start],
                     y_per_control, self._y_times[0],
                     fill=False)
         plt.show()
@@ -998,21 +997,22 @@ class ParallelTF(TransferFunction):
         self.tf1 = tf1
         self.tf2 = tf2
 
-        assert tf1._num_y == tf2._num_y
-        self._num_y = tf1._num_y
+        if not tf1._num_y == tf2._num_y:
+            raise ValueError("The parallelized transfer functions must operate"
+                             "on the same time frame. The transfer functions"
+                             "expect a different number of input time steps.")
+
+        if not tf1.num_x == tf2.num_x:
+            raise ValueError("The parallelized transfer functions must operate"
+                             "on the same time frame. The transfer functions"
+                             "generate signals with a different number of time"
+                             " steps.")
 
         # tf1 and tf2 should have identical times
         self._y_times = tf1._y_times
         self.x_times = tf1.x_times
         self.num_x = self.tf1.num_x
-
-        if not tf1.bound_type == tf2.bound_type:
-            raise ValueError("The parallized transfer functions must have the "
-                             "same bound_types.")
-
-        if not tf1.oversampling == tf2.oversampling:
-            raise ValueError("The parallized transfer functions must have the "
-                             "same oversampling.")
+        self._num_y = tf1._num_y
 
     def __call__(self, y: np.array) -> np.array:
         """See base class.
@@ -1530,6 +1530,7 @@ class ExponentialMTF(MatrixTF):
             dudx[self._num_y * self.oversampling + i, -1] = np.exp(
                 -(t / self.awg_rise_time))
 
+        # zeros for the first elements
         dudx = np.concatenate((np.zeros(shape=(num_padding_start,
                                                self._num_y)),
                               dudx), axis=0)
