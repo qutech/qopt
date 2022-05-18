@@ -10,6 +10,7 @@ from *Doc/source/qopt_features* using `jupyter notebook`.
    schroedinger_solver
    entanglement_fidelity
    optimization
+   transfer_function
    pulse_parameterization
    monte_carlo_experiments
    open_quantum_systems

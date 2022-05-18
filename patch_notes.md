@@ -95,7 +95,7 @@ Optimizer:
 Github Actions:
 - Continuous Deployment to Pypi
 
-### Version 1.3 to 1.4
+### Version 1.3 to 1.3.1
 
 Github Actions:
 - Continuous Integration by running unittests
@@ -108,3 +108,7 @@ Hamiltonians in lexicographic order.
 Read the docs:
 - Include new notebook on the operator class. The numerics notebook
 now focuses on the matrix exponentials.
+- Rework the notebooks describing qopt features.
+
+Transfer Function:
+- Fixes an assertion controlling the common shape in the ParallelTF
