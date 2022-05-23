@@ -10,7 +10,7 @@ setup(
     author_email='j.teske@fz-juelich.de',
     description='Qubit Simulation and Optimal Control for Quantum Systems',
     package_dir={'qopt': 'qopt'},
-    install_requires=['numpy', 'scipy', 'matplotlib', 'filter_functions'],
+    install_requires=['numpy', 'scipy', 'matplotlib', 'filter_functions>=1.1.2'],
     extras_require={
         'doc': ['ipython', 'ipykernel', 'nbsphinx', 'numpydoc', 'sphinx',
                 'jupyter_client', 'sphinx_rtd_theme'],
