@@ -104,7 +104,8 @@ def create_ff_simulator(low_freq_rel, ff_n_time_steps):
 
     ff_hamiltonian_noise = [[
         .5 * DenseOperator.pauli_z().data,
-        np.ones(ff_n_time_steps)
+        np.ones(ff_n_time_steps),
+        'Noise 1'
     ], ]
 
     ff_solver = SchroedingerSolver(
