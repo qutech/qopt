@@ -112,3 +112,13 @@ now focuses on the matrix exponentials.
 
 Transfer Function:
 - Fixes an assertion controlling the common shape in the ParallelTF
+
+### Version 1.3.1 to 1.3.2
+
+Filter Functions:
+- adapt to the latest version of filter functions. The noise operators are not
+stored in lexicographic order any more.
+- now requires filter_function v1.1.2
+
+Energy Spectrum:
+- scatter options can now be given to the plotting function.
