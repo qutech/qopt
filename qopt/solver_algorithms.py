@@ -120,14 +120,7 @@ class Solver(ABC):
         the argument can be a callable. This should have the signature of three
         input arguments, which are (Optimization parameters, transferred
         parameters, control amplitudes). The callable should return an nested
-        list of the form given above. If not every
-        sublist (read operator) was given a identifier, they are automatically
-        filled up with 'A_i' where i is the position of the operator.
-        Alternatively the create_ff_h_n may be a function handle creating
-        such an object when called with the optimization parameters.
-        ATTENTION: The filter function package sorts the noise operators in
-        lexicographic order! The order chosen in the `filter_function_h_n` must
-        correspond to the order in `filter_function_n_coeffs_deriv`,
+        list of the form given above.
 
     filter_function_basis: Basis, shape (d**2, d, d), optional
         The operator basis in which to calculate. If a Generalized Gell-Mann
@@ -142,9 +135,8 @@ class Solver(ABC):
         the filter function formalism. It receives the optimization parameters
         as array of shape (num_opt, num_t) and returns the derivatives as array
         of shape (num_noise_op, n_ctrl, num_t).
-        ATTENTION: The filter function package sorts the noise operators in
-        lexicographic order! The order chosen in the `filter_function_h_n` must
-        correspond to the order in `filter_function_n_coeffs_deriv`,
+        The order of the noise operators must correspond to the order specified
+        by filter_function_h_n.
 
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
@@ -316,6 +308,11 @@ class Solver(ABC):
             self._filter_function_h_n = []
         else:
             self._filter_function_h_n = filter_function_h_n
+
+        # we store the order of the noise operators. They must coincide with
+        # the order in filter_functions_n_coeffs_deriv
+        self.filter_function_n_oper_identifiers = []
+
         self.filter_function_basis = filter_function_basis
         self.filter_function_n_coeffs_deriv = filter_function_n_coeffs_deriv
 
@@ -589,8 +586,27 @@ class Solver(ABC):
                 h_n = self._filter_function_h_n(self._ctrl_amps)
 
         if not h_n:
-            h_n = [[np.zeros(self.h_ctrl[0].shape),
-                    np.zeros((len(self.transferred_time),))]]
+            h_n = []
+
+        # we store the order of the noise operators. They must coincide with
+        # the order in filter_functions_n_coeffs_deriv
+        self.filter_function_n_oper_identifiers = []
+        for noise_term in h_n:
+            if not len(noise_term) == 3:
+                raise ValueError(
+                    "The noise operators for the filter function must be given"
+                    "as nested list of the form: \n"
+                    "H = [[n_oper1, n_coeff1, n_oper_identifier1], \n"
+                    "[n_oper2, n_coeff2, n_oper_identifier2], ...] \n"
+                    "but not every element of the list you defined has three"
+                    "elements."
+                )
+            if not type(noise_term[2]) == str:
+                raise ValueError(
+                    "The identifiers for the noise terms must be given as "
+                    "string."
+                )
+            self.filter_function_n_oper_identifiers.append(noise_term[2])
 
         return h_n
 
