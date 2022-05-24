@@ -77,7 +77,8 @@ def vector_color_map(vectors: np.array):
 def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
                          x_val: np.array,
                          x_label: str,
-                         ax=None):
+                         ax=None,
+                         **scatter_kwargs):
     """
     Calculates and plots the energy spectra of hamilton operators.
 
@@ -111,6 +112,7 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
         _, ax = plt.subplots()
     for i in range(d):
         ax.scatter(x=x_val, y=eigenvalues[:, i],
-                   c=vector_color_map(eigenvectors[:, :, i]))
+                   c=vector_color_map(eigenvectors[:, :, i]),
+                   **scatter_kwargs)
     ax.set_xlabel(x_label)
     return ax
