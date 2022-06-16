@@ -447,14 +447,21 @@ class NTGQuasiStatic(NoiseTraceGenerator):
         self.sampling_mode = sampling_mode
 
         if correct_std_for_discrete_sampling:
-            if self.sampling_mode == 'uncorrelated_deterministic':
+            if self.n_traces == 1:
+                raise RuntimeWarning('Standard deviation cannot be estimated'
+                                     'for a single trace!')
+            elif self.sampling_mode == 'uncorrelated_deterministic':
                 for i in range(len(self.standard_deviation)):
                     samples = sample_1dim_gaussian_distribution(
                         std=self.standard_deviation[i],
-                        n_samples=self.n_samples_per_trace
+                        n_samples=self.n_traces
                     )
                     actual_std = np.std(samples)
-                    self.noise_samples[i] *= self.noise_samples[i] / actual_std
+                    if actual_std < 1e-20:
+                        raise RuntimeError('The standard deviation was '
+                                           'estimated close to 0!')
+                    self.standard_deviation[i] *= \
+                        self.standard_deviation[i] / actual_std
 
     @property
     def n_traces(self) -> int:

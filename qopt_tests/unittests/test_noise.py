@@ -94,7 +94,8 @@ class TestNoiseSampling(unittest.TestCase):
         for std in [1, 2.3, 5]:
             for n_samples in [5, 10, 200]:
                 ntg = NTGQuasiStatic(standard_deviation=[std, ],
-                                     n_samples_per_trace=n_samples,
+                                     n_samples_per_trace=10,
+                                     n_traces=n_samples,
                                      correct_std_for_discrete_sampling=True)
                 samples = ntg.noise_samples
                 assert np.std(samples) - std < 1e-10
