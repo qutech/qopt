@@ -62,13 +62,15 @@ def vector_color_map(vectors: np.array):
     """
     assert len(vectors.shape) == 2
 
-    points_on_cmap = np.linspace(0, 1, vectors.shape[-1])
+    points_on_cmap = np.linspace(0, 1, vectors.shape[-1], endpoint=True)
+    # include the endpoint to use the full colormap
     basis_colors = mpl.cm.get_cmap('brg')(points_on_cmap)
     basis_colors = np.array(basis_colors)[:, :-1]
     
     values = np.einsum('ij, ni -> nj', basis_colors, np.abs(vectors))
 
-    # in this basis, the normalization to the rgb range is not preserved, thus it needs to be renormalized. 
+    # in this basis, the normalization to the rgb range is not preserved,
+    # thus it needs to be renormalized.
     values /= np.max(values, axis=-1)[..., None]
 
     return values
@@ -78,6 +80,7 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
                          x_val: np.array,
                          x_label: str,
                          ax=None,
+                         use_spectral_decomposition=True,
                          **scatter_kwargs):
     """
     Calculates and plots the energy spectra of hamilton operators.
@@ -110,9 +113,16 @@ def plot_energy_spectrum(hamiltonian: List[OperatorMatrix],
 
     if ax is None:
         _, ax = plt.subplots()
-    for i in range(d):
-        ax.scatter(x=x_val, y=eigenvalues[:, i],
-                   c=vector_color_map(eigenvectors[:, :, i]),
-                   **scatter_kwargs)
+    if use_spectral_decomposition:
+        for i in range(d):
+            ax.scatter(x=x_val, y=eigenvalues[:, i],
+                       c=vector_color_map(eigenvectors[:, :, i]),
+                       **scatter_kwargs)
+    else:
+        for i in range(d):
+            ax.scatter(x=x_val, y=eigenvalues[:, i],
+                       c='k',
+                       **scatter_kwargs)
+
     ax.set_xlabel(x_label)
     return ax
