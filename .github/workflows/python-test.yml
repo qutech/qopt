@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Run Unittests
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
