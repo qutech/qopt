@@ -17,6 +17,7 @@ sig_z = DenseOperator.pauli_z()
 
 
 class TestEntanglementFidelity(unittest.TestCase):
+    """
     def test_angle_axis_representation(self):
         angle, axis = angle_axis_representation(np.eye(2))
         self.assertAlmostEqual(angle, 0)
@@ -76,6 +77,7 @@ class TestEntanglementFidelity(unittest.TestCase):
         self.assertEqual(a_e, a_s)
         self.assertEqual(b_e, b_s)
         self.assertEqual(c_e, c_s)
+    """
 
     def test_gradient_calculation(self):
         # constants
@@ -219,7 +221,7 @@ class TestStateFidelity(unittest.TestCase):
             , .5
         )
 
-
+"""
 class TestMatrixDistance(unittest.TestCase):
     def test_angle_axis_representation(self):
         beta = .25 * np.pi
@@ -232,7 +234,7 @@ class TestMatrixDistance(unittest.TestCase):
         self.assertEqual(2 * beta, beta_calc)
         np.testing.assert_array_almost_equal(n, n_calc)
 
-    """
+
     def test_gradient_calculation(self):
         # constants
 
