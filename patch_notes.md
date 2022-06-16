@@ -122,3 +122,8 @@ stored in lexicographic order any more.
 
 Energy Spectrum:
 - scatter options can now be given to the plotting function.
+
+### Version 1.3.2 to 1.3.3
+
+Noise
+- Reworked the sampling of the Gaussian distribution.
