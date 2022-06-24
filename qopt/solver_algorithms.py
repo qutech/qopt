@@ -586,7 +586,11 @@ class Solver(ABC):
                 h_n = self._filter_function_h_n(self._ctrl_amps)
 
         if not h_n:
-            h_n = []
+            h_n = [
+                [
+                    0 * self.h_ctrl[0], self.transferred_time, 'No Noise'
+                ]
+            ]
 
         # we store the order of the noise operators. They must coincide with
         # the order in filter_functions_n_coeffs_deriv
