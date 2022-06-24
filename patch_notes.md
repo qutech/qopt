@@ -127,3 +127,8 @@ Energy Spectrum:
 
 Noise
 - Reworked the sampling of the Gaussian distribution.
+
+### Version 1.3.3 to 1.3.4
+
+Example Notebooks
+- Compatibility with the latest changes in filter functions
