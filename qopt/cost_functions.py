@@ -628,7 +628,10 @@ def state_fidelity_subspace(
                          'propagated state not a ket, or both!')
     scalar_prod = scalar_prod[0, 0]
     scalar_prod_real = scalar_prod.real
-    assert np.abs(scalar_prod - scalar_prod_real) < 1e-5
+    if np.abs(scalar_prod - scalar_prod_real) > 1e-5:
+        scalar_prod_real = np.abs(scalar_prod[0, 0])
+        print("Warning: the calculated fidelity should be real but has an "
+              "imaginary component of : " + str(scalar_prod.imag))
     return scalar_prod_real
 
 
