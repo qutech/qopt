@@ -64,6 +64,8 @@ References
 
 """
 
+import numba
+import tensorflow as tf
 import numpy as np
 import copy
 from typing import Optional, List, Callable, Union
@@ -920,6 +922,48 @@ class SchroedingerSolver(Solver):
 
         if self._dyn_gen is None:
             self._dyn_gen = self._compute_dyn_gen()
+
+        if calculate_propagator_derivatives is None:
+            calculate_propagator_derivatives = \
+                self.calculate_propagator_derivatives
+
+        # initialize the attributes
+        self._prop = [None for _ in range(len(self.transferred_time))]
+
+        if calculate_propagator_derivatives:
+            derivative_directions = self._compute_derivative_directions()
+            self._derivative_prop = [
+                [None for _ in range(len(self.transferred_time))]
+                for _2 in range(len(self.h_ctrl))]
+            for t in range(len(self.transferred_time)):
+                for ctrl in range(len(self.h_ctrl)):
+                    try:
+                        self._prop[t], self._derivative_prop[ctrl][t] \
+                            = self._dyn_gen[t].dexp(
+                            derivative_directions[t][ctrl],
+                            self.transferred_time[t],
+                            compute_expm=True, method=self.exponential_method,
+                            is_skew_hermitian=self._is_skew_hermitian)
+                    except ValueError:
+                        raise ValueError('The computation has failed with '
+                                         'a value error. Try another '
+                                         'exponentiation method.')
+        else:
+            for t in range(len(self.transferred_time)):
+                self._prop[t] = self._dyn_gen[t].exp(
+                    tau=self.transferred_time[t], method=self.exponential_method,
+                    is_skew_hermitian=self._is_skew_hermitian)
+
+    # @tf.function(jit_compile=True)
+    @numba.jit(nopython=False)
+    def _jit_compute_propagation(
+            self, calculate_propagator_derivatives: Optional[bool] = None) \
+            -> None:
+        """See base class. """
+        super()._compute_propagation()
+
+        if self._dyn_gen is None:
+            self._dyn_gen = self._jit_compute_dyn_gen()
 
         if calculate_propagator_derivatives is None:
             calculate_propagator_derivatives = \
