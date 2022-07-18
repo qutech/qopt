@@ -79,7 +79,7 @@ try:
 except ImportError:
     pass
 
-__version__ = '1.0.2'
+__version__ = '1.3'
 __license__ = 'GNU GPLv3+'
 __author__ = 'Julian Teske, Forschungszentrum Juelich'
 

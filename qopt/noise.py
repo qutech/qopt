@@ -73,7 +73,9 @@ import matplotlib.pyplot as plt
 
 from typing import Callable, Tuple, Optional, List, Union
 from abc import ABC, abstractmethod
-from scipy import signal
+from scipy import signal, special
+
+from qopt.util import deprecated
 
 import random
 from functools import partial
@@ -102,40 +104,71 @@ def bell_curve_1dim(x: Union[np.ndarray, float],
     return normalization_factor * exponential
 
 
-def sample_1dim_gaussian_distribution(std1: float,
-                                      n_samples: int) -> List:
+def inverse_cumulative_gaussian_distribution_function(
+        z: Union[float, np.array], std: float, mean: float):
+    """
+    Calculates the inverse cumulative function for the gaussian distribution.
+
+    Parameters
+    ----------
+    z: Union[float, np.array]
+        Function value.
+
+    std: float
+        Standard deviation of the bell curve.
+
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
+    Returns
+    -------
+    selected_x: list of float
+        Noise samples.
+
+    """
+    return std * np.sqrt(2) * special.erfinv(2 * z - 1) + mean
+
+
+def sample_1dim_gaussian_distribution(std: float, n_samples: int, mean: float = 0)\
+        -> np.array:
     """
     Returns 'n_samples' samples from the one dimensional bell curve.
 
     The samples are chosen such, that the integral over the bell curve between
-    two adjacent samples is always the same.
+    two adjacent samples is always the same. The samples reproduce the correct
+    standard deviation only in the limit n_samples -> inf due to the
+    discreteness of the approximation. The error is to good approximation
+    1/n_samples.
 
     Parameters
     ----------
-    std1: float
+    std: float
         Standard deviation of the bell curve.
 
     n_samples: int
         Number of samples returned.
 
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
     Returns
     -------
-    selected_x: np.ndarray
+    selected_x: numpy array of shape:(n_samples, )
         Noise samples.
 
     """
-    x = np.mgrid[-5 * std1:5.0001 * std1:0.001 * std1]
-    normal_distribution = bell_curve_1dim(x, std1)
-    normal_distribution /= np.sum(normal_distribution)
-    selected_x = []
-    it_sum = 0
-    iterator = 1
-    for i in range(10000):
-        it_sum += normal_distribution[i]
-        if it_sum > iterator / (n_samples + 1):
-            iterator += 1
-            selected_x.append(x[i])
-    return selected_x
+    z = np.linspace(start=0, stop=1, num=n_samples, endpoint=False)
+    z += 1 / (2 * n_samples)
+    # we distribute the total probability of 1 into n_samples equal parts.
+    # The z-values are in the center of each part.
+
+    x = inverse_cumulative_gaussian_distribution_function(
+        z=z, std=std, mean=mean
+    )
+    # We use the inverse cumulative gaussian distribution to find the values x.
+    # The integral over the Gaussian distribution between x[i] and x[i+1]
+    # now always equals 1/n_samples.
+    return x
 
 
 def bell_curve_2dim(x: Union[np.ndarray, float], stdx: float,
@@ -169,6 +202,7 @@ def bell_curve_2dim(x: Union[np.ndarray, float], stdx: float,
     return normalization_factor * exponential
 
 
+@deprecated
 def sample_2dim_gaussian_distribution(
         std1: float, std2: float, n_samples: int) \
         -> (List, List):
@@ -403,6 +437,7 @@ class NTGQuasiStatic(NoiseTraceGenerator):
                  n_traces: int = 1,
                  noise_samples: Optional[np.ndarray] = None,
                  always_redraw_samples: bool = True,
+                 correct_std_for_discrete_sampling: bool = True,
                  sampling_mode: str = 'uncorrelated_deterministic'):
         n_noise_operators = len(standard_deviation)
         super().__init__(noise_samples=noise_samples,
@@ -412,6 +447,23 @@ class NTGQuasiStatic(NoiseTraceGenerator):
                          always_redraw_samples=always_redraw_samples)
         self.standard_deviation = standard_deviation
         self.sampling_mode = sampling_mode
+
+        if correct_std_for_discrete_sampling:
+            if self.n_traces == 1:
+                raise RuntimeWarning('Standard deviation cannot be estimated'
+                                     'for a single trace!')
+            elif self.sampling_mode == 'uncorrelated_deterministic':
+                for i in range(len(self.standard_deviation)):
+                    samples = sample_1dim_gaussian_distribution(
+                        std=self.standard_deviation[i],
+                        n_samples=self.n_traces
+                    )
+                    actual_std = np.std(samples)
+                    if actual_std < 1e-20:
+                        raise RuntimeError('The standard deviation was '
+                                           'estimated close to 0!')
+                    self.standard_deviation[i] *= \
+                        self.standard_deviation[i] / actual_std
 
     @property
     def n_traces(self) -> int:
@@ -448,7 +500,8 @@ class NTGQuasiStatic(NoiseTraceGenerator):
                  self.n_samples_per_trace))
 
             for i, std in enumerate(self.standard_deviation):
-                samples = sample_1dim_gaussian_distribution(std, self._n_traces)
+                samples = sample_1dim_gaussian_distribution(
+                    std, self._n_traces)
                 for j in range(self._n_traces):
                     self._noise_samples[i, i * self._n_traces + j, :] \
                         = samples[j] * np.ones(self.n_samples_per_trace)

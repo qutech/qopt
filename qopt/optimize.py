@@ -189,10 +189,6 @@ class Optimizer(ABC):
                 self.cost_func_weights).flatten()
             if len(self.cost_func_weights) == 0:
                 self.cost_func_weights = None
-            elif not len(self.system_simulator.cost_funcs) == len(
-                    self.cost_func_weights):
-                raise ValueError('A cost function weight must be specified for'
-                                 'each cost function or for none at all.')
 
     def cost_func_wrapper(self, optimization_parameters):
         """Wraps the cost function given by the simulator class.
@@ -383,9 +379,13 @@ class LeastSquaresOptimizer(Optimizer):
         The optimization method used. Currently implemented are:
         - 'trf': A trust region optimization algorithm. This is the default.
 
-    bounds: array or list of boundaries, optional
+    bounds: list of array-like, optional
+        Attention: The boundary format can vary between optimizers!
         The boundary conditions for the pulse optimizations. If none are given
-        then the pulse is assumed to take any real value.
+        then the pulse is assumed to take any real value. The boundaries are
+        given as a list of two arrays. The first array specifies the upper
+        and the second array specifies the lower bounds. Single parameters
+        can be excepted by using np.inf with appropriate sign.
 
     """
 
@@ -468,6 +468,13 @@ class ScalarMinimizingOptimizer(Optimizer):
     ----------
     method: string
         Takes methods implemented by scipy.optimize.minimize.
+
+    bounds: sequence, optional
+        Attention: The boundary format can vary between optimizers!
+        The boundary conditions for the pulse optimizations. If none are given
+        then the pulse is assumed to take any real value. The boundaries are
+        given as a sequence of (min, max) pairs for each element. Defaults to
+        None.
 
     """
     def __init__(

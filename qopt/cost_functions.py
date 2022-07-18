@@ -118,7 +118,9 @@ class CostFunction(ABC):
         Object that compute the forward/backward evolution and propagator.
 
     label: list of str
-        Indices of the returned infidelities for distinction in the analysis.
+        The label serves as internal name of the cost function values. The
+        DataContainer class uses the label to distinct cost functions when
+        storing the data.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
@@ -626,7 +628,10 @@ def state_fidelity_subspace(
                          'propagated state not a ket, or both!')
     scalar_prod = scalar_prod[0, 0]
     scalar_prod_real = scalar_prod.real
-    assert np.abs(scalar_prod - scalar_prod_real) < 1e-5
+    if np.abs(scalar_prod - scalar_prod_real) > 1e-5:
+        scalar_prod_real = np.abs(scalar_prod[0, 0])
+        print("Warning: the calculated fidelity should be real but has an "
+              "imaginary component of : " + str(scalar_prod.imag))
     return scalar_prod_real
 
 
@@ -1536,6 +1541,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         case, the same spectrum is taken for all noise operators, in the
         second, it is assumed that there are no correlations between different
         noise sources and thus there is one spectrum for each noise operator.
+        The order of the noise terms must correspond to the order defined in
+        the solver by filter_function_h_n.
 
     omega: Sequence[float]
         The frequencies at which the integration is to be carried out.
@@ -1583,7 +1590,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             pulse=self.solver.pulse_sequence,
             spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega,
-            cache_intermediates=True
+            cache_intermediates=True,
+            n_oper_identifiers=self.solver.filter_function_n_oper_identifiers,
         )
         return infidelity
 
@@ -1608,6 +1616,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega,
             control_identifiers=c_id,
+            n_oper_identifiers=self.solver.filter_function_n_oper_identifiers,
             n_coeffs_deriv=self.solver.filter_function_n_coeffs_deriv_vals
         )
         # what comes from ff:
