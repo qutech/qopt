@@ -709,52 +709,75 @@ except ImportError:
     vmap = mock.Mock()
     jax = mock.Mock()
     _HAS_JAX = False
+    
+
+@jit
+def _inverse_cumulative_gaussian_distribution_function_jnp(
+        z: Union[float, np.array, jnp.ndarray], std: float, mean: float):
+    """
+    Calculates the inverse cumulative function for the gaussian distribution.
+
+    Parameters
+    ----------
+    z: Union[float, np.array, jnp.array]
+        Function value.
+
+    std: float
+        Standard deviation of the bell curve.
+
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
+    Returns
+    -------
+    selected_x: list of float
+        Noise samples.
+
+    """
+    return std * jnp.sqrt(2) * jax.scipy.special.erfinv(2 * z - 1) + mean
 
 
 @partial(jit,static_argnums=1)
-def _sample_1dim_gaussian_distribution_jnp(std1: jnp.array,
-                                           n_samples: int,
-                                           sample_stds: float = 5.,
-                                           eps: float = .001) -> jnp.ndarray:
+def _sample_1dim_gaussian_distribution_jnp(std: float, n_samples: int, mean: float = 0)\
+        -> jnp.ndarray:
     """
     Returns 'n_samples' samples from the one dimensional bell curve.
 
     The samples are chosen such, that the integral over the bell curve between
-    two adjacent samples is always the same.
+    two adjacent samples is always the same. The samples reproduce the correct
+    standard deviation only in the limit n_samples -> inf due to the
+    discreteness of the approximation. The error is to good approximation
+    1/n_samples.
 
     Parameters
     ----------
-    std1: float
+    std: float
         Standard deviation of the bell curve.
 
     n_samples: int
         Number of samples returned.
-        
-    sample_stds: float, optional
-        Number of standard deviations sampled
-        
-    eps: float, optional
-        Stepsize of sampling
-    
+
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
     Returns
     -------
-    selected_x: jnp.ndarray
+    selected_x: numpy array of shape:(n_samples, )
         Noise samples.
 
     """
-    std1 = jnp.asarray(std1)
-    x = jnp.mgrid[-sample_stds:sample_stds+ .5*eps:eps ]
-    cum_dist = jnp.broadcast_to(
-        jnp.expand_dims(0.5*(1+jax.scipy.special.erf(x/2**0.5)),1),
-        x.shape+(n_samples,))
-    
-    step_vals = jnp.expand_dims(
-        jnp.linspace(1,n_samples,n_samples)/(n_samples+1),0)
+    z = jnp.linspace(start=0, stop=1, num=n_samples, endpoint=False)
+    z += 1 / (2 * n_samples)
+    # we distribute the total probability of 1 into n_samples equal parts.
+    # The z-values are in the center of each part.
 
-    selected_x = x[jnp.argmin(jnp.abs(cum_dist-step_vals),axis=0)]
-    selected_x = jnp.expand_dims(std1,1)*jnp.expand_dims(selected_x,0)
-
-    return selected_x
+    x = _inverse_cumulative_gaussian_distribution_function_jnp(
+        z=jnp.expand_dims(z,0), std=jnp.expand_dims(std,1), mean=mean
+    )
+    # We use the inverse cumulative gaussian distribution to find the values x.
+    # The integral over the Gaussian distribution between x[i] and x[i+1]
+    # now always equals 1/n_samples.
+    return x
 
 
 class NTGQuasiStaticJAX(NoiseTraceGenerator):
@@ -769,6 +792,7 @@ class NTGQuasiStaticJAX(NoiseTraceGenerator):
                  n_traces: int = 1,
                  noise_samples: Optional[np.ndarray] = None,
                  always_redraw_samples: bool = True,
+                 correct_std_for_discrete_sampling: bool = True,
                  sampling_mode: str = 'uncorrelated_deterministic',
                  seed: Optional[int] = None):
         if not _HAS_JAX:
@@ -786,6 +810,28 @@ class NTGQuasiStaticJAX(NoiseTraceGenerator):
         self.rnd_key_first = jax.random.PRNGKey(self.seed)
         self.rnd_key_arr = [self.rnd_key_first]
         
+        if correct_std_for_discrete_sampling:
+            if self.n_traces == 1:
+                raise RuntimeWarning('Standard deviation cannot be estimated'
+                                     'for a single trace!')
+            elif self.sampling_mode == 'uncorrelated_deterministic':
+                    
+                        
+                n_std_dev = len(self.standard_deviation)
+                _noise_samples = _sample_1dim_gaussian_distribution_jnp(
+                    self.standard_deviation, self._n_traces)
+                _noise_samples = jnp.broadcast_to(
+                    jnp.expand_dims(jnp.tile(_noise_samples,n_std_dev)*
+                        jnp.repeat(jnp.eye(n_std_dev),self._n_traces,axis=1),2),
+                    (n_std_dev,self._n_traces*n_std_dev,self.n_samples_per_trace))
+                
+                actual_std = jnp.std(_noise_samples,axis=(1,2))
+                if jnp.any(actual_std < 1e-20):
+                    raise RuntimeError('The standard deviation was '
+                                       'estimated close to 0!')
+                self.standard_deviation *= \
+                    self.standard_deviation / actual_std
+                
     @property
     def n_traces(self) -> int:
         """Number of traces.
