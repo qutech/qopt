@@ -2841,9 +2841,9 @@ class LeakageErrorJAX(CostFunction):
 
     def costs(self):
         """See base class. """
-        final_prop = self.solver.forward_propagator_jnp[-1]
+        final_prop = self.solver.forward_propagators_jnp[-1]
         clipped_prop = _truncate_to_subspace_jnp(final_prop,
-            self.computational_states)
+            self.computational_states,map_to_closest_unitary=False)
         #TODO: is this correctly transferred? (left or right multiplication)
         temp = jnp.conj(clipped_prop).T @ clipped_prop
 
@@ -2854,7 +2854,7 @@ class LeakageErrorJAX(CostFunction):
         """See base class. """
         final = self.solver.forward_propagators_jnp[-1]
         final_leak_dag = _truncate_to_subspace_jnp(jnp.conj(final).T,
-            self.computational_states)
+            self.computational_states,map_to_closest_unitary=False)
         d = final_leak_dag.shape[0]
         
         derivative_fidelity = -2./d*jnp.real(

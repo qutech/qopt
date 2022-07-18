@@ -2584,7 +2584,7 @@ class SchroedingerSolverJAX(SolverJAX):
         else:
             raise ValueError('Unknown gradient derivative approximation '
                              'method:'
-                             + str(self.frechet_deriv_approx_method))
+                             + str(self.frechet_deriv_approx_method))    
 
 
 class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
@@ -3200,7 +3200,10 @@ class LindbladSolverJAX(SchroedingerSolverJAX):
                 copy.deepcopy(self._ctrl_amps),
                 copy.deepcopy(self.transferred_parameters))
         
-        self._diss_sup_op_jnp = jnp.array([l.data for l in self._diss_sup_op])
+        if isinstance(self._diss_sup_op,jnp.ndarray) or isinstance(self._diss_sup_op,np.ndarray):
+            self._diss_sup_op_jnp = self._diss_sup_op
+        else:
+            self._diss_sup_op_jnp = jnp.array([l.data for l in self._diss_sup_op])
         del self._diss_sup_op
         #would be complicated to rewrite as jnp cause many in-place assignments?
         #not the most efficient, but ok if not insane amounts of lindblad ops?
@@ -3243,9 +3246,12 @@ class LindbladSolverJAX(SchroedingerSolverJAX):
                     copy.deepcopy(self._ctrl_amps),
                     copy.deepcopy(self.transferred_parameters))
             
-            self._diss_sup_op_deriv_jnp = \
-                jnp.array([[l.data for l in lm]
-                           for lm in self._diss_sup_op_deriv])
+            if isinstance(self._diss_sup_op_deriv,jnp.ndarray) or isinstance(self._diss_sup_op_deriv,np.ndarray):
+                self._diss_sup_op_deriv_jnp = self._diss_sup_op_deriv
+            else:
+                self._diss_sup_op_deriv_jnp = \
+                    jnp.array([[l.data for l in lm]
+                               for lm in self._diss_sup_op_deriv])
             del self._diss_sup_op_deriv
             return self._diss_sup_op_deriv_jnp
 
@@ -3288,9 +3294,13 @@ class LindbladSolverJAX(SchroedingerSolverJAX):
                             const_diss_sup_op[1:], factor_per_lind[1:]):
                         # add the remaining terms
                         diss_sup_op_deriv[-1][-1] += diss_sup_op * factor
-
-            self._diss_sup_op_deriv_jnp = \
-                jnp.array([[l.data for l in lm] for lm in diss_sup_op_deriv])
+                        
+            if isinstance(diss_sup_op_deriv,jnp.ndarray) or isinstance(diss_sup_op_deriv,np.ndarray):
+                self._diss_sup_op_deriv_jnp = diss_sup_op_deriv
+            else:
+                self._diss_sup_op_deriv_jnp = \
+                    jnp.array([[l.data for l in lm] for lm in diss_sup_op_deriv])
+                    
             return self._diss_sup_op_deriv_jnp
 
         else:

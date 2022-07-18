@@ -1648,10 +1648,12 @@ class GaussianMTF(MatrixTF):
 
 try:
     import jax.numpy as jnp
+    from jax import vmap
     _HAS_JAX = True
 except ImportError:
     from unittest import mock
     jnp = mock.Mock()
+    vmap = mock.Mock()
     _HAS_JAX = False
 
 class TransferFunctionJAX(TransferFunction):
@@ -1665,7 +1667,7 @@ class TransferFunctionJAX(TransferFunction):
                  ):
         if not _HAS_JAX:
             raise ImportError("JAX not available")
-        super().__init__(num_ctrls.bound_type,oversampling,offset)
+        super().__init__(num_ctrls,bound_type,oversampling,offset)
 
     @abstractmethod
     def __call__(self, y: Union[np.array,jnp.array]) -> jnp.array:
@@ -1758,7 +1760,7 @@ class TransferFunctionJAX(TransferFunction):
         """
         if isinstance(y_times, list):
             y_times = jnp.array(y_times)
-        if not isinstance(y_times, Union[np.ndarray,jnp.array]):
+        if not isinstance(y_times, (np.ndarray,jnp.ndarray)):
             raise Exception("times must be a list or (j)np.array")
 
         y_times = jnp.atleast_1d(jnp.squeeze(y_times))

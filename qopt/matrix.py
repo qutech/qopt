@@ -1576,7 +1576,7 @@ class DenseOperatorJAX(OperatorMatrix):
         """See base class. """
         if type(other) is DenseOperatorJAX:
             self.data += other.data
-        elif isinstance(other,Union[jnp.ndarray,np.ndarray]):
+        elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             self.data += other
         elif type(other) in VALID_SCALARS:
             self.data += other
@@ -1589,7 +1589,7 @@ class DenseOperatorJAX(OperatorMatrix):
 
         if type(other) is DenseOperatorJAX:
             self.data -= other.data
-        elif isinstance(other,Union[jnp.ndarray,np.ndarray]):
+        elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             self.data -= other
         elif type(other) in VALID_SCALARS:
             self.data -= other
@@ -1770,7 +1770,7 @@ class DenseOperatorJAX(OperatorMatrix):
         """See base class. """
         if type(other) == DenseOperatorJAX:
             out = jnp.kron(self.data, other.data)
-        elif isinstance(other,Union[jnp.ndarray,np.ndarray]):
+        elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             out = jnp.kron(self.data, other)
         else:
             raise ValueError('The kronecker product of dense control matrices'
