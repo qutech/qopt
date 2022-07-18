@@ -814,7 +814,7 @@ class SchroedingerSolver(Solver):
         self.frechet_deriv_approx_method = frechet_deriv_approx_method
 
         self._dyn_gen = None
-
+        
     def set_optimization_parameters(self, y: np.array) -> None:
         """See base class. """
         if not np.array_equal(self._opt_pars, y):
@@ -2436,7 +2436,21 @@ class SolverJAX(Solver):
         amplitudes.
         """
         pass
-
+    
+    # #TEST
+    def _calc_error(self):
+        
+        if self._dyn_gen is None:
+            self._dyn_gen = self._compute_dyn_gen()
+        
+        #only sensible if same timesteps (?)
+        # return jnp.sum((self._transferred_time_jnp[0])**2/2*jnp.linalg.norm(
+        #     self._dyn_gen[1:]@self._dyn_gen[:-1]
+        #     -self._dyn_gen[:-1]@self._dyn_gen[1:],axis=(1,2)),axis=0)
+        return (self._transferred_time_jnp[0])**2/2*jnp.linalg.norm(
+            self._dyn_gen[1:]@self._dyn_gen[:-1]
+            -self._dyn_gen[:-1]@self._dyn_gen[1:],axis=(1,2))
+ 
 
 class SchroedingerSolverJAX(SolverJAX):
     """See docstring of class w/o JAX."""

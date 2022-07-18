@@ -3183,3 +3183,604 @@ def derivative_average_gate_fid_with_du(propagators, propagators_past,
                 temp += lambda_.tr()
             derivative_fidelity[t, ctrl] = temp / (dim ** 2 * (dim + 1))
     return derivative_fidelity
+
+
+###############################################################################
+
+class OperationInfidelityJAXSpecial(OperationInfidelityJAX):
+    """
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 rot_frame_ang_freq: float,
+                 fidelity_measure: str = 'entanglement',
+                 super_operator_formalism: bool = False,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 map_to_closest_unitary: bool = False
+                 ):
+
+        super().__init__(solver=solver,
+            target=target,
+            fidelity_measure=fidelity_measure,
+            super_operator_formalism=super_operator_formalism,
+            label=label,
+            computational_states=computational_states,
+            map_to_closest_unitary=map_to_closest_unitary)
+        
+
+        self.end_time = sum(solver.transferred_time)-0.5*solver.transferred_time[-1]
+        self.freq = rot_frame_ang_freq
+    
+    def rot_op_4(self,time):
+        return jnp.array([[np.exp(-1j*2*self.freq/2*time),0,0,0],
+                      [0,np.exp(0*self.freq/2*time),0,0],
+                      [0,0,np.exp(0*self.freq/2*time),0],
+                      [0,0,0,np.exp(1j*2*self.freq/2*time)]])
+    
+    def rot_op_4_der_t(self,time):
+        return 1j*2*self.freq/2*jnp.array([[-np.exp(-1j*2*self.freq/2*time),0,0,0],
+                      [0,np.exp(0*self.freq/2*time),0,0],
+                      [0,0,np.exp(0*self.freq/2*time),0],
+                      [0,0,0,np.exp(1j*2*self.freq/2*time)]])
+    
+    def costs(self,time_fact) -> float:
+        """Calculates the costs by the selected fidelity measure. """
+        final = self.solver.forward_propagators_jnp[-1]
+
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            # raise NotImplementedError
+            infid = 1 - _entanglement_fidelity_super_operator_jnp(
+                self._target_jnp,
+                final,
+                jnp.sqrt(final.shape[0]).astype(int),
+                self.computational_states,
+                
+            )
+        elif self.fidelity_measure == 'entanglement':
+            infid = 1 - _entanglement_fidelity_jnp(
+                self.rot_op_4(time_fact*self.end_time)@self._target_jnp,
+                final,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'implemented in this version.')
+        return jnp.real(infid)
+
+    
+    def grad(self, time_fact) -> jnp.ndarray:
+        """Calculates the derivatives of the selected fidelity measure with
+        respect to the control amplitudes. """
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            raise NotImplementedError
+            derivative_fid = _deriv_entanglement_fid_sup_op_with_du_jnp(
+                self._target_jnp,
+                self.solver.forward_propagators_jnp,
+                self.solver.frechet_deriv_propagators_jnp,
+                self.solver.reversed_propagators_jnp,
+                jnp.sqrt(self.solver.forward_propagators_jnp.shape[1]).astype(int),
+                self.computational_states,
+            )
+        elif self.fidelity_measure == 'entanglement':
+            # raise NotImplementedError
+            derivative_fid = _derivative_entanglement_fidelity_with_du_jnp(
+                self.rot_op_4(time_fact*self.end_time)@self._target_jnp,
+                self.solver.forward_propagators_jnp,
+                self.solver.frechet_deriv_propagators_jnp,
+                self.solver.reversed_propagators_jnp,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the average and entanglement'
+                                      'fidelity is implemented in this '
+                                      'version.')
+        return -1 * jnp.real(derivative_fid)
+    
+    def der_time_fact(self,time_fact):
+        
+        #TESTTEST
+        
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            raise NotImplementedError
+            # derivative_fid = deriv_entanglement_fid_sup_op_with_dfreq(
+            #     forward_propagators=self.solver.forward_propagators,
+            #     target_der = r_der.dag()*self.target,
+            #     target=r.dag()*self.target,
+            #     computational_states=self.computational_states,
+            # )
+        elif self.fidelity_measure == 'entanglement':
+            derivative_fid = _derivative_entanglement_fidelity_with_dtf_jnp(
+                self.rot_op_4(time_fact*self.end_time)@self._target_jnp,
+                self.end_time*self.rot_op_4_der_t(time_fact*self.end_time)@self._target_jnp,
+                self.solver.forward_propagators_jnp,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        #ONLY AT LAST TIMESTEP
+            
+        else:
+            raise NotImplementedError('Only the average and entanglement'
+                                      'fidelity is implemented in this '
+                                      'version.')
+        return -1 * np.real(derivative_fid)
+    
+    
+@partial(jit,static_argnums=(3,4))
+def _derivative_entanglement_fidelity_with_dtf_jnp(
+        target: jnp.ndarray,
+        target_der: jnp.ndarray,
+        forward_propagators_jnp: jnp.ndarray,
+        computational_states: Optional[tuple] = None,
+        map_to_closest_unitary: bool = False
+) -> jnp.ndarray:
+    """
+    
+    """
+    target_unitary_dag = jnp.conj(target).T
+    if computational_states is not None:
+        trace = jnp.conj(
+            ((_truncate_to_subspace_jnp(forward_propagators_jnp[-1],
+                computational_states,
+                map_to_closest_unitary=map_to_closest_unitary)
+              @ target_unitary_dag).trace())
+        )
+    else:
+        trace = jnp.conj(((forward_propagators_jnp[-1] @ target_unitary_dag).trace()))
+    # num_ctrls,num_time_steps = propagator_derivatives_jnp.shape[:2]
+    d = target.shape[0]
+
+    # here we need to take the real part.
+    if computational_states:
+        derivative_fidelity = 2/d/d * jnp.real(trace*(
+            jnp.conj(target_der).T @ _truncate_to_subspace_jnp(forward_propagators_jnp[-1],
+            computational_states,
+            map_to_closest_unitary)).trace())
+
+    else:
+        derivative_fidelity = 2/d/d * jnp.real(trace*(
+            jnp.conj(target_der).T @ forward_propagators_jnp[-1]).trace())
+
+    return derivative_fidelity
+
+
+class OperationInfidelityJAXSpecial2(OperationInfidelityJAX):
+    """
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 # rot_frame_ang_freq: float,
+                 fidelity_measure: str = 'entanglement',
+                 super_operator_formalism: bool = False,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 map_to_closest_unitary: bool = False
+                 ):
+
+        super().__init__(solver=solver,
+            target=target,
+            fidelity_measure=fidelity_measure,
+            super_operator_formalism=super_operator_formalism,
+            label=label,
+            computational_states=computational_states,
+            map_to_closest_unitary=map_to_closest_unitary)
+        
+
+        # self.end_time = sum(solver.transferred_time)-0.5*solver.transferred_time[-1]
+        # self.freq = rot_frame_ang_freq
+    
+    # def rot_op_4(self,time):
+    #     return jnp.array([[np.exp(-1j*2*self.freq/2*time),0,0,0],
+    #                   [0,np.exp(0*self.freq/2*time),0,0],
+    #                   [0,0,np.exp(0*self.freq/2*time),0],
+    #                   [0,0,0,np.exp(1j*2*self.freq/2*time)]])
+    
+    # def rot_op_4_der_t(self,time):
+    #     return 1j*2*self.freq/2*jnp.array([[-np.exp(-1j*2*self.freq/2*time),0,0,0],
+    #                   [0,np.exp(0*self.freq/2*time),0,0],
+    #                   [0,0,np.exp(0*self.freq/2*time),0],
+    #                   [0,0,0,np.exp(1j*2*self.freq/2*time)]])
+    
+    def costs(self) -> float:
+        """Calculates the costs by the selected fidelity measure. """
+        final = self.solver.forward_propagators_jnp[-1]
+                
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            raise NotImplementedError
+            infid = 1 - _entanglement_fidelity_super_op_jnp_zphase(
+                self._target_jnp,
+                final,
+                jnp.sqrt(final.shape[0]).astype(int),
+                self.computational_states,
+            )
+        elif self.fidelity_measure == 'entanglement':
+            infid = 1 - _entanglement_fidelity_jnp_zphase(
+                self._target_jnp,
+                final,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'implemented in this version.')
+        return jnp.real(infid)
+
+    
+    def grad(self) -> jnp.ndarray:
+        raise NotImplementedError
+       
+        
+@jit
+def _rot_op_p(ph_arr):
+    return jnp.diagflat(jnp.exp(1j*(ph_arr[0].real*jnp.array([1,1,-1,-1])+ph_arr[1].real*jnp.array([1,-1,1,-1]))))
+   
+@partial(jit,static_argnums=(3,4))
+def _entanglement_infidelity_jnp_zphase_wrapper(ph_arr,target,prop,comp_states,to_closest):
+    return 1-_entanglement_fidelity_jnp(_rot_op_p(ph_arr)@target,prop,comp_states,to_closest)
+
+
+#TODO: weird error sometimes that module not exists despite jax loaded?
+import jax.scipy.optimize as jsco
+
+@partial(jit,static_argnums=(2,3))
+def _entanglement_fidelity_jnp_zphase(target,prop,comp_states,to_closest):
+    res = jsco.minimize(_entanglement_infidelity_jnp_zphase_wrapper,
+                                      x0=jnp.array([0.,0.],dtype=jnp.float64),args=(target,prop,comp_states,to_closest),
+                                      method="BFGS")
+    return 1-res.fun
+
+@partial(jit,static_argnums=(2,3))
+def _entanglement_fidelity_jnp_zphase_returnopt(target,prop,comp_states,to_closest):
+    res = jsco.minimize(_entanglement_infidelity_jnp_zphase_wrapper,
+                                      x0=jnp.array([0.,0.],dtype=jnp.float64),args=(target,prop,comp_states,to_closest),
+                                      method="BFGS")
+    return 1-res.fun, res.x
+
+@partial(jit,static_argnums=(3,4,5))
+def _entanglement_infidelity_super_op_jnp_zphase_wrapper(ph_arr,target,prop,dim_prop,comp_states):
+    return 1-_entanglement_fidelity_super_operator_jnp(_rot_op_p(ph_arr)@target,prop,dim_prop,comp_states)
+
+@partial(jit,static_argnums=(2,3,4))
+def _entanglement_fidelity_super_op_jnp_zphase(target,prop,dim_prop,comp_states):
+    res = jsco.minimize(_entanglement_infidelity_super_op_jnp_zphase_wrapper,
+                                      x0=jnp.array([0.,0.],dtype=jnp.float64),args=(target,prop,dim_prop,comp_states),
+                                      method="BFGS")
+    return 1-res.fun
+
+
+# import scipy.optimize as sco
+
+class TwoQubitEquivalenceClass(CostFunction):
+    """
+
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 local_invariants: np.ndarray, #TODO: WHY g3=+1 for CNOT??? get -1 when calculating?
+                 # fidelity_measure: str = 'entanglement',
+                 super_operator_formalism: bool = False,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                  map_to_closest_unitary: bool = False
+                 ):
+        if label is None:
+            # if fidelity_measure == 'entanglement':
+            label = ['Two Qubit Equivalence Class', ]
+
+        super().__init__(solver=solver, label=label)
+        self.target_g = local_invariants
+        self._target_g_jnp = jnp.array(self.target_g)
+        self._target_g_c_jnp = jnp.array([self.target_g[0]+1j*self.target_g[1],self.target_g[2]])
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+        self.map_to_closest_unitary = map_to_closest_unitary
+
+        # if fidelity_measure == 'entanglement':
+        #     self.fidelity_measure = fidelity_measure
+        # else:
+        #     raise NotImplementedError('Only the entanglement fidelity is '
+        #                               'currently supported.')
+
+        self.super_operator = super_operator_formalism
+        
+        self._q_mat = 1/2**0.5*jnp.array([[1,0,0,1j],
+                                          [0,1j,1,0],
+                                          [0,1j,-1,0],
+                                          [1,0,0,-1j]])
+        self._qq = jnp.conj(self._q_mat)@jnp.conj(self._q_mat).T
+
+    
+    def costs(self) -> float:
+        """Calculates the costs by the selected fidelity measure. """
+        final = self.solver.forward_propagators_jnp[-1]
+        
+        if self.computational_states is not None:
+            final = _truncate_to_subspace_jnp(final,self.computational_states,self.map_to_closest_unitary)
+        
+        m = _calc_m(final,self._q_mat)
+        # g_arr = _calc_g(final,self._q_mat,m)
+        
+        # if not jnp.all(jnp.isclose(g_arr.imag,0)):
+        #     raise RuntimeWarning("complex weyl coord." + str(g_arr))
+        
+        # l_sq = jnp.sum((g_arr-self._target_g_jnp)**2)**0.5
+       
+        # #discard imaginary part cause should not be (?) not very plausible
+        # return jnp.real(l_sq)
+        
+        #??? is absolute value squared better?
+        g_arr_c = _calc_g_c(m,final)
+        l_sq_abs = jnp.sum(jnp.abs(g_arr_c-self._target_g_c_jnp)**2)**0.5
+        return l_sq_abs
+        
+    
+    def grad(self) -> jnp.ndarray:
+        """Calculates the derivatives of the selected fidelity measure with
+        respect to the control amplitudes. """
+        
+        final = self.solver.forward_propagators_jnp[-1]
+        
+        rev_prop_rev = self.solver.reversed_propagators_jnp[::-1][1:]
+        prop_der = self.solver.frechet_deriv_propagators_jnp
+        fwd_props = self.solver.forward_propagators_jnp[:-1]
+        
+        if self.computational_states is not None:
+            final = _truncate_to_subspace_jnp(final,self.computational_states,self.map_to_closest_unitary)
+            rpr_pd_fp = _truncate_to_subspace_jnp_dvmap(rev_prop_rev@prop_der@fwd_props,self.computational_states,self.map_to_closest_unitary)
+            # rev_prop_rev = _truncate_to_subspace_jnp_vmap(rev_prop_rev,self.computational_states,self.map_to_closest_unitary)
+            # prop_der = _truncate_to_subspace_jnp_dvmap(prop_der,self.computational_states,self.map_to_closest_unitary)
+            # fwd_props = _truncate_to_subspace_jnp_vmap(fwd_props,self.computational_states,self.map_to_closest_unitary)
+            
+        m = _calc_m(final,self._q_mat)
+        g_arr_c = _calc_g_c(m,final)
+        l_sq_abs = jnp.sum(jnp.abs(g_arr_c-self._target_g_c_jnp)**2)**0.5
+        
+        #TODO: something is wrong here...
+        derivative_lsq = _dlsq_du_c(m,self._q_mat,self._qq,
+                                  rpr_pd_fp,
+                                  final,
+                                  self._target_g_c_jnp,
+                                  g_arr_c,
+                                  l_sq_abs).T
+        
+        # should be shape: (num_t, num_ctrl)
+        return jnp.real(derivative_lsq)
+    
+@jit  
+def _calc_m(arr,q):
+    ub = (jnp.conj(q).T)@arr@q
+    return (ub.T)@ub
+
+@jit
+def _g_to_s_d(g_arr):
+    z_arr = jnp.roots([1,-g_arr[2],(4*(g_arr[0]**2+g_arr[1]**2)**0.5-1),(g_arr[2]-4*g_arr[0])])
+    return jnp.pi-jnp.arccos(z_arr[0])-jnp.arccos(z_arr[2]), g_arr[2]*(g_arr[0]**2+g_arr[1]**2)**0.5-g_arr[0]
+
+# @jit
+# def _calc_g(arr,q,m):
+#     g1 = 1/16 * jnp.real(jnp.trace(m)**2)
+#     g2 = 1/16 * jnp.imag(jnp.trace(m)**2)
+#     g3 = 1/4 * jnp.real((jnp.trace(m)**2-jnp.trace(m@m)))
+#     return jnp.asarray([g1,g2,g3])
+
+#TODO: is with determinnat correct?
+@jit
+def _calc_g_c(m,u):
+    g1 = 1/16 * jnp.trace(m)**2
+    g3 = 1/4 * (jnp.trace(m)**2-jnp.trace(m@m))
+    return jnp.asarray([g1,g3]) * jnp.linalg.det(jnp.conj(u).T)
+
+@jit
+def _dm_dukj(q,qq,rpr_pd_fp,final):
+    return q.T@(rpr_pd_fp).T@qq@final@q+\
+           q.T@final.T@qq@rpr_pd_fp@q
+
+# @jit
+# def _dg12_dukj_nodet(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final):
+#     return 0.125*(m.trace()*_dm_dukj(q,qq,rev_prop_rev,prop_der,fwd_prop,final).trace())
+
+@jit
+def _ddetU_dukj(U,dUdukj):
+    return jnp.linalg.det(U)*jnp.trace(jnp.linalg.inv(U)@dUdukj)
+
+@jit
+def _dg12_dukj(m,q,qq,rpr_pd_fp,final):
+    return 1/16*(2*m.trace()*_dm_dukj(q,qq,rpr_pd_fp,final).trace()*jnp.linalg.det(jnp.conj(final).T)
+                  +m.trace()**2*_ddetU_dukj(jnp.conj(final).T,jnp.conj(rpr_pd_fp).T))
+
+# @jit
+# def _dg3_dukj_nodet(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final):
+#     return 0.5*(m.trace()*_dm_dukj(q,qq,rev_prop_rev,prop_der,fwd_prop,final).trace()-
+#                 (m@_dm_dukj(q,qq,rev_prop_rev,prop_der,fwd_prop,final)).trace())
+
+@jit
+def _dg3_dukj(m,q,qq,rpr_pd_fp,final):
+    return 0.25*(2*(m.trace()*_dm_dukj(q,qq,rpr_pd_fp,final).trace()-
+                (m@_dm_dukj(q,qq,rpr_pd_fp,final)).trace())*jnp.linalg.det(jnp.conj(final).T)
+                 +(m.trace()**2-(m@m).trace())*_ddetU_dukj(jnp.conj(final).T,jnp.conj(rpr_pd_fp).T))
+
+# @jit
+# def _dlsq_dukj(m,q,qq,rev_prop_rev, prop_der,fwd_prop,final,g0_arr,g_arr,l_sq):
+#     dg12 = _dg12_dukj(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final)
+#     dg3 = _dg3_dukj(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final)
+#     return 1/l_sq*jnp.sum((g_arr-g0_arr)*jnp.array([jnp.real(dg12),jnp.imag(dg12),dg3]))
+
+@jit
+def _dlsq_dukj_c(m,q,qq,rpr_pd_fp,final,g0_arr_c,g_arr_c,l_sq_abs):
+    dg12 = _dg12_dukj(m,q,qq,rpr_pd_fp,final)
+    dg3 = _dg3_dukj(m,q,qq,rpr_pd_fp,final)
+    return 1/l_sq_abs*jnp.sum(jnp.real((g_arr_c-g0_arr_c)*jnp.conj(jnp.array([dg12,dg3]))))
+
+
+# #(to be used with additional .T for previous shape)
+# @jit 
+# def _dlsq_du(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final,g0_arr,g_arr,l_sq):
+#     return vmap(vmap(_dlsq_dukj,in_axes=(None,None,None,0,0,0,None,None,None,None)),
+#                 in_axes=(None,None,None,None,0,None,None,None,None,None))(
+#                 m,q,qq,rev_prop_rev,prop_der,fwd_prop,final,g0_arr,g_arr,l_sq)
+                    
+#(to be used with additional .T for previous shape)
+@jit 
+def _dlsq_du_c(m,q,qq,rpr_pd_fp,final,g0_arr_c,g_arr_c,l_sq_abs):
+    return vmap(vmap(_dlsq_dukj_c,in_axes=(None,None,None,0,None,None,None,None)),
+                in_axes=(None,None,None,0,None,None,None,None))(
+                m,q,qq,rpr_pd_fp,final,g0_arr_c,g_arr_c,l_sq_abs)
+                    
+@partial(jit,static_argnums=(1,2))
+def _truncate_to_subspace_jnp_vmap(arr,subspace_indices,map_to_closest_unitary):
+    return vmap(_truncate_to_subspace_jnp,in_axes=(0,None,None))(arr,subspace_indices,map_to_closest_unitary)
+
+@partial(jit,static_argnums=(1,2))
+def _truncate_to_subspace_jnp_dvmap(arr,subspace_indices,map_to_closest_unitary):
+    return vmap(_truncate_to_subspace_jnp_vmap,in_axes=(0,None,None))(arr,subspace_indices,map_to_closest_unitary)
+
+
+
+###############################################################################
+
+class OperationInfidelityJAXzphase1Q(OperationInfidelityJAX):
+    """
+    """
+    def __init__(self,
+                 solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 # rot_frame_ang_freq: float,
+                 fidelity_measure: str = 'entanglement',
+                 super_operator_formalism: bool = False,
+                 label: Optional[List[str]] = None,
+                 computational_states: Optional[List[int]] = None,
+                 map_to_closest_unitary: bool = False,
+                 basis_change_op = None
+                 ):
+
+        super().__init__(solver=solver,
+            target=target,
+            fidelity_measure=fidelity_measure,
+            super_operator_formalism=super_operator_formalism,
+            label=label,
+            computational_states=computational_states,
+            map_to_closest_unitary=map_to_closest_unitary)
+    
+        self.basis_change_op = basis_change_op
+    
+    def costs(self) -> float:
+        """Calculates the costs by the selected fidelity measure. """
+        if self.basis_change_op is not None:
+            final = self.basis_change_op @ self.solver.forward_propagators_jnp[-1]
+        else:
+            final = self.solver.forward_propagators_jnp[-1]
+            
+        if self.fidelity_measure == 'entanglement' and self.super_operator:
+            raise NotImplementedError
+            # infid = 1 - _entanglement_fidelity_super_op_jnp_zphase_1q(
+            #     self._target_jnp,
+            #     final,
+            #     jnp.sqrt(final.shape[0]).astype(int),
+            #     self.computational_states,
+            # )
+        elif self.fidelity_measure == 'entanglement':
+            infid = 1 - _entanglement_fidelity_jnp_zphase_1q(
+                self._target_jnp,
+                final,
+                self.computational_states,
+                self.map_to_closest_unitary
+            )
+        else:
+            raise NotImplementedError('Only the entanglement fidelity is '
+                                      'implemented in this version.')
+        return jnp.real(infid)
+
+    
+    def grad(self) -> jnp.ndarray:
+        raise NotImplementedError
+        
+        
+@jit
+def _rot_op_p_1q(ph_arr):
+    return jnp.diagflat(jnp.exp(1j*(ph_arr[0].real*jnp.array([1,-1]))))
+   
+@partial(jit,static_argnums=(3,4))
+def _entanglement_infidelity_jnp_zphase_wrapper_1q(ph_arr,target,prop,comp_states,to_closest):
+    return 1-_entanglement_fidelity_jnp(_rot_op_p_1q(ph_arr)@target,prop,comp_states,to_closest)
+
+@partial(jit,static_argnums=(2,3))
+def _entanglement_fidelity_jnp_zphase_1q(target,prop,comp_states,to_closest):
+    res = jsco.minimize(_entanglement_infidelity_jnp_zphase_wrapper_1q,
+                                      x0=jnp.array([0.,],dtype=jnp.float64),args=(target,prop,comp_states,to_closest),
+                                      method="BFGS")
+    return 1-res.fun
+
+
+
+class LeakageErrorBaseChangeJAX(CostFunction):
+    """See docstring of class w/o JAX. Requires solver with JAX"""
+
+    def __init__(self, solver: solver_algorithms.SolverJAX,
+                 computational_states: List[int],
+                 label: Optional[List[str]] = None,
+                 basis_change_op = None
+                 ):
+        
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
+        if label is None:
+            label = ["Leakage Error", ]
+        super().__init__(solver=solver, label=label)
+        if computational_states is None:
+            self.computational_states = None
+        else:
+            self.computational_states = tuple(computational_states)
+        
+        self.basis_change_op = basis_change_op
+        
+    def costs(self):
+        """See base class. """
+        if self.basis_change_op is not None:
+            final_prop = self.basis_change_op @ self.solver.forward_propagators_jnp[-1]
+        else:
+            final_prop = self.solver.forward_propagators_jnp[-1]
+        
+        clipped_prop = _truncate_to_subspace_jnp(final_prop,
+            self.computational_states,map_to_closest_unitary=False)
+        #TODO: is this correctly transferred? (left or right multiplication)
+        temp = jnp.conj(clipped_prop).T @ clipped_prop
+
+        # the result should always be positive within numerical accuracy
+        return max(0, 1 - temp.trace().real / clipped_prop.shape[0])
+
+    def grad(self):
+        """See base class. """
+        if self.basis_change_op is not None:
+            final = self.basis_change_op @ self.solver.forward_propagators_jnp[-1]
+        else:
+            final = self.solver.forward_propagators_jnp[-1]
+            
+        final_leak_dag = _truncate_to_subspace_jnp(jnp.conj(final).T,
+            self.computational_states,map_to_closest_unitary=False)
+        d = final_leak_dag.shape[0]
+        
+        if self.basis_change_op is not None:
+            derivative_fidelity = -2./d*jnp.real(
+                _der_leak_comp_states(
+                    self.basis_change_op @ self.solver.frechet_deriv_propagators_jnp,
+                    self.basis_change_op @ self.solver.reversed_propagators_jnp[::-1][1:],
+                    self.basis_change_op @ self.solver.forward_propagators_jnp[:-1],
+                    self.computational_states,
+                    final_leak_dag).T)
+            
+        else:
+            derivative_fidelity = -2./d*jnp.real(
+                _der_leak_comp_states(
+                    self.solver.frechet_deriv_propagators_jnp,
+                    self.solver.reversed_propagators_jnp[::-1][1:],
+                    self.solver.forward_propagators_jnp[:-1],
+                    self.computational_states,
+                    final_leak_dag).T)
+        
+        return derivative_fidelity

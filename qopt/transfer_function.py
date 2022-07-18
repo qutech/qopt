@@ -1990,3 +1990,119 @@ class OversamplingTFJAX(TransferFunctionJAX):
         )
         deriv_by_opt_par = jnp.sum(cropped_derivs, axis=1)
         return deriv_by_opt_par
+
+
+####
+
+class LinearInterpTFJAX(TransferFunctionJAX):
+    """See docstring of class w/o JAX."""
+
+    def __init__(self,
+                 num_ctrls: int = 1,
+                 bound_type: Optional[Tuple[str, int]] = None,
+                 oversampling: int = 1
+                 ):
+        super().__init__(
+            num_ctrls=num_ctrls,
+            bound_type=bound_type,
+            oversampling=oversampling
+        )
+
+    def _calculate_transfer_matrix(self):
+        """Overrides the base class method. """
+        raise NotImplementedError
+
+    def __call__(self, y: Union[np.array,jnp.array]) -> jnp.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Only the oversampling and boundaries are taken into account.
+
+        Parameters
+        ----------
+        y: Union[np.array,jnp.array], shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: jnp.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        # oversample pulse by repetition
+        # u = jnp.repeat(y, self.oversampling, axis=0)
+        
+        x_arr_old, x_arr_new = \
+            jnp.linspace(0,y.shape[0],y.shape[0],endpoint=False), \
+            jnp.linspace(0,y.shape[0],y.shape[0]*self.oversampling,endpoint=False)
+            #as coded now has base at beginning of time interval
+        u = jnp.moveaxis(vmap(jnp.interp,in_axes=(None,None,1))(x_arr_new,x_arr_old,y),0,1)
+        
+        # add the padding elements
+        #TODO: not implemented as not used so far
+        if self.num_padding_elements[0] != 0 or self.num_padding_elements[1] != 0:
+            raise NotImplementedError
+        # padding_start, padding_end = self.num_padding_elements
+
+        # u = jnp.concatenate(
+        #     (jnp.zeros((padding_start, self.num_ctrls)),
+        #      u,
+        #      jnp.zeros((padding_end, self.num_ctrls))), axis=0)
+
+        return u
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: Union[np.array,jnp.array]
+            ) -> jnp.array:
+        """
+        See base class.
+
+        Processing without transfer matrix.
+
+        Parameters
+        ----------
+        deriv_by_transferred_par: Union[np.array,jnp.array],
+            shape (num_x, num_f, num_par)
+            The gradients of num_f functions by num_par optimization parameters
+            at num_x different time steps.
+
+        Returns
+        -------
+        deriv_by_opt_par: jnp.array, shape: (num_y, num_f, num_par)
+            The derivatives by the optimization parameters at num_y time steps.
+
+        """
+
+        shape = deriv_by_transferred_par.shape
+        
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+        # assert self.num_x//self.oversampling > 3 #to avoid complications
+        # assert self.x//self.oversampling == 
+        
+        # delete the padding elements
+        if self.num_padding_elements[0] != 0 or self.num_padding_elements[1] != 0:
+            raise NotImplementedError
+        # padding_start, padding_end = self.num_padding_elements
+        m_arr = jnp.arange(0,self.oversampling)/self.oversampling
+        len_m = len(m_arr)
+        
+        deriv_by_opt_par = np.empty((self.num_x//self.oversampling,shape[1],shape[2]))
+        
+        
+        deriv_by_opt_par[0,:,:] = jnp.sum(deriv_by_transferred_par[0:self.oversampling]*(1-m_arr[:,np.newaxis,np.newaxis]),axis=0)
+            
+        deriv_by_opt_par[self.num_x//self.oversampling-1,:,:] = jnp.sum(deriv_by_transferred_par[self.oversampling*(self.num_x//self.oversampling-2):self.oversampling*(self.num_x//self.oversampling -1)]*m_arr[:,np.newaxis,np.newaxis],axis=0)
+            
+        
+        #slow but less memory consumption to avoid y*x shape
+        for i in range(1,self.num_x//self.oversampling -1):
+            deriv_by_opt_par[i,:,:] = jnp.sum(deriv_by_transferred_par[self.oversampling*(i-1):self.oversampling*i]*m_arr[:,np.newaxis,np.newaxis],axis=0) +\
+                jnp.sum(deriv_by_transferred_par[self.oversampling*i:self.oversampling*(i+1)]*(1-m_arr[:,np.newaxis,np.newaxis]),axis=0)
+            
+        
+        # deriv_by_opt_par = jnp.sum(cropped_derivs, axis=1)
+        return jnp.asarray(deriv_by_opt_par)
