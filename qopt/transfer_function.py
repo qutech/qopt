@@ -445,7 +445,6 @@ class TransferFunction(ABC):
 
     def plot_pulse(self, y: np.array) -> None:
         """
-
         Plot the control amplitudes corresponding to the given optimisation
         variables.
 
@@ -463,11 +462,79 @@ class TransferFunction(ABC):
             plt.bar(np.cumsum(self.x_times) - .5 * self.x_times[0],
                     x_per_control, self.x_times[0])
             plt.bar(np.cumsum(self._y_times) - .5 * self._y_times[0]
-                    + np.cumsum(self._y_times)[n_padding_start]
-                    - self._y_times[n_padding_start],
+                    + np.cumsum(self.x_times)[n_padding_start]
+                    - self.x_times[n_padding_start],
                     y_per_control, self._y_times[0],
                     fill=False)
         plt.show()
+
+    def _check_dimensions_datatype(self, y: np.array) -> None:
+        """
+        This function verifies that the transfer function can be applied to
+        the pulse y. For this purpose, the shape and the data type of y must
+        fit the transfer function.
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Raises
+        ------
+        IndexError: is raised when the pulse has the wrong dimensions.
+
+        TypeError: is raised when the pulse has the wrong data type.
+
+        RuntimeError: is raised when the transfer function is not yet properly
+        initialised.
+
+        """
+
+        # check that the transfer function is correctly initialised.
+        if self._y_times is None:
+            raise RuntimeError(
+                'The times are not set to this instance of transfer functions.'
+                'Please use the function TransferFunction.set_times before '
+                'you continue.'
+            )
+
+        # check for the correct data type:
+        if not y.dtype in [np.float64, np.float32]:
+            raise TypeError(
+                'The transfer function assumes an input pulse as numpy array'
+                'of the dtype np.float32 or np.float64 but the given input'
+                'has type: ' + str(y.dtype)
+            )
+
+        # check for the correct data dimensions
+        shape = y.shape
+
+        if not len(shape) == 2:
+            raise IndexError(
+                'The input data pulse must be a numpy array with 2 dimensions,'
+                'but your pulse has ' + str(len(shape)) + ' dimensions.'
+            )
+
+        if not shape[0] == self._num_y:
+            raise IndexError(
+                'The pulse data must have exactly as many entries as there are'
+                'time steps. You have ' + str(self._num_y) +
+                ' time steps but there are ' + str(shape[0]) +
+                'entries in your pulse. Please make sure that you have set the'
+                'time steps correctly.'
+            )
+
+        if not shape[1] == self.num_ctrls:
+            raise IndexError(
+                'The pulse data must have exactly as many pulses as there are'
+                'control signals. You initialised this transfer function for'
+                + str(self.num_ctrls) +
+                'control signals but your pulse data has ' + str(shape[1]) +
+                'control pulses. Please make sure you set the parameter'
+                'num_ctrls correctly when initializing the transfer function.'
+            )
 
 
 class IdentityTF(TransferFunction):
@@ -544,6 +611,8 @@ class OversamplingTF(TransferFunction):
             transferred optimization parameters.
 
         """
+        self._check_dimensions_datatype(y)
+
         # oversample pulse by repetition
         u = np.repeat(y, self.oversampling, axis=0)
 
@@ -650,11 +719,7 @@ class ConvolutionTF(TransferFunction):
             Control parameters; num_u is the number of times slices for the
             transferred optimization parameters.
         """
-        shape = y.shape
-        assert len(shape) == 2
-        assert shape[0] == self._num_y
-        assert shape[1] == self.num_ctrls
-        assert y.dtype in [np.float64, np.float32]
+        self._check_dimensions_datatype(y)
 
         return scipy.ndimage.convolve(
             y, weights=self.kernel, mode=self.mode, cval=self.cval
@@ -776,12 +841,13 @@ class GaussianConvolution(TransferFunction):
             Control parameters; num_u is the number of times slices for the
             transferred optimization parameters.
 
+        Raises
+        ------
+        ValueError: Indicating that the data shape or type of the argument is
+        incompatible with the transfer function configuration.
+
         """
-        shape = y.shape
-        assert len(shape) == 2
-        assert shape[0] == self._num_y
-        assert shape[1] == self.num_ctrls
-        assert y.dtype in [np.float64, np.float32]
+        self._check_dimensions_datatype(y)
 
         return scipy.ndimage.gaussian_filter1d(
             y, self.sigma, axis=0, order=self.order, mode=self.mode,
@@ -865,6 +931,7 @@ class ConcatenateTF(TransferFunction):
 
     def __call__(self, y: np.ndarray, *args, **kwargs):
         """Calls the concatenated transfer functions in sequence."""
+        self._check_dimensions_datatype(y)
         return self.tf2(self.tf1(y))
 
     def gradient_chain_rule(
@@ -929,21 +996,22 @@ class ParallelTF(TransferFunction):
         self.tf1 = tf1
         self.tf2 = tf2
 
-        assert tf1._num_y == tf2._num_y
-        self._num_y = tf1._num_y
+        if not tf1._num_y == tf2._num_y:
+            raise ValueError("The parallelized transfer functions must operate"
+                             "on the same time frame. The transfer functions"
+                             "expect a different number of input time steps.")
+
+        if not tf1.num_x == tf2.num_x:
+            raise ValueError("The parallelized transfer functions must operate"
+                             "on the same time frame. The transfer functions"
+                             "generate signals with a different number of time"
+                             " steps.")
 
         # tf1 and tf2 should have identical times
         self._y_times = tf1._y_times
         self.x_times = tf1.x_times
         self.num_x = self.tf1.num_x
-
-        if not tf1.bound_type == tf2.bound_type:
-            raise ValueError("The parallized transfer functions must have the "
-                             "same bound_types.")
-
-        if not tf1.oversampling == tf2.oversampling:
-            raise ValueError("The parallized transfer functions must have the "
-                             "same oversampling.")
+        self._num_y = tf1._num_y
 
     def __call__(self, y: np.array) -> np.array:
         """See base class.
@@ -952,6 +1020,7 @@ class ParallelTF(TransferFunction):
         concatenated.
 
         """
+        self._check_dimensions_datatype(y)
         return np.concatenate(
             (self.tf1(y[:, :self.tf1.num_ctrls]),
              self.tf2(y[:, self.tf1.num_ctrls:])),
@@ -1002,10 +1071,7 @@ class MatrixTF(TransferFunction):
             transferred optimization parameters.
 
         """
-        shape = y.shape
-        assert len(shape) == 2
-        assert shape[0] == self._num_y
-        assert shape[1] == self.num_ctrls
+        self._check_dimensions_datatype(y)
 
         if self._transfer_matrix is None:
             self._calculate_transfer_matrix()
@@ -1357,16 +1423,6 @@ class ExponentialMTF(MatrixTF):
             self._calculate_transfer_matrix()
         return self._transfer_matrix
 
-    def __call__(self, y: np.ndarray) -> np.ndarray:
-        """See base class.
-        Todo: can be eliminated"""
-        if self._transfer_matrix is None:
-            self._calculate_transfer_matrix()
-        u = np.einsum('ijk,jk->ik', self._transfer_matrix, y)
-        if self.offset is not None:
-            u += self.offset
-        return u
-
     @deprecated
     def old_call(self, x: np.ndarray):
         """ `TODO` only alive for testing"""
@@ -1473,6 +1529,7 @@ class ExponentialMTF(MatrixTF):
             dudx[self._num_y * self.oversampling + i, -1] = np.exp(
                 -(t / self.awg_rise_time))
 
+        # zeros for the first elements
         dudx = np.concatenate((np.zeros(shape=(num_padding_start,
                                                self._num_y)),
                               dudx), axis=0)
@@ -1545,6 +1602,8 @@ class ExponentialMTF(MatrixTF):
 
 class GaussianMTF(MatrixTF):
     """
+    Deprecated! - Might be reimplemented upon reasonable request.
+
     Represent square function filtered through a gaussian filter.
 
     Can not be used in conjunction with the concatenate tf.
@@ -1572,6 +1631,7 @@ class GaussianMTF(MatrixTF):
 
     """
 
+    @deprecated
     def __init__(self, omega=1, over_sample_rate=5, start=0., end=0.,
                  bound_type=("w", 2)):
         super().__init__()

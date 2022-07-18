@@ -70,7 +70,8 @@ from typing import Optional, List, Callable, Union
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 
-from filter_functions import pulse_sequence, plotting, basis, numeric
+from filter_functions import pulse_sequence, basis, numeric
+from filter_functions import plotting as ff_plotting
 
 from qopt import noise, matrix, matrix as q_mat
 from qopt.transfer_function import TransferFunction, IdentityTF
@@ -115,11 +116,11 @@ class Solver(ABC):
 
         The operators may be given either as NumPy arrays or QuTiP Qobjs
         and each coefficient array should have the same number of elements
-        as *dt*, and should be given in units of :math:`\hbar`. If not every
-        sublist (read operator) was given a identifier, they are automatically
-        filled up with 'A_i' where i is the position of the operator.
-        Alternatively the create_ff_h_n may be a function handle creating
-        such an object when called with the optimization parameters.
+        as *dt*, and should be given in units of :math:`\hbar`. Alternatively,
+        the argument can be a callable. This should have the signature of three
+        input arguments, which are (Optimization parameters, transferred
+        parameters, control amplitudes). The callable should return an nested
+        list of the form given above.
 
     filter_function_basis: Basis, shape (d**2, d, d), optional
         The operator basis in which to calculate. If a Generalized Gell-Mann
@@ -134,6 +135,8 @@ class Solver(ABC):
         the filter function formalism. It receives the optimization parameters
         as array of shape (num_opt, num_t) and returns the derivatives as array
         of shape (num_noise_op, n_ctrl, num_t).
+        The order of the noise operators must correspond to the order specified
+        by filter_function_h_n.
 
     exponential_method: string, optional
         Method used by the ControlMatrix class for the calculation of the
@@ -305,6 +308,11 @@ class Solver(ABC):
             self._filter_function_h_n = []
         else:
             self._filter_function_h_n = filter_function_h_n
+
+        # we store the order of the noise operators. They must coincide with
+        # the order in filter_functions_n_coeffs_deriv
+        self.filter_function_n_oper_identifiers = []
+
         self.filter_function_basis = filter_function_basis
         self.filter_function_n_coeffs_deriv = filter_function_n_coeffs_deriv
 
@@ -433,9 +441,12 @@ class Solver(ABC):
 
             if not (n_time_steps == len(self.h_drift)
                     or len(self.h_drift) == 0):
-                raise ValueError("The drift hamiltonian must have exactly one "
-                                 "entry for each transferred time step or no "
-                                 "entry at all or a single entry.")
+                raise ValueError(
+                    "The drift hamiltonian must have exactly one entry for "
+                    "each transferred time step or no entry at all or a single"
+                    " entry. Your transferred time has " + str(n_time_steps)
+                    + " steps."
+                )
             if paranoia_level >= 2:
                 # check whether the Hamiltonian has the correct dimensions
                 dim = self.h_ctrl[0].shape[0]
@@ -537,7 +548,17 @@ class Solver(ABC):
         if self.filter_function_n_coeffs_deriv is None:
             return None
         else:
-            return self.filter_function_n_coeffs_deriv(self._ctrl_amps)
+            try:
+                return self.filter_function_n_coeffs_deriv(
+                    self._opt_pars, self.transferred_parameters,
+                    self._ctrl_amps)
+            except TypeError:
+                print("Warning, you are used the old interface for the "
+                      "filter_functio_h_n. If you choose it as callable,"
+                      "it should receive the three arguments "
+                      "(optimization parameters, transferred parameters,"
+                      "control amplitudes). ")
+                return self.filter_function_n_coeffs_deriv(self._ctrl_amps)
 
     @property
     def create_ff_h_n(self) -> list:
@@ -552,11 +573,44 @@ class Solver(ABC):
         if type(self._filter_function_h_n) == list:
             h_n = self._filter_function_h_n
         else:
-            h_n = self._filter_function_h_n(self._ctrl_amps)
+            try:
+                h_n = self._filter_function_h_n(
+                    self._opt_pars, self.transferred_parameters,
+                    self._ctrl_amps)
+            except TypeError:
+                print("Warning, you are used the old interface for the "
+                      "filter_functio_h_n. If you choose it as callable,"
+                      "it should receive the three arguments "
+                      "(optimization parameters, transferred parameters,"
+                      "control amplitudes). ")
+                h_n = self._filter_function_h_n(self._ctrl_amps)
 
         if not h_n:
-            h_n = [[np.zeros(self.h_ctrl[0].shape),
-                    np.zeros((len(self.transferred_time),))]]
+            h_n = [
+                [
+                    0 * self.h_ctrl[0], self.transferred_time, 'No Noise'
+                ]
+            ]
+
+        # we store the order of the noise operators. They must coincide with
+        # the order in filter_functions_n_coeffs_deriv
+        self.filter_function_n_oper_identifiers = []
+        for noise_term in h_n:
+            if not len(noise_term) == 3:
+                raise ValueError(
+                    "The noise operators for the filter function must be given"
+                    "as nested list of the form: \n"
+                    "H = [[n_oper1, n_coeff1, n_oper_identifier1], \n"
+                    "[n_oper2, n_coeff2, n_oper_identifier2], ...] \n"
+                    "but not every element of the list you defined has three"
+                    "elements."
+                )
+            if not type(noise_term[2]) == str:
+                raise ValueError(
+                    "The identifiers for the noise terms must be given as "
+                    "string."
+                )
+            self.filter_function_n_oper_identifiers.append(noise_term[2])
 
         return h_n
 
@@ -656,6 +710,7 @@ class Solver(ABC):
                 raise ValueError('No optimization parameters set. '
                                  'Please supply new_amps argument')
 
+
         if ff_basis is not None:
             basis = ff_basis
         elif self.filter_function_basis is not None:
@@ -718,9 +773,10 @@ class Solver(ABC):
         """
         # Already takes care of updating and cleaning the PulseSequence object
         pulse_sequence = self.create_pulse_sequence(new_amps=new_amps)
-        return plotting.plot_bloch_vector_evolution(pulse_sequence,
-                                                    n_samples=500,
-                                                    return_Bloch=return_Bloch)
+        return ff_plotting.plot_bloch_vector_evolution(
+            pulse_sequence,
+            n_samples=500,
+            return_Bloch=return_Bloch)
 
 
 class SchroedingerSolver(Solver):
@@ -1046,6 +1102,10 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
         shape [[[] * num_t] * num_ctrl] * num_noise_traces
         Frechet derivatives of the propagators by the control amplitudes for
         the individual noise traces.
+
+    create_ff_h_n(self): List[List[np.ndarray, list, str]], 
+        shape [[]]*num_noise_operators
+        Creates the noise hamiltonian of the filter function formalism.
 
     """
     def __init__(
@@ -1388,6 +1448,35 @@ class SchroedingerSMonteCarlo(SchroedingerSolver):
                              'method:'
                              + str(self.frechet_deriv_approx_method))
 
+    @property
+    def create_ff_h_n(self) -> list:
+        """Creates the noise hamiltonian of the filter function formalism.
+
+        If `filter_function_h_n` is None, then the filter function noise
+        Hamiltonian is created from the Monte Carlo noise Hamiltonian by
+        directly using the Operators and assuming all noise susceptibilities
+        equal 1.
+
+        Returns
+        -------
+        create_ff_h_n: nested list
+            Noise Hamiltonian of the filter function formalism.
+
+        """
+        if type(self._filter_function_h_n) == list:
+            h_n = self._filter_function_h_n
+        else:
+            h_n = self._filter_function_h_n(self._opt_pars)
+
+        if not h_n:
+            h_n = []
+            for i, noise_operator in enumerate(self.h_noise):
+                if type(noise_operator) == matrix.DenseOperator:
+                    noise_operator = noise_operator.data
+                h_n += [[noise_operator, len(self.transferred_time) * [1], 'Noise' + str(i)], ]
+
+        return h_n
+
 
 class SchroedingerSMCControlNoise(SchroedingerSMonteCarlo):
     """
@@ -1529,7 +1618,7 @@ class LindbladSolver(SchroedingerSolver):
 
     Parameters
     ----------
-    initial_diss_super_op: List[ControlMatrix], len num_l
+    initial_diss_super_op: List[ControlMatrix], len num_t
         Initial dissipation super operator; num_l is the number of
         Lindbladians. Set if you want to use (1.) (See documentation above!).
         The control matrices are expected to be of shape (dim, dim) where dim
