@@ -2239,3 +2239,79 @@ class LindbladSControlNoise(LindbladSolver):
             self._fwd.append(self._prop[t] * self._fwd[t])
 
         self.prop_calculated = True
+
+
+class TensorFlowSolver(Solver):
+    """
+    Todo:
+    - add transfer function
+    - add value function
+    """
+    def __init__(
+            self,
+            h_ctrl,
+            h_drift,
+            tau: np.array,
+            # transfer_function: Optional[TransferFunction] = None,
+            # amplitude_function: Optional[AmplitudeFunction] = None,
+    ):
+        super().__init__(
+            h_drift=h_drift,
+            h_ctrl=h_ctrl,
+            tau=tau
+        )
+
+        self.n_time_steps = len(tau)
+        self.tau = tf.constant(
+            value=tau, dtype=tf.float32, shape=(self.n_time_steps, ),
+            name='Time Steps'
+        )
+        self.h_ctrl = [tf.constant(h.data, dtype=tf.complex64, shape=h.shape)
+                       for h in self.h_ctrl]
+        self.h_ctrl = tf.stack(self.h_ctrl)
+        self.h_drift = [
+            tf.constant(h.data, dtype=tf.complex64, shape=h.shape) for h in self.h_drift]
+        self.h_drift = tf.stack(self.h_drift)
+
+    def set_optimization_parameters(self, y: np.array) -> None:
+        self._opt_pars = y
+        self._ctrl_amps = self._opt_pars
+
+    def _create_dyn_gen(self):
+        control_dynamics = tf.einsum(
+            'tc,cij->tij', self._ctrl_amps, self.h_ctrl)
+        # t: time
+        # c: control operator
+        # ij: indices on the control matrix
+        hamiltonian = control_dynamics + self.h_drift
+        self.dyn_gen = -1j * hamiltonian
+
+    def _compute_propagation(self) -> None:
+        self._create_dyn_gen()
+        self._prop = tensor_matrix_exponentials(self.dyn_gen)
+
+    def _compute_forward_propagation(self) -> None:
+        self._compute_propagation()
+        self._fwd_prop = tensor_forward_pass(self._prop, self.n_time_steps)
+
+    def _compute_propagation_derivatives(self) -> None:
+        pass
+
+
+@tf.function
+def tensor_matrix_exponentials(dyn_gen):
+    propagators = tf.linalg.expm(
+        input=dyn_gen,
+        name='matrix_exponential'
+    )
+    return propagators
+
+
+@tf.function
+def tensor_forward_pass(propagators, num_t):
+    propagator_list = tf.unstack(propagators, num=num_t, axis=0)
+
+    forward_pass = [propagator_list[0]]
+    for i in range(1, num_t):
+        forward_pass.append(forward_pass[-1] @ propagator_list[i])
+    return tf.stack(forward_pass)
