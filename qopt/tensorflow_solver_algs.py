@@ -1,11 +1,11 @@
 import numpy as np
 import tensorflow as tf
-from qopt.solver_algorithms import Solver
 from qopt.tensorflow_util import DEFAULT_COMPLEX_TYPE, DEFAULT_FLOAT_TYPE, \
     convert_to_constant_tensor
+from qopt import *
 
 
-class TensorFlowSolver():
+class TensorFlowSolver:
     """
 
     I need to break the previous interface. For the calculation of gradients
@@ -21,6 +21,7 @@ class TensorFlowSolver():
             h_ctrl,
             h_drift,
             tau: np.array,
+            initial: DenseOperator = None
             # transfer_function: Optional[TransferFunction] = None,
             # amplitude_function: Optional[AmplitudeFunction] = None,
     ):
@@ -44,6 +45,11 @@ class TensorFlowSolver():
             tf.constant(h.data, dtype=DEFAULT_COMPLEX_TYPE, shape=h.shape)
             for h in h_drift]
         self.h_drift = tf.stack(self.h_drift)
+
+        if initial is None:
+            initial = DenseOperator.identity_like(h_ctrl[0])
+        self.initial = convert_to_constant_tensor(initial)
+        # tf.constant(initial.data, dtype=DEFAULT_COMPLEX_TYPE)
 
         # Initialize variables and tensors
         # todo: this changes when we include the amplitude function
@@ -71,6 +77,7 @@ class TensorFlowSolver():
         # todo: the conversion should be in an outer scope. probably in the
         # solver
         # self._opt_pars = convert_to_constant_tensor(y)
+        self._opt_pars = y
         self._ctrl_amps = y
         return self._ctrl_amps
 
@@ -108,7 +115,9 @@ class TensorFlowSolver():
         ctrl_amps = self.set_optimization_parameters(y=opt_pars)
         dyn_gen = self._create_dyn_gen(ctrl_amps=ctrl_amps)
         propagators = self._compute_propagation(dyn_gen=dyn_gen)
-        self._fwd_prop = tensor_forward_pass(propagators, self.n_time_steps)
+        self._fwd_prop = tensor_forward_pass(
+            initial=self.initial, propagators=propagators,
+            num_t=self.n_time_steps)
         return self._fwd_prop
 
     def _compute_propagation_derivatives(self) -> None:
@@ -125,10 +134,10 @@ def tensor_matrix_exponentials(dyn_gen):
 
 
 @tf.function
-def tensor_forward_pass(propagators, num_t):
+def tensor_forward_pass(initial, propagators, num_t):
     propagator_list = tf.unstack(propagators, num=num_t, axis=0)
 
-    forward_pass = [propagator_list[0]]
-    for i in range(1, num_t):
-        forward_pass.append(forward_pass[-1] @ propagator_list[i])
+    forward_pass = [initial]
+    for prop in propagator_list:
+        forward_pass.append(prop @ forward_pass[-1])
     return tf.stack(forward_pass)

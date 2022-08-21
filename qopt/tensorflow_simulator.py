@@ -50,4 +50,4 @@ class TensorFlowSimulator(object):
             # values = tf.stack(
             #     [c_fun.costs(opt_pars) for c_fun in self.cost_funcs])
             gradient = tape.gradient(value, opt_pars)
-        return value, tf.math.real(gradient)
+        return value, gradient

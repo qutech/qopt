@@ -55,7 +55,7 @@ def process_fid_unitary(
         inverse_dim_squared
 ) -> tf.Variable:
     """
-    Process fidelity between a unitary quantum channel and a targetgate.
+    Process fidelity between a unitary quantum channel and a target gate.
 
     Returns
     -------
@@ -64,3 +64,51 @@ def process_fid_unitary(
     x = tf.linalg.trace(target_unitary_adj @ propagator)
     x = inverse_dim_squared * x * tf.math.conj(x)
     return tf.math.real(x)
+
+
+class TensorFlowStateInfidelity:
+
+    def __init__(self,
+                 solver: TensorFlowSolver,
+                 target: Union[DenseOperator, np.array, tf.Tensor],
+                 label: str = ("TensorFlow State Infid", ),
+                 ):
+        self.solver = solver
+        self.label = list(label)
+        self.target_state_adj = convert_to_constant_tensor(target)
+        self.target_state_adj = tf.linalg.adjoint(self.target_state_adj)
+
+    def costs(self, opt_pars: tf.Tensor) -> tf.Tensor:
+        forward_propagators = self.solver.forward_propagators(
+            opt_pars=opt_pars)
+        x = 1 - state_fidelity_on_vectors(
+            target_state_adj=self.target_state_adj,
+            state=forward_propagators[-1, :, :]
+        )
+        return x
+
+
+def state_fidelity_on_vectors(
+        target_state_adj: tf.Tensor,
+        state: tf.Tensor
+) -> tf.Tensor:
+    """
+    State fidelity between two quantum states given as vectors.
+
+    Parameters
+    ----------
+    target_state_adj: tf.Tensor, shape=(1, n_dim)
+        The target state as bra-vector.
+
+    state: tf.Tensor, shape=(n_dim, 1)
+        The state vector as ket-vector.
+
+    Returns
+    -------
+    fidelity: tf.Tensor, shape=()
+        The quantum state fidelity.
+
+    """
+    fidelity = target_state_adj @ state
+    fidelity = tf.abs(fidelity) ** 2
+    return fidelity

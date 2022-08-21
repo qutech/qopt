@@ -55,7 +55,8 @@ class TensorFlowScipyOptimizer:
         value, gradient = self.simulator.value_and_gradient(
             tf.Variable(opt_pars_reshaped, dtype=DEFAULT_FLOAT_TYPE)
         )
-        return value.numpy(), gradient.numpy().reshape(
+        gradient = tf.math.real(gradient)
+        return np.squeeze(value.numpy()), gradient.numpy().reshape(
             self.simulator.solver.n_time_steps *
             self.simulator.solver.n_ctrl_amps
         )
