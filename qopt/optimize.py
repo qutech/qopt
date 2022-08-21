@@ -22,7 +22,7 @@
 This module contains interfaces to optimization algorithms or the algorithms
 themselves.
 
-Currently it supports interfacing to least squares and minimization algorithms
+Currently, it supports interfacing to least squares and minimization algorithms
 of the scipy package. Conditionally, a simulated annealing is supported, if the
 simanneal package is included in the environment. (See installation
 instructions on https://github.com/qutech/qopt) The classes for simulated
