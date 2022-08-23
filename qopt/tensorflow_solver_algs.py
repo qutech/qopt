@@ -89,7 +89,12 @@ class TensorFlowSolver:
         # t: time
         # c: control operator
         # ij: indices on the control matrix
-        hamiltonian = control_dynamics + self.h_drift
+        drift_time_product = tf.einsum(
+            't, tij->tij', self.tau, self.h_drift
+        )
+        # Todo: This could potentially be made more efficient. Probably the
+        # times are changed almost never, so this step could be precomputed.
+        hamiltonian = control_dynamics + drift_time_product
         self.dyn_gen = -1j * hamiltonian
         return self.dyn_gen
 

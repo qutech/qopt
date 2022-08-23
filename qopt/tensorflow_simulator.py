@@ -21,8 +21,7 @@ class TensorFlowSimulator(object):
         self.solver = solver
         self.cost_func = cost_func
 
-    # @tf.function  # todo: could be possible to decorate,
-    #  will check that later
+    # @tf.function
     def value_and_gradient(
             self, opt_pars: tf.Variable
     ) -> (tf.Tensor, tf.Tensor):
