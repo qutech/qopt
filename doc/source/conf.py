@@ -12,6 +12,7 @@
 #
 import os
 import sys
+import qopt
 
 sys.path.insert(0, os.path.abspath('../../'))
 
@@ -24,7 +25,7 @@ copyright = '2020, Forschungszentrum Juelich, Julian Teske'
 author = 'Julian Teske'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1'
+release = qopt.__version__
 
 # -- General configuration ---------------------------------------------------
 
