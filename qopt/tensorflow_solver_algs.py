@@ -73,6 +73,7 @@ class TensorFlowSolver:
             dtype=DEFAULT_COMPLEX_TYPE
         )
 
+    @tf.function
     def set_optimization_parameters(self, y: tf.Variable) -> tf.Variable:
         # todo: the conversion should be in an outer scope. probably in the
         # solver
@@ -81,6 +82,7 @@ class TensorFlowSolver:
         self._ctrl_amps = y
         return self._ctrl_amps
 
+    @tf.function
     def _create_dyn_gen(self, ctrl_amps: tf.Variable) -> tf.Tensor:
         control_dynamics = tf.einsum(
             't, tc->tc', self.tau, ctrl_amps)
@@ -98,10 +100,12 @@ class TensorFlowSolver:
         self.dyn_gen = -1j * hamiltonian
         return self.dyn_gen
 
+    @tf.function
     def _compute_propagation(self, dyn_gen) -> tf.Tensor:
         self._prop = tensor_matrix_exponentials(dyn_gen)
         return self._prop
 
+    @tf.function
     def forward_propagators(self, opt_pars) -> tf.Tensor:
         """
         Let's change the philosophy. This is no langer a property checking if

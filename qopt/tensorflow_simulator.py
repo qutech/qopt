@@ -21,7 +21,7 @@ class TensorFlowSimulator(object):
         self.solver = solver
         self.cost_func = cost_func
 
-    # @tf.function
+    @tf.function
     def value_and_gradient(
             self, opt_pars: tf.Variable
     ) -> (tf.Tensor, tf.Tensor):
@@ -48,5 +48,5 @@ class TensorFlowSimulator(object):
             value = self.cost_func.costs(opt_pars)
             # values = tf.stack(
             #     [c_fun.costs(opt_pars) for c_fun in self.cost_funcs])
-            gradient = tape.gradient(value, opt_pars)
+        gradient = tape.gradient(value, opt_pars)
         return value, gradient

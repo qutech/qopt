@@ -78,6 +78,7 @@ class TensorFlowStateInfidelity:
         self.target_state_adj = convert_to_constant_tensor(target)
         self.target_state_adj = tf.linalg.adjoint(self.target_state_adj)
 
+    @tf.function
     def costs(self, opt_pars: tf.Tensor) -> tf.Tensor:
         forward_propagators = self.solver.forward_propagators(
             opt_pars=opt_pars)
@@ -88,6 +89,7 @@ class TensorFlowStateInfidelity:
         return x
 
 
+@tf.function
 def state_fidelity_on_vectors(
         target_state_adj: tf.Tensor,
         state: tf.Tensor

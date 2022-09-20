@@ -21,6 +21,14 @@ class TensorFlowScipyOptimizer:
         self.simulator = simulator
         self.boundaries = boundaries
         self.termination_conditions = termination_conditions
+        if termination_conditions is not None:
+            self.options = {
+                'ftol': self.termination_conditions["min_cost_gain"],
+                'gtol': self.termination_conditions["min_gradient_norm"],
+                'maxiter': self.termination_conditions["max_iterations"]
+            }
+        else:
+            self.options = None
 
     def run_optimization(self, initial_opt_pars):
 
@@ -30,11 +38,8 @@ class TensorFlowScipyOptimizer:
             x0=initial_opt_pars,
             method='L-BFGS-B',
             bounds=self.boundaries,
-            options={
-                'ftol': self.termination_conditions["min_cost_gain"],
-                'gtol': self.termination_conditions["min_gradient_norm"],
-                'maxiter': self.termination_conditions["max_iterations"]
-            }
+            tol=1e-8
+            # options=self.options
         )
         return result
 
@@ -78,4 +83,3 @@ class TensorFlowScipyOptimizer:
             self.simulator.solver.n_time_steps *
             self.simulator.solver.n_ctrl_amps
         )
-
