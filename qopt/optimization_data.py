@@ -105,11 +105,18 @@ class OptimizationResult(object):
 
     """
 
-    def __init__(self, final_cost=None, indices=None, final_parameters=None,
-                 final_grad_norm=None, init_parameters=None, num_iter=None,
-                 termination_reason="not started yet", status=None,
+    def __init__(self,
+                 final_cost=None,
+                 indices=None,
+                 final_parameters=None,
+                 final_grad_norm=None,
+                 init_parameters=None,
+                 num_iter=None,
+                 termination_reason="not started yet",
+                 status=None,
                  optimization_stats=None,
-                 optimizer=None, optim_summary=None):
+                 optimizer=None,
+                 optim_summary=None):
         self.final_cost = final_cost
         self.indices = indices
         self.final_parameters = final_parameters

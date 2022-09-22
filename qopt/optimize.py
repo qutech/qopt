@@ -50,12 +50,8 @@ Classes
     Helper class for `SimulatedAnnealing`.
 
 :class:`SimulatedAnnealing`
-    Simulated annealing as optimization. Experimental implementation. Not well
-    tested!
+    Simulated annealing as optimization.
 
-:class:`SimulatedAnnealingScipy`
-    Simulated annealing based on scipy functions. Experimental implementation.
-    Not well tested!
 
 Notes
 -----
@@ -81,6 +77,8 @@ from warnings import warn
 
 from qopt import optimization_data, simulator, performance_statistics
 
+import time
+import sys
 
 try:
     import simanneal
@@ -634,45 +632,79 @@ class ScalarMinimizingOptimizer(Optimizer):
         return optim_result
 
 
+def time_string(seconds):
+    """Returns time in seconds as a string formatted HHHH:MM:SS."""
+    s = int(round(seconds))  # round to nearest second
+    h, s = divmod(s, 3600)   # get hours and remainder
+    m, s = divmod(s, 60)     # split remainder into minutes and seconds
+    return '%4i:%02i:%02i' % (h, m, s)
+
+
 class PulseAnnealer(simanneal.Annealer):
     """
     Simulated annealer for the discrete optimization of pulses.
 
+    This function implements an annealer class for the optimization of pulses.
+    The virtual methods move and energy are reimplemented.
     The state is the pulse.
 
     Parameters
     ----------
-    state
-    bounds
-    energy_function
-    step_size
-    step_ratio
-    Tmax
-    Tmin
-    steps
-    updates
+    initial_state: numpy array, shape = (n_times, n_ctrl)
+        The initial state or initial pulse.
+
+    bounds: numpy array, shape = (2, n_times, n_ctrl)
+        Boundaries for the pulse.
+
+    energy_function: callable
+        Energy or Cost function.
+
+    step_size: int
+        The annealer will optimize taking steps of the size of all integers,
+        whose absolute values are smaller or equal to step_size in any
+        direction. Defaults to 1 for the optimization of integers.
+
+    step_ratio: float
+        The step ratio determines how many of the time segments are optimized
+        at once.
+
+    Tmax: float
+        Initial or maximum temperature for the annealing algorithm. The initial
+        temperature should be about as large as the initial infidelity. If
+        pulses with random initial values are optimized, I suggest an initial
+        temperature of 1.
+
+    Tmin: float
+        Final or minimal temperature. The final temperature should be at least
+        2 orders of magnitude smaller than the final fidelity you expect, such
+        that the annealer does not jump close to the completion.
+
+    steps: int
+        Number of optimization steps before the pulse terminates.
+
+    updates: int
+        Number of updates. At each update the program calls the update
+        function to document how many steps were accepted since the last update
+        and how many of them improved the energy or cost function.
 
     """
     def __init__(
             self,
-            state,
+            initial_state,
             bounds,
             energy_function: Callable,
-            step_size: int = 1,
-            step_ratio: float = 1.,
-            Tmax = 1.,
-            Tmin = 1e-8,
-            steps: int = 100,
-            updates: Optional[int] = None
+            step_size: int,
+            step_ratio: float,
+            Tmax: float,
+            Tmin: float,
+            steps: int,
+            updates: int
     ):
-        super().__init__(initial_state=state)
+        super().__init__(initial_state=initial_state)
         self.Tmax = Tmax
         self.Tmin = Tmin
         self.steps = steps
-        if updates is not None:
-            self.updates = updates
-        else:
-            self.updates = self.steps
+        self.updates = updates
 
         self.bounds = bounds
         self.step_size = step_size
@@ -680,7 +712,12 @@ class PulseAnnealer(simanneal.Annealer):
         self.energy_function = energy_function
 
     def move(self):
-        """Moving into a random direction. """
+        """ Moving into a random direction.
+
+        This function applies a random variation to the pulse. The value of
+        each time segment is either incremented by step_size, reduced by
+        step_size or kept constant. """
+
         pulse = self.state
 
         if type(self.step_size) != int:
@@ -690,6 +727,7 @@ class PulseAnnealer(simanneal.Annealer):
         if self.step_size == 0:
             raise ValueError("The step size has been set to 0.")
 
+        # Create random integers between -self.step_size and self.step_size
         random_step = np.random.randint(
             low=-1 * self.step_size,
             high=self.step_size + 1,
@@ -710,10 +748,12 @@ class PulseAnnealer(simanneal.Annealer):
         new_pulse[upper_limit_exceeded] = self.bounds[1][upper_limit_exceeded]
 
         self.state = new_pulse
+        return
 
     def energy(self):
         """The energy or cost function of the annealer. """
-        return np.linalg.norm(self.energy_function(self.state.T.flatten()))
+        e = np.linalg.norm(self.energy_function(self.state.T.flatten()))
+        return e
 
 
 class SimulatedAnnealing(Optimizer):
@@ -725,33 +765,54 @@ class SimulatedAnnealing(Optimizer):
 
     Parameters
     ----------
-    initial_temperature: float
-        Initial temperature for the annealing algorithm.
-
-    step_size: int
-        Initial stepsize.
-
-    interval: int
-        Number of optimization iterations before the step size is reduced.
-
     bounds: array of boundaries, shape: (2, num_t, num_ctrl)
         The boundary conditions for the pulse optimizations. bounds[0] should
         be the lower bounds, and bounds[1] the upper ones.
+
+    initial_temperature: float
+        Initial or maximum temperature for the annealing algorithm. The initial
+        temperature should be about as large as the initial infidelity. If
+        pulses with random initial values are optimized, I suggest an initial
+        temperature of 1. Defaults to 1.
+
+    final_temperature: float
+        Final or minimal temperature. The final temperature should be at least
+        2 orders of magnitude smaller than the final fidelity you expect, such
+        that the annealer does not jump close to the completion.
+
+    step_size: int
+        The annealer will optimize taking steps of the size of all integers,
+        whose absolute values are smaller or equal to step_size in any
+        direction. Defaults to 1 for the optimization of integers. Defaults to
+        1.
+
+    step_ratio: float
+        The step ratio determines how many of the time segments are optimized
+        at once. Defaults to 1.
+
+    steps: int
+        Number of optimization steps before the pulse terminates. Defaults to
+        1000.
+
+    updates: int
+        Number of updates. At each update the program calls the update
+        function to document how many steps were accepted since the last update
+        and how many of them improved the energy or cost function. Defaults to
+        100.
 
     """
 
     def __init__(
             self,
-            system_simulator: Optional[simulator.Simulator] = None,
-            termination_cond: Optional[Dict] = None,
-            save_intermediary_steps: bool = False,
+            system_simulator: Optional[simulator.Simulator],
+            bounds: Optional[np.ndarray],
             store_optimizer: bool = False,
             initial_temperature: float = 1.,
             final_temperature: float = 1e-6,
             step_size: int = 1,
             step_ratio: float = 1.,
-            bounds: Optional[np.ndarray] = None,
-            updates: Optional[int] = None
+            steps: Optional[int] = 1000,
+            updates: int = 100
     ):
 
         try:
@@ -763,24 +824,25 @@ class SimulatedAnnealing(Optimizer):
 
         super().__init__(
             system_simulator=system_simulator,
-            termination_cond=termination_cond,
-            save_intermediary_steps=save_intermediary_steps,
+            termination_cond=None,
+            save_intermediary_steps=False,
             store_optimizer=store_optimizer
         )
 
         self.annealer = PulseAnnealer(
-            state=0,
+            initial_state=0,
             bounds=bounds,
             energy_function=self.cost_func_wrapper,
             step_size=step_size,
             step_ratio=step_ratio,
             Tmax=initial_temperature,
             Tmin=final_temperature,
-            steps=termination_cond["max_iterations"],
+            steps=steps,
             updates=updates
         )
 
-    def run_optimization(self, initial_control_amplitudes: np.ndarray):
+    def run_optimization(self, initial_control_amplitudes: np.ndarray,
+                         verbose=None):
         """See base class. """
 
         self.prepare_optimization(
@@ -807,150 +869,9 @@ class SimulatedAnnealing(Optimizer):
 
         return optim_result
 
-    def prepare_optimization(self, initial_optimization_parameters: np.ndarray):
+    def prepare_optimization(self,
+                             initial_optimization_parameters: np.ndarray):
+        """ See base class. """
         super().prepare_optimization(
             initial_optimization_parameters=initial_optimization_parameters)
         self.annealer.state = initial_optimization_parameters
-
-
-class SimulatedAnnealingScipy(Optimizer):
-    """
-    This class uses simulated annealing for discrete optimization.
-
-    Parameters
-    ----------
-    temperature: float
-        Initial temperature for the annealing algorithm.
-
-    step_size: int
-        Initial stepsize.
-
-    interval: int
-        Number of optimization iterations before the step size is reduced.
-
-    bounds: array of boundaries, shape: (2, num_t, num_ctrl)
-        The boundary conditions for the pulse optimizations. bounds[0] should
-        be the lower bounds, and bounds[1] the upper ones.
-
-    """
-
-    def __init__(
-            self,
-            system_simulator: Optional[simulator.Simulator] = None,
-            termination_cond: Optional[Dict] = None,
-            save_intermediary_steps: bool = False,
-            store_optimizer: bool = False,
-            temperature: float = 1.,
-            step_size: int = 1,
-            interval: int = 50,
-            bounds: Optional[np.ndarray] = None
-    ):
-        super().__init__(
-            system_simulator=system_simulator,
-            termination_cond=termination_cond,
-            save_intermediary_steps=save_intermediary_steps,
-            store_optimizer=store_optimizer
-        )
-        self.temperature = temperature
-        self.step_size = step_size
-        self.interval = interval
-        self.bounds = bounds
-
-    def run_optimization(self, initial_control_amplitudes: np.ndarray,
-                         verbose: bool = False):
-        """See base class. """
-
-        super().prepare_optimization(
-            initial_optimization_parameters=initial_control_amplitudes)
-
-        if self.store_optimizer:
-            storage_opt = self
-        else:
-            storage_opt = None
-
-        try:
-            result = scipy.optimize.basinhopping(
-                func=self.cost_func_wrapper,
-                x0=initial_control_amplitudes.T.flatten(),
-                niter=self.termination_conditions["max_iterations"],
-                T=self.temperature,
-                stepsize=self.step_size,
-                take_step=self._take_step,
-                callback=None,
-                interval=self.interval,
-                disp=verbose
-            )
-
-            if self.system_simulator.stats is not None:
-                self.system_simulator.stats.end_t_opt = time.time()
-
-            optim_result = optimization_data.OptimizationResult(
-                final_cost=result.fun,
-                indices=self.system_simulator.cost_indices,
-                final_parameters=result.x.reshape(self.pulse_shape[::-1]).T,
-                num_iter=result.nfev,
-                termination_reason=result.message,
-                status=result.status,
-                optimizer=storage_opt,
-                optim_summary=self.optim_iter_summary,
-                optimization_stats=self.system_simulator.stats
-            )
-
-        except WallTimeExceeded:
-            if self.system_simulator.stats is not None:
-                self.system_simulator.stats.end_t_opt = time.time()
-
-            optim_result = optimization_data.OptimizationResult(
-                final_cost=self._min_costs,
-                indices=self.system_simulator.cost_indices,
-                final_parameters=self._min_costs_par,
-                num_iter=self._n_cost_fkt_eval,
-                termination_reason='Maximum Wall Time Exceeded',
-                status=5,
-                optimizer=storage_opt,
-                optim_summary=self.optim_iter_summary,
-                optimization_stats=self.system_simulator.stats
-            )
-
-        return optim_result
-
-    def _take_step(self, current_pulse: np.ndarray) -> np.ndarray:
-        """
-        This function applies a random discrete variation to the pulse.
-
-        Parameters
-        ----------
-        current_pulse: array of int
-            The pulse before the application of the take step function.
-
-        Returns
-        -------
-        new_pulse: array of int
-            The pulse initial pulse plus a random variation.
-
-        """
-        pulse = current_pulse.reshape(self.pulse_shape[::-1]).T
-
-        if type(self.step_size) != int:
-            raise ValueError("The step size must be integer! But it is: "
-                             + str(self.step_size))
-
-        if self.step_size == 0:
-            raise ValueError("The step size has been set to 0.")
-
-        random_step = np.random.randint(
-            low=-1 * self.step_size,
-            high=self.step_size + 1,
-            size=pulse.shape
-        )
-
-        new_pulse = pulse + random_step
-
-        # if a limit is exceeded, set the value to the limit
-        lower_limit_exceeded = new_pulse < self.bounds[0]
-        upper_limit_exceeded = new_pulse > self.bounds[1]
-
-        new_pulse[lower_limit_exceeded] = self.bounds[0][lower_limit_exceeded]
-        new_pulse[upper_limit_exceeded] = self.bounds[1][upper_limit_exceeded]
-
-        return new_pulse.T.flatten()

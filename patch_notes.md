@@ -132,3 +132,6 @@ Noise
 
 Example Notebooks
 - Compatibility with the latest changes in filter functions
+
+Optimize
+- Refactors and comments the simulated annealing
