@@ -65,6 +65,7 @@ References
     (2013) [DOI: 10.1016/j.cpc.2012.11.019].
 
 """
+import copy
 
 import numpy as np
 import scipy
@@ -822,9 +823,12 @@ class SimulatedAnnealing(Optimizer):
                 'Requirements not fulfilled. Please install simanneal'
             ) from err
 
+        termination_conditions = copy.deepcopy(default_termination_conditions)
+        termination_conditions['max_wall_time'] = 1e8
+
         super().__init__(
             system_simulator=system_simulator,
-            termination_cond=None,
+            termination_cond=termination_conditions,
             save_intermediary_steps=False,
             store_optimizer=store_optimizer
         )
