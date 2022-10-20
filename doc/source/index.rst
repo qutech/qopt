@@ -48,15 +48,17 @@ Summary
 =======
 
 This python package is designed to facilitate the simulation of
-state-of-the-art quantum bits (qubits) including operation limitations, where
-an emphasis is put on the description of realistic experimental setups.
+state-of-the-art quantum bits (qubits) including realistic experimental
+operation conditions, and for the optimization of noise-robust control pulses.
 For this purpose, an extensive set of noise simulation tools is
 included and complemented by methods to describe the limitations posed by the
-electronics steering the quantum operations.
-
-The simulation interfaces to optimization algorithms to be used in
-optimal quantum control, the field of study which optimizes the accuracy of
-quantum operations by intelligent steering methods.
+electronics steering the quantum operations. Compared to other available
+simulation packages qopt stands out by the ability to efficiently simulate the
+effects of fast Non-Markovian noise, while providing a general interface to
+define control pulses for any qubit type making qopt platform-independent.
+The simulation interfaces to optimization algorithms to apply
+optimal quantum control theory, the field of study which optimizes the
+accuracy of quantum operations by intelligent steering methods.
 
 The functionalities can be coarsely divided into simulation and optimization of
 quantum operations. Various cost functions can be evaluated on the simulated
@@ -68,14 +70,12 @@ cost functions by the optimization parameters based on analytical calculations.
 Simulation
 ----------
 
-The evolution of a closed quantum system is described by Schroedinger's
-equation, such that the dynamics are determined by the Hamiltonian of the
-system. Solving Schroedinger's equation yields a description of the temporal
-evolution of the quantum system.
-
-The Hamiltonian is the sum of effects which can be controlled, those who can
-not be controlled (the drift) and effects which cannot be even predicted
-(the noise.)
+The qopt package simulates closed or open quantum systems on a pulse level by
+solving the corresponding partial differential equations being the Schroedinger
+equation or a Lindblad master equation.
+Thereby, pulses are discretized in time and the differential equations are
+solved using matrix exponentials. The total propagator is then available for
+every time step to analyse the dynamics of the qubit system.
 
 
 Noise
@@ -90,7 +90,7 @@ given stating the advantages and requirements of each method.
 The most forward way to simulate noise is to draw samples from the noise
 distribution and repeat the simulation for each of those noise realizations.
 Any cost function is then averaged over the repetitions.
-The sampling is based on pseudo random number generators.
+The sampling can be based on pseudo random number generators.
 Monte Carlo simulations are universally applicable but computationally
 expensive for high frequency noise.
 
@@ -98,7 +98,7 @@ expensive for high frequency noise.
 **Lindblad Master Equation**
 
 In order to include dissipation effects in the simulation, the qubit and its
-environment must be described as open quantum system, described by a master
+environment can be modeled as open quantum system, described by a master
 equation in Lindblad form. The solution of the master equation is in
 the general case not unitary unlike the propagators calculated from
 Schroedinger's equation, such that it can also describe the loss of energy or
@@ -128,9 +128,24 @@ Pulse Parametrization
 ---------------------
 
 In many practical applications the optimization parameters do not appear
-directly as factors in the Hamiltonian. The control fields are modified by
-taking limitations on the control electronics and the physical qubit model into
-account.
+directly as linear factors in the Hamiltonian, such that a differentiable
+amplitude function needs to be inserted. Furthermore, the pulses can be
+distorted by physical limitations of the control hardware that generates these
+pulses. This might include for example an RC-filter effect of the pulse
+transmission lines or a bandwidth limitation of an arbitrary waveform
+generator. These effects are included by transfer functions.
+
+
+**Amplitude Functions**
+
+A differentiable functional relation between the optimization parameters and
+the control amplitudes can be expressed in the amplitude functions. This can
+for example be a sinusoidal relationship if the the experiment is driven
+resonantly and the control is implemented by manipulation of the
+amplitude and phase of the driving signal. Another example is
+the exchange energy
+as function of the voltage detuning in a double quantum dot
+implemented in semiconductor spin qubits.
 
 **Transfer Functions**
 
@@ -141,14 +156,6 @@ pulse generators, Gaussian smoothing of pulses to mimic bandwidth limitations
 on arbitrary waveform generators, linear transformations or even
 the measured response of an arbitrary waveform generator to a set of input
 voltages.
-
-**Amplitude Functions**
-
-A differentiable functional relation between the optimization parameters and
-the control amplitudes can be expressed in the amplitude functions. This can
-for example be the exchange energy
-as function of the voltage detuning in a double quantum dot
-implemented in semiconductor spin qubits.
 
 Optimization
 ------------
@@ -173,7 +180,7 @@ Documentation
 The documentation is structured in the three parts 'Features',
 'Example Applications' and the 'API Documentation'.
 
-**Features**
+**qopt Features**
 
 The first part introduces the qopt functionalities step by step. Refer to this
 chapter for an introduction to the simulation package.
@@ -197,13 +204,6 @@ descriptions. During the implementation of a simulation using qopt, you can
 frequently jump to the classes and functions your are using to look up the
 signatures.
 
-Citing
-======
-
-If you are using qopt for your work then please cite the
-[qopt paper](https://doi.org/10.1103/PhysRevApplied.17.034036), as the funding
-of the development depends on the public impact.
-
 
 .. toctree::
    :maxdepth: 2
@@ -212,6 +212,13 @@ of the development depends on the public impact.
    qopt_features/qopt_features
    examples/examples
    qopt API Documentation <qopt>
+
+Citing
+======
+
+If you are using qopt for your work then please cite the
+[qopt paper](https://doi.org/10.1103/PhysRevApplied.17.034036), as the funding
+of the development depends on the public impact.
 
 
 
