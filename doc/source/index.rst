@@ -92,7 +92,7 @@ distribution and repeat the simulation for each of those noise realizations.
 Any cost function is then averaged over the repetitions.
 The sampling can be based on pseudo random number generators.
 Monte Carlo simulations are universally applicable but computationally
-expensive for high frequency noise.
+expensive for high-frequency noise.
 
 
 **Lindblad Master Equation**
@@ -103,7 +103,7 @@ equation in Lindblad form. The solution of the master equation is in
 the general case not unitary unlike the propagators calculated from
 Schroedinger's equation, such that it can also describe the loss of energy or
 information into the environment. This approach is numerically efficient but
-only applicable to systems subjected to markovian noise.
+only applicable to systems subjected to Markovian noise.
 
 **Filter Functions**
 
@@ -127,25 +127,25 @@ error rate caused to leakage.
 Pulse Parametrization
 ---------------------
 
-In many practical applications the optimization parameters do not appear
-directly as linear factors in the Hamiltonian, such that a differentiable
-amplitude function needs to be inserted. Furthermore, the pulses can be
-distorted by physical limitations of the control hardware that generates these
-pulses. This might include for example an RC-filter effect of the pulse
-transmission lines or a bandwidth limitation of an arbitrary waveform
-generator. These effects are included by transfer functions.
+The pulse parameterization translates a mathematically described pulse function
+into discrete-time control amplitudes that appear in the Hamiltonian describing
+the qubit model. This comprises sampling a potentially continuously defined
+control pulse, evaluating the physical function that describes the relation
+between pulse values and the control amplitudes, and including the hardware
+limitations of the control electronics that generate the control pulse.
 
 
 **Amplitude Functions**
 
-A differentiable functional relation between the optimization parameters and
-the control amplitudes can be expressed in the amplitude functions. This can
-for example be a sinusoidal relationship if the the experiment is driven
-resonantly and the control is implemented by manipulation of the
-amplitude and phase of the driving signal. Another example is
-the exchange energy
-as function of the voltage detuning in a double quantum dot
-implemented in semiconductor spin qubits.
+The amplitude functions encode a differential relationship between the
+optimization parameters, which describe the pulse, and the control amplitudes,
+which appear in the Hamiltonian and describe the dynamics of the quantum
+system. An example would be a sinusoidal pulse that drives resonant excitations
+of a qubit. The optimization parameters would be the pulse length, the pulse
+frequency and the amplitude. The amplitude function samples the continuous
+pulse and maps the voltage values to energy values from the Hamiltonian,
+which are the control amplitudes in this example.
+
 
 **Transfer Functions**
 
@@ -155,7 +155,8 @@ for example exponential saturation to consider finite voltage rise times in
 pulse generators, Gaussian smoothing of pulses to mimic bandwidth limitations
 on arbitrary waveform generators, linear transformations or even
 the measured response of an arbitrary waveform generator to a set of input
-voltages.
+voltages. The transfer functions then map the ideal pulse to the actually
+generated pulse.
 
 Optimization
 ------------
