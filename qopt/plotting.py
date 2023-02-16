@@ -99,7 +99,7 @@ def plot_bloch_vector_evolution(
     figsize = bloch_kwargs.pop('figsize', [5, 5])
     view = bloch_kwargs.pop('view', [-60, 30])
     fig = plt.figure(figsize=figsize)
-    axes = mplot3d.Axes3D(fig, azim=view[0], elev=view[1])
+    axes = fig.add_subplot(projection='3d', azim=view[0], elev=view[1])
     bloch_kwargs.setdefault('view', [-150, 30])
     b = qt.Bloch(fig=fig, axes=axes, **bloch_kwargs)
 
