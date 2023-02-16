@@ -39,7 +39,6 @@ The implementation was adapted from the filter_functions package.
 
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits import mplot3d
 from unittest import mock
 from warnings import warn
 from typing import Sequence
