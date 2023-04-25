@@ -61,3 +61,74 @@ states in Liouville space
 
 Optimizer:
 - improve storage. The optimizer is only stored in the result on request.
+
+### Version 1.2 to 1.3
+
+GaussianMTF:
+- made the deprecation explicit
+
+Transfer Function:
+- new internal check function has more explicit error messages than previous
+  assertions.
+
+Energy Spectrum:
+- plotting reworked to be applicable to a larger number of dimensions in the 
+  Hamiltonian
+- Plotting function returns the figure and axis.
+
+Solver Algorithm:
+- the filter_function_h_n and noise_coeffs_derivatives change their signature, 
+now then are called with the optimization parameters, the transferred 
+parameters and the control amplitudes. Previously only with the control 
+amplitudes.
+
+Read the docs:
+- Add a new notebook about the basic use of filter functions in optimal control
+- Rework the notebook about the numerics. Now focused on the matrix class and 
+put at the start.
+- Add a new notebook about the use of filter functions in the optimization of 
+amplitude, frequency and phase noise.
+
+Optimizer:
+- Fix a false dimension check for the cost function weights.
+
+Github Actions:
+- Continuous Deployment to Pypi
+
+### Version 1.3 to 1.3.1
+
+Github Actions:
+- Continuous Integration by running unittests
+- github badges
+
+Filter Functions:
+- Add docstring describing that the filter function package sorts the noise
+Hamiltonians in lexicographic order.
+
+Read the docs:
+- Include new notebook on the operator class. The numerics notebook
+now focuses on the matrix exponentials.
+- Rework the notebooks describing qopt features.
+
+Transfer Function:
+- Fixes an assertion controlling the common shape in the ParallelTF
+
+### Version 1.3.1 to 1.3.2
+
+Filter Functions:
+- adapt to the latest version of filter functions. The noise operators are not
+stored in lexicographic order any more.
+- now requires filter_function v1.1.2
+
+Energy Spectrum:
+- scatter options can now be given to the plotting function.
+
+### Version 1.3.2 to 1.3.3
+
+Noise
+- Reworked the sampling of the Gaussian distribution.
+
+### Version 1.3.3 to 1.3.4
+
+Example Notebooks
+- Compatibility with the latest changes in filter functions

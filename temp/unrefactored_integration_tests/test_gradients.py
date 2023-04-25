@@ -73,12 +73,12 @@ class RabiTestCase(unittest.TestCase):
 
         dynamics = Simulator(
             solvers=[tslot, ],
-            cost_fktns=[entanglement_infid, ]
+            cost_funcs=[entanglement_infid, ]
         )
 
         dynamics_noise = Simulator(
             solvers=[tslot_noise, ],
-            cost_fktns=[entanglement_infid_qs_noise_xy]
+            cost_funcs=[entanglement_infid_qs_noise_xy]
         )
 
         _, rel_grad_deviation_unperturbed = \
@@ -110,7 +110,7 @@ class RabiTestCase(unittest.TestCase):
 
         dynamics_phase_control = Simulator(
             solvers=[rabi.solver_qs_noise_phase_control],
-            cost_fktns=[rabi.entanglement_infid_phase_control]
+            cost_funcs=[rabi.entanglement_infid_phase_control]
         )
 
         ntg_quasi_static = NTGQuasiStatic(
@@ -143,7 +143,7 @@ class RabiTestCase(unittest.TestCase):
 
         dynamics_phase_control_qs_noise = Simulator(
             solvers=[time_slot_comp_qs_noise_phase_control, ],
-            cost_fktns=[entanglement_infid_qs_noise_phase_control, ]
+            cost_funcs=[entanglement_infid_qs_noise_phase_control, ]
         )
 
         np.random.seed(0)

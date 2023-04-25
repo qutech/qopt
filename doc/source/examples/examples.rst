@@ -12,3 +12,4 @@ from *Doc/source/examples* using `jupyter notebook`.
    t2_markovian_noise
    t2_non_markovian_noise
    consistency_test
+   phase_noise

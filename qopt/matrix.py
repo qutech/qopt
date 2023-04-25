@@ -1235,7 +1235,7 @@ class DenseOperator(OperatorMatrix):
             d_m = (self.data + epsilon * direction.data) * tau
             dprop = la.expm(d_m)
             prop = self.exp(tau)
-            prop_grad = (dprop - prop) * (1 / epsilon)
+            prop_grad = (DenseOperator(dprop) - prop) * (1 / epsilon)
 
         elif method == "first_order":
             if compute_expm:
@@ -1576,7 +1576,7 @@ class DenseOperatorJAX(OperatorMatrix):
         """See base class. """
         if type(other) is DenseOperatorJAX:
             self.data += other.data
-        elif isinstance(other,Union[jnp.ndarray,np.ndarray]):
+        elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             self.data += other
         elif type(other) in VALID_SCALARS:
             self.data += other
@@ -1589,7 +1589,7 @@ class DenseOperatorJAX(OperatorMatrix):
 
         if type(other) is DenseOperatorJAX:
             self.data -= other.data
-        elif isinstance(other,Union[jnp.ndarray,np.ndarray]):
+        elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             self.data -= other
         elif type(other) in VALID_SCALARS:
             self.data -= other
@@ -1614,7 +1614,7 @@ class DenseOperatorJAX(OperatorMatrix):
 
     def __setitem__(self, key, value) -> None:
         """See base class. """
-        self.data.at[key].set(value)
+        self.data = self.data.at[key].set(value)
 
     def __repr__(self):
         """Representation as numpy array. """
@@ -1770,7 +1770,7 @@ class DenseOperatorJAX(OperatorMatrix):
         """See base class. """
         if type(other) == DenseOperatorJAX:
             out = jnp.kron(self.data, other.data)
-        elif isinstance(other,Union[jnp.ndarray,np.ndarray]):
+        elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             out = jnp.kron(self.data, other)
         else:
             raise ValueError('The kronecker product of dense control matrices'

@@ -118,7 +118,9 @@ class CostFunction(ABC):
         Object that compute the forward/backward evolution and propagator.
 
     label: list of str
-        Indices of the returned infidelities for distinction in the analysis.
+        The label serves as internal name of the cost function values. The
+        DataContainer class uses the label to distinct cost functions when
+        storing the data.
 
     """
     def __init__(self, solver: solver_algorithms.Solver,
@@ -626,7 +628,10 @@ def state_fidelity_subspace(
                          'propagated state not a ket, or both!')
     scalar_prod = scalar_prod[0, 0]
     scalar_prod_real = scalar_prod.real
-    assert np.abs(scalar_prod - scalar_prod_real) < 1e-5
+    if np.abs(scalar_prod - scalar_prod_real) > 1e-5:
+        scalar_prod_real = np.abs(scalar_prod[0, 0])
+        print("Warning: the calculated fidelity should be real but has an "
+              "imaginary component of : " + str(scalar_prod.imag))
     return scalar_prod_real
 
 
@@ -1536,6 +1541,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
         case, the same spectrum is taken for all noise operators, in the
         second, it is assumed that there are no correlations between different
         noise sources and thus there is one spectrum for each noise operator.
+        The order of the noise terms must correspond to the order defined in
+        the solver by filter_function_h_n.
 
     omega: Sequence[float]
         The frequencies at which the integration is to be carried out.
@@ -1583,7 +1590,8 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             pulse=self.solver.pulse_sequence,
             spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega,
-            cache_intermediates=True
+            cache_intermediates=True,
+            n_oper_identifiers=self.solver.filter_function_n_oper_identifiers,
         )
         return infidelity
 
@@ -1608,6 +1616,7 @@ class OperatorFilterFunctionInfidelity(CostFunction):
             spectrum=self.noise_power_spec_density(self.omega),
             omega=self.omega,
             control_identifiers=c_id,
+            n_oper_identifiers=self.solver.filter_function_n_oper_identifiers,
             n_coeffs_deriv=self.solver.filter_function_n_coeffs_deriv_vals
         )
         # what comes from ff:
@@ -1997,10 +2006,11 @@ def _entanglement_fidelity_jnp(
     return (jnp.abs(trace) ** 2) / d / d
 
 
-@partial(jit,static_argnums=2)
+@partial(jit,static_argnums=(2,3))
 def _entanglement_fidelity_super_operator_jnp(
         target: jnp.ndarray,
         propagator: jnp.ndarray,
+        dim_prop: int,
         computational_states: Optional[tuple] = None,
 ) -> jnp.float64:
     """Return the entanglement fidelity of target and propagator in super-
@@ -2018,19 +2028,28 @@ def _entanglement_fidelity_super_operator_jnp(
         # computational and a leakage space.
 
         # Thus the dimension of the propagator is (d_comp + d_leak) ** 2
-        d_leakage = int(jnp.sqrt(propagator.shape[0])) - dim_comp
+        d_leakage = dim_prop - dim_comp
 
         # We fill zeros to the target on the leakage space. We will project
         # onto the computational space anyway.
 
         target_inv = jnp.conj(target.T)
         target_inv_full_space = jnp.zeros((d_leakage + dim_comp,
-                                           d_leakage + dim_comp))
-
+                                           d_leakage + dim_comp),dtype=complex)
+        
+        clist = jnp.array(computational_states)
+        # ci = jnp.arange(0,len(clist),1)
+        
         # for i, row in enumerate(computational_states):
         #     for k, column in enumerate(computational_states):
-        target_inv_full_space.at[computational_states].set(
-            target_inv[computational_states])
+        
+        #TODO
+        for i, row in enumerate(computational_states):
+            for k, column in enumerate(computational_states):
+                target_inv_full_space = target_inv_full_space.at[row, column].set(target_inv[i, k])
+            
+        # target_inv_full_space.at[clist,clist].set(
+        #     target_inv[ci,ci])
 
 
         # Then convert the target unitary into Liouville space.
@@ -2044,11 +2063,11 @@ def _entanglement_fidelity_super_operator_jnp(
 
         # We start the projector with a zero matrix of dimension
         # (d_comp + d_leak).
-        projector_comp_state = 0 * jnp.identity(target_inv_full_space.shape(0))
+        projector_comp_state = 0 * jnp.identity(target_inv_full_space.shape[0])
         
         # for state in computational_states:
-        projector_comp_state.at[computational_states,
-                                computational_states].set(1)
+        projector_comp_state = projector_comp_state.at[clist,
+                                clist].set(1)
 
         # Then convert the projector into liouville space.
         projector_comp_state=jnp.kron(jnp.conj(projector_comp_state),
@@ -2141,12 +2160,13 @@ def _der_fid(prop_der,rev_prop_rev,fwd_prop,target_unitary_dag):
                     prop_der,rev_prop_rev,fwd_prop,target_unitary_dag)
 
 
-@partial(jit,static_argnums=4)
+@partial(jit,static_argnums=(4,5))
 def _deriv_entanglement_fid_sup_op_with_du_jnp(
         target: jnp.ndarray,
         forward_propagators: jnp.ndarray,
         unitary_derivatives: jnp.ndarray,
         reversed_propagators: jnp.ndarray,
+        dim_prop: int,
         computational_states: Optional[tuple] = None
 ):
     """Return the derivative of the entanglement fidelity of target and
@@ -2157,21 +2177,22 @@ def _deriv_entanglement_fid_sup_op_with_du_jnp(
         target,
         reversed_propagators[::-1][1:] @ unitary_derivatives @
             forward_propagators[:-1],
+        dim_prop,
         computational_states).T
 
     return derivative_fidelity
 
 
 #(to be used with additional .T for previous shape)
-@partial(jit,static_argnums=2)
-def _der_entanglement_fidelity_super_operator_jnp(target,propagators,
+@partial(jit,static_argnums=(2,3))
+def _der_entanglement_fidelity_super_operator_jnp(target,propagators,dim_prop,
                                                   computational_states):
     """Unnecessarily nested function for the derivative of the
     entanglement fidelity of target and propagator in super-operator formalism
     """
     return vmap(vmap(_entanglement_fidelity_super_operator_jnp,
-                     in_axes=(None,0,None)),in_axes=(None,0,None))(
-                         target,propagators,computational_states)
+                     in_axes=(None,0,None,None)),in_axes=(None,0,None,None))(
+                         target,propagators,dim_prop,computational_states)
 
 
 class StateInfidelityJAX(CostFunction):
@@ -2252,7 +2273,7 @@ def _state_fidelity_jnp(
                          'propagated state not a ket, or both!')
     scalar_prod = scalar_prod[0, 0]
     #TODO: should already be real / Im zero?
-    return jnp.abs(scalar_prod)
+    return jnp.abs(scalar_prod)**2
 
 
 @partial(jit,static_argnums=(4,5))
@@ -2643,6 +2664,7 @@ class OperationInfidelityJAX(CostFunction):
             infid = 1 - _entanglement_fidelity_super_operator_jnp(
                 self._target_jnp,
                 final,
+                jnp.sqrt(final.shape[0]).astype(int),
                 self.computational_states,
             )
         elif self.fidelity_measure == 'entanglement':
@@ -2667,6 +2689,7 @@ class OperationInfidelityJAX(CostFunction):
                 self.solver.forward_propagators_jnp,
                 self.solver.frechet_deriv_propagators_jnp,
                 self.solver.reversed_propagators_jnp,
+                jnp.sqrt(self.solver.forward_propagators_jnp.shape[1]).astype(int),
                 self.computational_states,
             )
         elif self.fidelity_measure == 'entanglement':
@@ -2827,9 +2850,9 @@ class LeakageErrorJAX(CostFunction):
 
     def costs(self):
         """See base class. """
-        final_prop = self.solver.forward_propagator_jnp[-1]
+        final_prop = self.solver.forward_propagators_jnp[-1]
         clipped_prop = _truncate_to_subspace_jnp(final_prop,
-            self.computational_states)
+            self.computational_states,map_to_closest_unitary=False)
         #TODO: is this correctly transferred? (left or right multiplication)
         temp = jnp.conj(clipped_prop).T @ clipped_prop
 
@@ -2840,7 +2863,7 @@ class LeakageErrorJAX(CostFunction):
         """See base class. """
         final = self.solver.forward_propagators_jnp[-1]
         final_leak_dag = _truncate_to_subspace_jnp(jnp.conj(final).T,
-            self.computational_states)
+            self.computational_states,map_to_closest_unitary=False)
         d = final_leak_dag.shape[0]
         
         derivative_fidelity = -2./d*jnp.real(
