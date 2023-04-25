@@ -143,7 +143,7 @@ class OptimizationResult(object):
         """
         return {'final_cost': self.final_cost,
                 'indices': self.indices,
-                'final_amps': self.final_parameters,
+                'final_parameters': self.final_parameters,
                 'final_grad_norm': self.final_grad_norm,
                 'init_parameters': self.init_parameters,
                 'num_iter': self.num_iter,
