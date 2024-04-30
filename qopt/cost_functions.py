@@ -525,11 +525,6 @@ def derivative_state_fidelity(
         for t in range(num_time_steps):
             # here we need to take the real part.
             if computational_states:
-                # raise RuntimeError(str((
-                #             reversed_propagators[::-1][t + 1]).shape)+" "+
-                #             str(propagator_derivatives[ctrl][t].shape)+" "+
-                #             str(forward_propagators[t].shape)
-                #     )
                 derivative_fidelity[t, ctrl] = 2 * np.real(
                     (scalar_prod * (
                             target * (
