@@ -443,7 +443,10 @@ class TransferFunction(ABC):
         self._absolute_y_times = absolute_y_times
         self.set_times(np.diff(absolute_y_times))
 
-    def plot_pulse(self, y: np.array) -> None:
+    def plot_pulse(self,
+                   y: np.array,
+                   xlabel='Time (a.u.)',
+                   ylabel='Ctrl. Amplitude (a.u.)') -> None:
         """
         Plot the control amplitudes corresponding to the given optimisation
         variables.
@@ -452,6 +455,12 @@ class TransferFunction(ABC):
         ----------
         y: array, shape (num_y, num_par)
             Raw optimization parameters.
+
+        xlabel: string
+            X-Label of the plot.
+
+        ylabel: string
+            Y-Label of the plot
 
         """
 
@@ -466,6 +475,8 @@ class TransferFunction(ABC):
                     - self.x_times[n_padding_start],
                     y_per_control, self._y_times[0],
                     fill=False)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.show()
 
     def _check_dimensions_datatype(self, y: np.array) -> None:

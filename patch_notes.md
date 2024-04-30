@@ -132,3 +132,10 @@ Noise
 
 Example Notebooks
 - Compatibility with the latest changes in filter functions
+
+### Version 1.3.4 to 1.3.5
+
+Optimize
+- Refactors and comments the simulated annealing
+
+### Version 1.3.5 to 1.3.6
