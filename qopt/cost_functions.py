@@ -104,7 +104,7 @@ from qopt import matrix, solver_algorithms
 from qopt.util import needs_refactoring, deprecated
 from qopt.matrix import ket_vectorize_density_matrix, \
     convert_ket_vectorized_density_matrix_to_square, \
-    convert_unitary_to_super_operator
+    convert_unitary_to_super_operator, DenseOperator
 
 from functools import partial
 
