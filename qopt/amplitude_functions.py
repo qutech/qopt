@@ -245,7 +245,6 @@ class IdentityAmpFuncJAX(AmplitudeFunction):
 
     def __call__(self, x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
         """See base class. """
-        #TODO: is asarray the best way, or rather array with default copying?
         return jnp.asarray(x)
 
     def derivative_by_chain_rule(
@@ -263,7 +262,6 @@ class UnaryAnalyticAmpFuncJAX(AmplitudeFunction):
     (Includes that functions need to be pure
     (i.e. output solely depends on input)).
     """
-    #TODO: jax autodiff
 
     def __init__(self,
                  value_function: Callable[[float, ], float],
@@ -320,7 +318,6 @@ class CustomAmpFuncJAX(AmplitudeFunction):
             else:
                 self.derivative_function = jit(derivative_function)
         else:
-            #TODO: is jacfwd or jacrev better here?
             if t_to_vectorize == True:
                 def der_wrapper(x):
                     return jnp.swapaxes(vmap(jacfwd(lambda x: value_function(x)),in_axes=(0,))(x),1,2)
@@ -330,8 +327,6 @@ class CustomAmpFuncJAX(AmplitudeFunction):
             self.derivative_function = jit(der_wrapper)
 
     def __call__(self, x: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
-        #TODO: potentially cases where jnp array causes errors
-        #when passed to custom func only supporting np?
         """See base class. """
         return jnp.asarray(self.value_function(x))
 

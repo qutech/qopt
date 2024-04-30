@@ -2528,16 +2528,11 @@ class SolverJAX(Solver):
         """
         pass
     
-    # #TEST
     def _calc_error(self):
         
         if self._dyn_gen is None:
             self._dyn_gen = self._compute_dyn_gen()
-        
-        #only sensible if same timesteps (?)
-        # return jnp.sum((self._transferred_time_jnp[0])**2/2*jnp.linalg.norm(
-        #     self._dyn_gen[1:]@self._dyn_gen[:-1]
-        #     -self._dyn_gen[:-1]@self._dyn_gen[1:],axis=(1,2)),axis=0)
+
         return (self._transferred_time_jnp[0])**2/2*jnp.linalg.norm(
             self._dyn_gen[1:]@self._dyn_gen[:-1]
             -self._dyn_gen[:-1]@self._dyn_gen[1:],axis=(1,2))
@@ -2998,15 +2993,12 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         
         cum_prop_noise = _cumprod_noise(self._initial_state_jnp.copy(),
                                         self._prop_noise_jnp)
-        #??? does this broadcast correclty?
         sh = cum_prop_noise.shape
         
         self._fwd_prop_noise_jnp = jnp.append(jnp.broadcast_to(
             self._initial_state_jnp.copy(),(sh[0],1,*sh[2:])),
             cum_prop_noise,axis=1)
 
-    #TODO: list conversion suuuuuper slow
-    #(theoretically noise conversion could be split up to make it faster)
     def _compute_forward_propagation(self) -> None:
         """Computes the forward propagators. """
         super()._compute_forward_propagation()
@@ -3074,23 +3066,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
             raise ValueError('Unknown gradient derivative approximation '
                              'method:'
                              + str(self.frechet_deriv_approx_method))
-
-
-# #TEST DenseOperatorJAX-conversion in vmap
-
-# Nope, can't make it a valid JAX type; jax array apparently also not subclassable
-# @jit
-# def _convert_DOPJAX_loop(data):
-#     return matrix.DenseOperatorJAX(data)
-
-# @jit
-# def _convert_DOPJAX_t(data):
-#     return vmap(_convert_DOPJAX_loop,in_axes=(0,))(data)
-
-# @jit
-# def _convert_DOPJAX_noise(data):
-#     return vmap(_convert_DOPJAX_t,in_axes=(0,))(data)
-
+            
 
 class SchroedingerSMCControlNoiseJAX(SchroedingerSMonteCarloJAX):
     """See docstring of class w/o JAX."""
@@ -3139,13 +3115,11 @@ class SchroedingerSMCControlNoiseJAX(SchroedingerSMonteCarloJAX):
                 Control amplitudes.
 
             """
-            # noise_amplitudes = np.zeros_like(noise_samples, dtype=complex)
             noise_amplitudes = jnp.zeros(
                 (noise_samples.shape[0], noise_samples.shape[1],
                     control_amplitudes.shape[1]), dtype=complex)
             
-            #TODO: amplitude function as vmap?
-            # complex values were requested.
+
             for trace_num in range(noise_samples.shape[1]):
                 #jnp cannot be updated in place
                 #->copy every time; inefficient in for loop?
@@ -3312,7 +3286,6 @@ class LindbladSolverJAX(SchroedingerSolverJAX):
         del self._diss_sup_op
         #would be complicated to rewrite as jnp cause many in-place assignments?
         #not the most efficient, but ok if not insane amounts of lindblad ops?
-        #TODO: need to profile
         return self._diss_sup_op_jnp
 
     def _calc_diss_sup_op_deriv_jnp(self) \
@@ -3594,9 +3567,6 @@ class LindbladSControlNoiseJAX(LindbladSolverJAX):
         else:
             self._prop_jnp = _compute_propagation_expm(
                 self._transferred_time_jnp,self._dyn_gen)
-                
-        #TODO: where is _fwd used elsewhere? is _fwd_props meant...?
-        # self._fwd.append(self._prop[t] * self._fwd[t])
 
         self.prop_calculated = True
 

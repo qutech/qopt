@@ -2171,25 +2171,6 @@ except ImportError:
     jax = mock.Mock()
     _HAS_JAX = False
 
-#TODO: only OperationInfidelity and OperationNoiseInfidelity
-#(partially) debugged, others not tested yet, guaranteed bugs
-
-# #for static devicearrays to be hashable in static inputs 
-# #(computational states)
-# #https://github.com/google/jax/issues/4572#issuecomment-709809897
-# # HOWEVER: does not seem to work with multiple nested jits; perhaps bug?
-# def _some_hash_function(x):
-#   return int(1e3*jnp.sum(x))
-
-# class _HashableArrayWrapper:
-#   def __init__(self, val):
-#     self.val = val
-#   def __hash__(self):
-#     return _some_hash_function(self.val)
-#   def __eq__(self, other):
-#     return (isinstance(other, _HashableArrayWrapper) and
-#             jnp.all(jnp.equal(self.val, other.val)))
-
 
 @jit
 def _closest_unitary_jnp(matrix: jnp.ndarray) -> jnp.ndarray:
@@ -2249,7 +2230,6 @@ def _truncate_to_subspace_jnp_mapped(arr: jnp.ndarray,
         # bra-vector
         subspace_indices = jnp.asarray(subspace_indices)
         out = arr[jnp.ix_(jnp.array([0]), subspace_indices)]
-            #TODO: was "fre", but only "fro" available?
         out *= 1 / jnp.linalg.norm(out,'fro')
     elif arr.shape[0] == 1:
         # ket-vector
@@ -2323,28 +2303,15 @@ def _entanglement_fidelity_super_operator_jnp(
                                            d_leakage + dim_comp),dtype=complex)
         
         clist = jnp.array(computational_states)
-        # ci = jnp.arange(0,len(clist),1)
-        
-        # for i, row in enumerate(computational_states):
-        #     for k, column in enumerate(computational_states):
-        
-        #TODO
+
         for i, row in enumerate(computational_states):
             for k, column in enumerate(computational_states):
                 target_inv_full_space = target_inv_full_space.at[row, column].set(target_inv[i, k])
             
-        # target_inv_full_space.at[clist,clist].set(
-        #     target_inv[ci,ci])
-
-
         # Then convert the target unitary into Liouville space.
         
         target_super_operator_inv = jnp.kron(jnp.conj(target_inv_full_space),
                                              target_inv_full_space)
-        
-        # target_super_operator_inv = \
-        #     matrix.convert_unitary_to_super_operator(
-        #         target_inv_full_space)
 
         # We start the projector with a zero matrix of dimension
         # (d_comp + d_leak).
@@ -2357,9 +2324,6 @@ def _entanglement_fidelity_super_operator_jnp(
         # Then convert the projector into liouville space.
         projector_comp_state=jnp.kron(jnp.conj(projector_comp_state),
                                       projector_comp_state)
-        # projector_comp_state = matrix.convert_unitary_to_super_operator(
-        #     projector_comp_state
-        # )
 
         trace = (
             projector_comp_state @ target_super_operator_inv @ propagator
@@ -2397,7 +2361,6 @@ def _derivative_entanglement_fidelity_with_du_jnp(
         derivative_fidelity = 2/d/d * jnp.real(trace*_der_fid_comp_states(
             propagator_derivatives_jnp,
             reversed_propagators_jnp[::-1][1:],
-            #TODO: Why :-1? (copied from behavior of original function)
             forward_propagators_jnp[:-1],computational_states,
             map_to_closest_unitary,target_unitary_dag)).T
 
@@ -2557,7 +2520,6 @@ def _state_fidelity_jnp(
                          'either the target is not a bra vector or the the '
                          'propagated state not a ket, or both!')
     scalar_prod = scalar_prod[0, 0]
-    #TODO: should already be real / Im zero?
     return jnp.abs(scalar_prod)**2
 
 
@@ -2588,7 +2550,6 @@ def _derivative_state_fidelity_jnp(
         derivative_fidelity = 2 * jnp.real(scalar_prod*_der_fid_comp_states(
             propagator_derivatives,
             reversed_propagators[::-1][1:],
-            #TODO: Why :-1? (copied from behavior of original function)
             forward_propagators[:-1],computational_states,
             rescale_propagated_state,target)).T
     
@@ -2637,8 +2598,7 @@ def _der_state_fid(prop_der,rev_prop_rev,fwd_prop,target):
         _der_state_fid_loop,in_axes=(0,0,0,None)),in_axes=(0,None,None,None))(
             prop_der,rev_prop_rev,fwd_prop,target)
 
-#TODO: currently not working with jitted subfuncs, shapes are argument-dependend
-#TODO: probably not working with super operator formalism (?)
+
 class StateInfidelitySubspaceJAX(CostFunction):
     """See docstring of class w/o JAX. Requires solver with JAX"""
     def __init__(self,
@@ -2663,23 +2623,6 @@ class StateInfidelitySubspaceJAX(CostFunction):
         self._target_jnp = jnp.asarray(self.target.data)
         self.dims = tuple(dims)
         self.remove = tuple(remove)
-        
-        
-    # if superoperatorformalism include this
-    # leakage_total_dimension = jnp.prod(jnp.asarray(remove))
-    
-    # #cannot work as shape depends on propagated state itself?
-    
-    # if propagated_state.size >= \
-    #         (propagated_state.size * leakage_total_dimension) ** 2:
-    #     # propagated state given as density matrix
-    #     if propagated_state.shape[1] == 1:
-    #         # the density matrix is vectorized
-            
-    #         d = int(jnp.sqrt(propagated_state.size))
-    #         propagated_state= propagated_state.reshape([d, d]).T
-
-
 
     def costs(self) -> jnp.float64:
         """See base class. """
@@ -2733,8 +2676,7 @@ def _state_fidelity_subspace_jnp(
     return scalar_prod_real
 
 
-#TODO: how can this be made to work jitted? even with static args get errors
-# @partial(jit,static_argnums=(1,2))
+
 def _ptrace_jnp(mat: jnp.ndarray,
            dims: tuple,
            remove: tuple) -> jnp.ndarray:
@@ -2743,10 +2685,6 @@ def _ptrace_jnp(mat: jnp.ndarray,
     if mat.shape[1] == 1:
         mat = (mat @ jnp.conj(mat).T)
         
-    # assertion not so good in jax
-    # if mat.shape[0] != jnp.prod(jnp.asarray(dims)):
-    #     raise AssertionError("Specified dimensions do not match "
-    #                          "matrix dimension.")
     n_dim = len(dims)  # number of subspaces
     dims = jnp.asarray(dims, dtype=int)
 
@@ -2781,8 +2719,7 @@ def _ptrace_jnp(mat: jnp.ndarray,
 
     return pmat
 
-#TODO: how can this be made to work jitted? even with static args get errors
-# @partial(jit,static_argnums=(4,5))
+
 def _derivative_state_fidelity_subspace_jnp(
     target: jnp.ndarray,
     forward_propagators: jnp.ndarray,
@@ -2804,7 +2741,6 @@ def _derivative_state_fidelity_subspace_jnp(
     derivative_fidelity = 2 * jnp.real(_der_state_sub_fid_comp_states(
         propagator_derivatives,
         reversed_propagators[::-1][1:],
-        #TODO: WHY :-1? (copied from behavior of original function)
         forward_propagators[:-1],dims,
         remove,target)).T
 
@@ -3078,8 +3014,7 @@ class OperationNoiseInfidelityJAX(CostFunction):
                 self.computational_states,
                 self.map_to_closest_unitary
                 )
-        #TODO: "map_to_closest unitary was not given as argument in original
-        #function; intentional?
+
         if self.neglect_systematic_errors:
             temp_target = vmap(self._to_comp_space,in_axes=(0,))(
                 self.solver.forward_propagators_noise_jnp[:,-1])
@@ -3138,7 +3073,6 @@ class LeakageErrorJAX(CostFunction):
         final_prop = self.solver.forward_propagators_jnp[-1]
         clipped_prop = _truncate_to_subspace_jnp(final_prop,
             self.computational_states,map_to_closest_unitary=False)
-        #TODO: is this correctly transferred? (left or right multiplication)
         temp = jnp.conj(clipped_prop).T @ clipped_prop
 
         # the result should always be positive within numerical accuracy
@@ -3574,16 +3508,10 @@ class OperationInfidelityJAXSpecial(OperationInfidelityJAX):
     
     def der_time_fact(self,time_fact):
         
-        #TESTTEST
         
         if self.fidelity_measure == 'entanglement' and self.super_operator:
             raise NotImplementedError
-            # derivative_fid = deriv_entanglement_fid_sup_op_with_dfreq(
-            #     forward_propagators=self.solver.forward_propagators,
-            #     target_der = r_der.dag()*self.target,
-            #     target=r.dag()*self.target,
-            #     computational_states=self.computational_states,
-            # )
+
         elif self.fidelity_measure == 'entanglement':
             derivative_fid = _derivative_entanglement_fidelity_with_dtf_jnp(
                 self.rot_op_4(time_fact*self.end_time)@self._target_jnp,
@@ -3592,7 +3520,6 @@ class OperationInfidelityJAXSpecial(OperationInfidelityJAX):
                 self.computational_states,
                 self.map_to_closest_unitary
             )
-        #ONLY AT LAST TIMESTEP
             
         else:
             raise NotImplementedError('Only the average and entanglement'
@@ -3714,8 +3641,6 @@ def _rot_op_p(ph_arr):
 def _entanglement_infidelity_jnp_zphase_wrapper(ph_arr,target,prop,comp_states,to_closest):
     return 1-_entanglement_fidelity_jnp(_rot_op_p(ph_arr)@target,prop,comp_states,to_closest)
 
-
-#TODO: weird error sometimes that module not exists despite jax loaded?
 import jax.scipy.optimize as jsco
 
 @partial(jit,static_argnums=(2,3))
@@ -3744,23 +3669,19 @@ def _entanglement_fidelity_super_op_jnp_zphase(target,prop,dim_prop,comp_states)
     return 1-res.fun
 
 
-# import scipy.optimize as sco
-
 class TwoQubitEquivalenceClass(CostFunction):
     """
 
     """
     def __init__(self,
                  solver: solver_algorithms.Solver,
-                 local_invariants: np.ndarray, #TODO: WHY g3=+1 for CNOT??? get -1 when calculating?
-                 # fidelity_measure: str = 'entanglement',
+                 local_invariants: np.ndarray,
                  super_operator_formalism: bool = False,
                  label: Optional[List[str]] = None,
                  computational_states: Optional[List[int]] = None,
                   map_to_closest_unitary: bool = False
                  ):
         if label is None:
-            # if fidelity_measure == 'entanglement':
             label = ['Two Qubit Equivalence Class', ]
 
         super().__init__(solver=solver, label=label)
@@ -3796,17 +3717,6 @@ class TwoQubitEquivalenceClass(CostFunction):
             final = _truncate_to_subspace_jnp(final,self.computational_states,self.map_to_closest_unitary)
         
         m = _calc_m(final,self._q_mat)
-        # g_arr = _calc_g(final,self._q_mat,m)
-        
-        # if not jnp.all(jnp.isclose(g_arr.imag,0)):
-        #     raise RuntimeWarning("complex weyl coord." + str(g_arr))
-        
-        # l_sq = jnp.sum((g_arr-self._target_g_jnp)**2)**0.5
-       
-        # #discard imaginary part cause should not be (?) not very plausible
-        # return jnp.real(l_sq)
-        
-        #??? is absolute value squared better?
         g_arr_c = _calc_g_c(m,final)
         l_sq_abs = jnp.sum(jnp.abs(g_arr_c-self._target_g_c_jnp)**2)**0.5
         return l_sq_abs
@@ -3825,15 +3735,11 @@ class TwoQubitEquivalenceClass(CostFunction):
         if self.computational_states is not None:
             final = _truncate_to_subspace_jnp(final,self.computational_states,self.map_to_closest_unitary)
             rpr_pd_fp = _truncate_to_subspace_jnp_dvmap(rev_prop_rev@prop_der@fwd_props,self.computational_states,self.map_to_closest_unitary)
-            # rev_prop_rev = _truncate_to_subspace_jnp_vmap(rev_prop_rev,self.computational_states,self.map_to_closest_unitary)
-            # prop_der = _truncate_to_subspace_jnp_dvmap(prop_der,self.computational_states,self.map_to_closest_unitary)
-            # fwd_props = _truncate_to_subspace_jnp_vmap(fwd_props,self.computational_states,self.map_to_closest_unitary)
-            
+
         m = _calc_m(final,self._q_mat)
         g_arr_c = _calc_g_c(m,final)
         l_sq_abs = jnp.sum(jnp.abs(g_arr_c-self._target_g_c_jnp)**2)**0.5
         
-        #TODO: something is wrong here...
         derivative_lsq = _dlsq_du_c(m,self._q_mat,self._qq,
                                   rpr_pd_fp,
                                   final,
@@ -3854,14 +3760,6 @@ def _g_to_s_d(g_arr):
     z_arr = jnp.roots([1,-g_arr[2],(4*(g_arr[0]**2+g_arr[1]**2)**0.5-1),(g_arr[2]-4*g_arr[0])])
     return jnp.pi-jnp.arccos(z_arr[0])-jnp.arccos(z_arr[2]), g_arr[2]*(g_arr[0]**2+g_arr[1]**2)**0.5-g_arr[0]
 
-# @jit
-# def _calc_g(arr,q,m):
-#     g1 = 1/16 * jnp.real(jnp.trace(m)**2)
-#     g2 = 1/16 * jnp.imag(jnp.trace(m)**2)
-#     g3 = 1/4 * jnp.real((jnp.trace(m)**2-jnp.trace(m@m)))
-#     return jnp.asarray([g1,g2,g3])
-
-#TODO: is with determinnat correct?
 @jit
 def _calc_g_c(m,u):
     g1 = 1/16 * jnp.trace(m)**2
@@ -3873,10 +3771,6 @@ def _dm_dukj(q,qq,rpr_pd_fp,final):
     return q.T@(rpr_pd_fp).T@qq@final@q+\
            q.T@final.T@qq@rpr_pd_fp@q
 
-# @jit
-# def _dg12_dukj_nodet(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final):
-#     return 0.125*(m.trace()*_dm_dukj(q,qq,rev_prop_rev,prop_der,fwd_prop,final).trace())
-
 @jit
 def _ddetU_dukj(U,dUdukj):
     return jnp.linalg.det(U)*jnp.trace(jnp.linalg.inv(U)@dUdukj)
@@ -3886,22 +3780,11 @@ def _dg12_dukj(m,q,qq,rpr_pd_fp,final):
     return 1/16*(2*m.trace()*_dm_dukj(q,qq,rpr_pd_fp,final).trace()*jnp.linalg.det(jnp.conj(final).T)
                   +m.trace()**2*_ddetU_dukj(jnp.conj(final).T,jnp.conj(rpr_pd_fp).T))
 
-# @jit
-# def _dg3_dukj_nodet(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final):
-#     return 0.5*(m.trace()*_dm_dukj(q,qq,rev_prop_rev,prop_der,fwd_prop,final).trace()-
-#                 (m@_dm_dukj(q,qq,rev_prop_rev,prop_der,fwd_prop,final)).trace())
-
 @jit
 def _dg3_dukj(m,q,qq,rpr_pd_fp,final):
     return 0.25*(2*(m.trace()*_dm_dukj(q,qq,rpr_pd_fp,final).trace()-
                 (m@_dm_dukj(q,qq,rpr_pd_fp,final)).trace())*jnp.linalg.det(jnp.conj(final).T)
                  +(m.trace()**2-(m@m).trace())*_ddetU_dukj(jnp.conj(final).T,jnp.conj(rpr_pd_fp).T))
-
-# @jit
-# def _dlsq_dukj(m,q,qq,rev_prop_rev, prop_der,fwd_prop,final,g0_arr,g_arr,l_sq):
-#     dg12 = _dg12_dukj(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final)
-#     dg3 = _dg3_dukj(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final)
-#     return 1/l_sq*jnp.sum((g_arr-g0_arr)*jnp.array([jnp.real(dg12),jnp.imag(dg12),dg3]))
 
 @jit
 def _dlsq_dukj_c(m,q,qq,rpr_pd_fp,final,g0_arr_c,g_arr_c,l_sq_abs):
@@ -3910,13 +3793,6 @@ def _dlsq_dukj_c(m,q,qq,rpr_pd_fp,final,g0_arr_c,g_arr_c,l_sq_abs):
     return 1/l_sq_abs*jnp.sum(jnp.real((g_arr_c-g0_arr_c)*jnp.conj(jnp.array([dg12,dg3]))))
 
 
-# #(to be used with additional .T for previous shape)
-# @jit 
-# def _dlsq_du(m,q,qq,rev_prop_rev,prop_der,fwd_prop,final,g0_arr,g_arr,l_sq):
-#     return vmap(vmap(_dlsq_dukj,in_axes=(None,None,None,0,0,0,None,None,None,None)),
-#                 in_axes=(None,None,None,None,0,None,None,None,None,None))(
-#                 m,q,qq,rev_prop_rev,prop_der,fwd_prop,final,g0_arr,g_arr,l_sq)
-                    
 #(to be used with additional .T for previous shape)
 @jit 
 def _dlsq_du_c(m,q,qq,rpr_pd_fp,final,g0_arr_c,g_arr_c,l_sq_abs):
@@ -4040,7 +3916,6 @@ class LeakageErrorBaseChangeJAX(CostFunction):
         
         clipped_prop = _truncate_to_subspace_jnp(final_prop,
             self.computational_states,map_to_closest_unitary=False)
-        #TODO: is this correctly transferred? (left or right multiplication)
         temp = jnp.conj(clipped_prop).T @ clipped_prop
 
         # the result should always be positive within numerical accuracy

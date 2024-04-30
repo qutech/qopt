@@ -1467,8 +1467,6 @@ except ImportError:
     jax = mock.Mock()
     _HAS_JAX = False
 
-#TODO: many undefined baheviors, e.g. when "other" in operation is
-#DeviceArray but scalar (?)
 
 class DenseOperatorJAX(OperatorMatrix):
     """See docstring of class w/o JAX. Works with jnp arrays"""
@@ -1504,11 +1502,8 @@ class DenseOperatorJAX(OperatorMatrix):
     def copy(self):
         """See base class. """
         copy_ = DenseOperatorJAX(jnp.array(self.data,copy=True))
-        # numpy copy are deep
+        # numpy copies are deep
         return copy_
-
-    #TODO: typecheck not good? (DeviceArray vs jnp.ndarray)
-    #better isinstance (?)
 
     def __imul__(
             self,
@@ -1519,7 +1514,6 @@ class DenseOperatorJAX(OperatorMatrix):
 
         if type(other) == DenseOperatorJAX or type(other) == DenseOperator:
             jnp.matmul(self.data, other.data, out=self.data)
-        #TODO: error for other.shape==()?
         elif isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             jnp.matmul(self.data, other, out=self.data)
         elif type(other) in VALID_SCALARS:
@@ -1543,7 +1537,6 @@ class DenseOperatorJAX(OperatorMatrix):
         elif type(other) == np.ndarray:
             out = DenseOperatorJAX(jnp.matmul(self.data, jnp.array(other)))
         elif isinstance(other,jnp.ndarray):
-            #TODO: ugly but necessary?
             if other.shape==():
                 out = DenseOperatorJAX(self.data*other)
             else:
@@ -1558,9 +1551,7 @@ class DenseOperatorJAX(OperatorMatrix):
                          int, np.generic, jnp.ndarray]
             ) -> 'DenseOperatorJAX':
         """See base class. """
-        #TODO: Why is "DenseOperator" marked as valid type and not accepted
-        # here? (is copied from original function)
-        #TODO: error for other.shape==()?
+
         if isinstance(other,jnp.ndarray) or isinstance(other,np.ndarray):
             out = DenseOperatorJAX(jnp.matmul(other, self.data))
         elif type(other) in VALID_SCALARS:
@@ -1570,8 +1561,6 @@ class DenseOperatorJAX(OperatorMatrix):
             raise NotImplementedError(str(type(other)))
         return out
     
-    #TODO: for all funcs below: "other" argument not marked with all
-    # possible types?
     def __iadd__(self, other: 'DenseOperatorJAX') -> 'DenseOperatorJAX':
         """See base class. """
         if type(other) is DenseOperatorJAX:
@@ -2113,7 +2102,6 @@ class DenseOperatorJAX(OperatorMatrix):
             out = type(self)(self.data[jnp.ix_(jnp.array([0]),
                                                jnp.array(subspace_indices))])
             if map_to_closest_unitary:
-                #TODO: was "fre", but only "fro" available?
                 out *= 1 / out.norm('fro')
         elif self.shape[0] == 1:
             # ket-vector

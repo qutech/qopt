@@ -1509,7 +1509,6 @@ class ScalarMinimizingOptimizerJAX(OptimizerJAX):
         """
         jac = super().cost_jacobian_wrapper(optimization_parameters)
         grad = (jnp.sum(jac, axis=0))
-        #TODO: scipy not accepting jax array? explicitly copy? (slow?)
         return np.array(grad,copy=True)
     
     def run_optimization(self,
