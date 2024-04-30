@@ -291,6 +291,155 @@ class Simulator(object):
 
         return total_jac
 
+    def wrapped_cost_functions_test(self, pulse=None):
+        """
+        Wraps the cost functions of the fidelity computer.
+
+        This function coordinates the complete simulation including the
+        application of the transfer function, the execution of the time
+        slot computer and the evaluation of the actual cost functions.
+
+        Parameters
+        ----------
+        pulse: numpy array optional
+            If no pulse is specified the cost function is evaluated for the
+            attribute pulse.
+
+        Returns
+        -------
+        costs: numpy array, shape (n_fun)
+            Array of costs (i.e. infidelities).
+
+        costs_indices: list of str
+            Names of the costs.
+
+        """
+        if pulse is None:
+            pulse = self.pulse
+
+        for solver in self.solvers:
+            solver.set_optimization_parameters(pulse)
+
+        costs = []
+
+        if self.stats:
+            self.stats.cost_func_eval_times.append([])
+            for i, cost_func in enumerate(self.cost_funcs):
+                t_start = time.time()
+                #second argument is frequency [[amp,freq,phase],...,]
+                if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
+                    cost = cost_func.costs(pulse[0][1])
+                elif type(cost_func).__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
+                    cost = cost_func.costs()
+                else:
+                    raise RuntimeError
+                t_end = time.time()
+                self.stats.cost_func_eval_times[-1].append(t_end - t_start)
+
+                # reimplement the block below
+                costs.append(np.asarray(cost).flatten())
+
+                """
+                I do not understand this block anymore. The cost can be an 
+                array or a scalar, but the scalar can not be reshaped.
+                if hasattr(cost, "__len__"):
+                    costs.append(cost)
+                else:
+                    costs.append(cost.reshape(1))
+                """
+            costs = np.concatenate(costs, axis=0)
+        else:
+            for i, cost_func in enumerate(self.cost_funcs):
+                
+                if cost_func.__name__ == "OperationInfidelity" or cost_func.__name__ == "OperationNoiseInfidelity" :
+                    cost = cost_func.costs(pulse[0][1])
+                elif cost_func.__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
+                    cost = cost_func.costs()
+                else:
+                    raise RuntimeError
+
+                costs.append(np.asarray(cost).flatten())
+                """
+                if hasattr(cost, "__len__"):
+                    costs.append(cost)
+                else:
+                    costs.append(cost.reshape(1))
+                """
+            costs = np.concatenate(costs, axis=0)
+
+        return np.asarray(costs)
+
+    def wrapped_jac_function_test(self, pulse=None):
+        """
+        Wraps the gradient calculation functions of the fidelity computer.
+
+        Parameters
+        ----------
+        pulse: numpy array, optional
+            shape: (num_t, num_ctrl) If no pulse is specified the cost function
+            is evaluated for the attribute pulse.
+
+        Returns
+        -------
+        jac: numpy array
+            Array of gradients of shape (num_t, num_func, num_amp).
+        """
+
+        if self.numeric_jacobian:
+            return self.numeric_gradient(pulse=pulse)
+
+        if pulse is None:
+            pulse = self.pulse
+
+        for solver in self.solvers:
+            solver.set_optimization_parameters(pulse)
+
+        jacobians = []
+
+        record_evaluation_times = bool(self.stats)
+
+        if record_evaluation_times:
+            self.stats.grad_func_eval_times.append([])
+
+        for i, cost_func in enumerate(self.cost_funcs):
+            if record_evaluation_times:
+                t_start = time.time()
+            
+            if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
+                jac_u = cost_func.grad(pulse[0][1])
+            elif type(cost_func).__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
+                jac_u = cost_func.grad()
+            else:
+                raise RuntimeError
+            
+            # if the cost function is scalar, an extra dimension is inserted
+            if len(jac_u.shape) == 2:
+                jac_u = np.expand_dims(jac_u, axis=1)
+            
+            # apply the chain rule to the derivatives
+            jac_x = cost_func.solver.amplitude_function.derivative_by_chain_rule(
+                jac_u, cost_func.solver.transfer_function(pulse))
+            jac_x_transferred = \
+                cost_func.solver.transfer_function.gradient_chain_rule(
+                    jac_x
+                )
+                
+            if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
+                jac_x_transferred[0,0,1] += cost_func.der_freq_test(pulse[0][1])[0,0]
+            elif type(cost_func).__name__ != "LeakageError" and type(cost_func).__name__ != "LeakageLiouville" and type(cost_func).__name__ != "StateInfidelity2":
+                raise RuntimeWarning
+            
+            jacobians.append(jac_x_transferred)
+            if record_evaluation_times:
+                t_end = time.time()
+                self.stats.grad_func_eval_times[-1].append(t_end - t_start)
+
+        # two dimensional form as required by scipy solvers
+        total_jac = np.concatenate(jacobians, axis=1)
+
+        return total_jac
+
+
     def compare_numeric_to_analytic_gradient(
             self, pulse: Optional[np.ndarray] = None,
             delta_eps: float = 1e-8,
@@ -368,14 +517,14 @@ class Simulator(object):
 
         central_costs = self.wrapped_cost_functions(pulse=test_pulse)
 
-        n_times, n_operators = test_pulse.shape
+        n_times, n_operators = np.asarray(test_pulse).shape
         n_cost_funcs = len(central_costs)
 
         gradients = np.zeros((n_times, n_cost_funcs, n_operators))
 
         for n_time in range(n_times):
             for n_operator in range(n_operators):
-                delta = np.zeros_like(test_pulse, dtype=float)
+                delta = np.zeros_like(test_pulse)
                 delta[n_time, n_operator] = delta_eps
                 fwd_val = self.wrapped_cost_functions(test_pulse + delta)
                 if symmetric:
