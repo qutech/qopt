@@ -112,7 +112,7 @@ def plot_bloch_vector_evolution(
     states = [
         qt.Qobj((prop * initial_state).data) for prop in forward_propagators
     ]
-    a = np.empty((3, len(states)))
+    a = np.empty((3, len(states)),dtype=complex) # for numerical integrity
     x, y, z = qt.sigmax(), qt.sigmay(), qt.sigmaz()
     for i, state in enumerate(states):
         a[:, i] = [qt.expect(x, state),
