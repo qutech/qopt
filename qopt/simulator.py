@@ -292,8 +292,6 @@ class Simulator(object):
 
         return total_jac
 
-#TESTTEST
-
     def wrapped_cost_functions_test(self, pulse=None):
         """
         Wraps the cost functions of the fidelity computer.
@@ -329,14 +327,13 @@ class Simulator(object):
             self.stats.cost_func_eval_times.append([])
             for i, cost_func in enumerate(self.cost_funcs):
                 t_start = time.time()
-                #SECOND ARGUMENT IS FREQUENCY [[amp,freq,phase],...,]
+                #second argument is frequency [[amp,freq,phase],...,]
                 if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
                     cost = cost_func.costs(pulse[0][1])
                 elif type(cost_func).__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
                     cost = cost_func.costs()
                 else:
                     raise RuntimeError
-                ########
                 t_end = time.time()
                 self.stats.cost_func_eval_times[-1].append(t_end - t_start)
 
@@ -355,7 +352,6 @@ class Simulator(object):
         else:
             for i, cost_func in enumerate(self.cost_funcs):
                 
-                #TESTTEST
                 if cost_func.__name__ == "OperationInfidelity" or cost_func.__name__ == "OperationNoiseInfidelity" :
                     cost = cost_func.costs(pulse[0][1])
                 elif cost_func.__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
@@ -410,24 +406,18 @@ class Simulator(object):
             if record_evaluation_times:
                 t_start = time.time()
             
-            #TESTTEST
             if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
                 jac_u = cost_func.grad(pulse[0][1])
             elif type(cost_func).__name__ == "LeakageError" or type(cost_func).__name__ == "LeakageLiouville" or type(cost_func).__name__ == "StateInfidelity2":
                 jac_u = cost_func.grad()
             else:
                 raise RuntimeError
-            #####
             
             # if the cost function is scalar, an extra dimension is inserted
             if len(jac_u.shape) == 2:
                 jac_u = np.expand_dims(jac_u, axis=1)
             
-            # else:
-            #     raise RuntimeError(str(cost_func.__name__))
-            
             # apply the chain rule to the derivatives
-            #TESTTEST CAREFUL ONLY IF OVERSAMPLING
             jac_x = cost_func.solver.amplitude_function.derivative_by_chain_rule(
                 jac_u, cost_func.solver.transfer_function(pulse))
             jac_x_transferred = \
@@ -435,11 +425,7 @@ class Simulator(object):
                     jac_x
                 )
                 
-            #TESTTEST ONLY IF OVERSAMPLING
-            #INDEX 1 IS FREQ INDEX?
             if type(cost_func).__name__ == "OperationInfidelity" or type(cost_func).__name__ == "OperationNoiseInfidelity" :
-                #last edit: changes i in axis 1 to 0; correct?
-                # pass
                 jac_x_transferred[0,0,1] += cost_func.der_freq_test(pulse[0][1])[0,0]
             elif type(cost_func).__name__ != "LeakageError" and type(cost_func).__name__ != "LeakageLiouville" and type(cost_func).__name__ != "StateInfidelity2":
                 raise RuntimeWarning

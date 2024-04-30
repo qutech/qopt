@@ -271,9 +271,6 @@ class Optimizer(ABC):
         self._n_jac_fkt_eval += 1
         return jacobian
 
-    #####################
-    #TESTTEST
-
     def cost_func_wrapper_global(self, optimization_parameters):
         """Wraps the cost function given by the simulator class.
 
@@ -337,14 +334,12 @@ class Optimizer(ABC):
         if self.save_intermediary_steps:
             self.optim_iter_summary.gradients.append(jacobian)
         
-        #TEST
         jacobian[:,:,scale_ind] = jacobian[:,:,scale_ind]/(1+self._n_jac_fkt_eval)
         
         # jacobian shape (num_t, num_f, num_ctrl) -> (num_f, num_t * num_ctrl)
         jacobian = jacobian.transpose([1, 2, 0])
         jacobian = jacobian.reshape(
             (jacobian.shape[0], jacobian.shape[1] * jacobian.shape[2]))
-
 
         # apply the cost function weights after saving the values.
         if self.cost_func_weights is not None:
@@ -549,7 +544,6 @@ class LeastSquaresOptimizer(Optimizer):
 
         return optim_result
 
-# TEST
 class LeastSquaresOptimizerGlobal(Optimizer):
     """
     Uses the scipy least squares method for optimization.
