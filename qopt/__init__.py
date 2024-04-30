@@ -82,3 +82,12 @@ except ImportError:
 __version__ = '1.3'
 __license__ = 'GNU GPLv3+'
 __author__ = 'Julian Teske, Forschungszentrum Juelich'
+
+
+try:
+    from jax.config import config
+    config.update("jax_enable_x64", True)
+    #TODO: add new objects here/ import other stuff?
+    # __all__ += []
+except ImportError:
+    pass
