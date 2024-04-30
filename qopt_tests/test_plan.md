@@ -20,6 +20,10 @@ qopt classes.
 - T2 non-Markovian literature analytic calculation
 - T2 Markovian noise
 
+#### Refactored:
+
+- T1 comparison of MC, Lindblad and FF
+
 ### Tests with Numerical Results
 
 - Test gradients vs. finite differences

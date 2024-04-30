@@ -88,7 +88,9 @@ class TestTslots(unittest.TestCase):
 
         noise_sample_generator = noise.NTGQuasiStatic(
             noise_samples=mocked_noise, n_samples_per_trace=4,
-            standard_deviation=[2, ], n_traces=1, always_redraw_samples=False)
+            standard_deviation=[2, ], n_traces=1, always_redraw_samples=False,
+            correct_std_for_discrete_sampling=False
+        )
 
         time_slot_noise = solver_algorithms.SchroedingerSMonteCarlo(
             h_drift=h_drift,

@@ -73,8 +73,12 @@ import matplotlib.pyplot as plt
 
 from typing import Callable, Tuple, Optional, List, Union
 from abc import ABC, abstractmethod
-from scipy import signal
+from scipy import signal, special
 
+from qopt.util import deprecated
+
+import random
+from functools import partial
 
 def bell_curve_1dim(x: Union[np.ndarray, float],
                     stdx: float) -> Union[np.ndarray, float]:
@@ -100,40 +104,71 @@ def bell_curve_1dim(x: Union[np.ndarray, float],
     return normalization_factor * exponential
 
 
-def sample_1dim_gaussian_distribution(std1: float,
-                                      n_samples: int) -> List:
+def inverse_cumulative_gaussian_distribution_function(
+        z: Union[float, np.array], std: float, mean: float):
+    """
+    Calculates the inverse cumulative function for the gaussian distribution.
+
+    Parameters
+    ----------
+    z: Union[float, np.array]
+        Function value.
+
+    std: float
+        Standard deviation of the bell curve.
+
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
+    Returns
+    -------
+    selected_x: list of float
+        Noise samples.
+
+    """
+    return std * np.sqrt(2) * special.erfinv(2 * z - 1) + mean
+
+
+def sample_1dim_gaussian_distribution(std: float, n_samples: int, mean: float = 0)\
+        -> np.array:
     """
     Returns 'n_samples' samples from the one dimensional bell curve.
 
     The samples are chosen such, that the integral over the bell curve between
-    two adjacent samples is always the same.
+    two adjacent samples is always the same. The samples reproduce the correct
+    standard deviation only in the limit n_samples -> inf due to the
+    discreteness of the approximation. The error is to good approximation
+    1/n_samples.
 
     Parameters
     ----------
-    std1: float
+    std: float
         Standard deviation of the bell curve.
 
     n_samples: int
         Number of samples returned.
 
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
     Returns
     -------
-    selected_x: np.ndarray
+    selected_x: numpy array of shape:(n_samples, )
         Noise samples.
 
     """
-    x = np.mgrid[-5 * std1:5.0001 * std1:0.001 * std1]
-    normal_distribution = bell_curve_1dim(x, std1)
-    normal_distribution /= np.sum(normal_distribution)
-    selected_x = []
-    it_sum = 0
-    iterator = 1
-    for i in range(10000):
-        it_sum += normal_distribution[i]
-        if it_sum > iterator / (n_samples + 1):
-            iterator += 1
-            selected_x.append(x[i])
-    return selected_x
+    z = np.linspace(start=0, stop=1, num=n_samples, endpoint=False)
+    z += 1 / (2 * n_samples)
+    # we distribute the total probability of 1 into n_samples equal parts.
+    # The z-values are in the center of each part.
+
+    x = inverse_cumulative_gaussian_distribution_function(
+        z=z, std=std, mean=mean
+    )
+    # We use the inverse cumulative gaussian distribution to find the values x.
+    # The integral over the Gaussian distribution between x[i] and x[i+1]
+    # now always equals 1/n_samples.
+    return x
 
 
 def bell_curve_2dim(x: Union[np.ndarray, float], stdx: float,
@@ -167,6 +202,7 @@ def bell_curve_2dim(x: Union[np.ndarray, float], stdx: float,
     return normalization_factor * exponential
 
 
+@deprecated
 def sample_2dim_gaussian_distribution(
         std1: float, std2: float, n_samples: int) \
         -> (List, List):
@@ -401,6 +437,7 @@ class NTGQuasiStatic(NoiseTraceGenerator):
                  n_traces: int = 1,
                  noise_samples: Optional[np.ndarray] = None,
                  always_redraw_samples: bool = True,
+                 correct_std_for_discrete_sampling: bool = True,
                  sampling_mode: str = 'uncorrelated_deterministic'):
         n_noise_operators = len(standard_deviation)
         super().__init__(noise_samples=noise_samples,
@@ -410,6 +447,23 @@ class NTGQuasiStatic(NoiseTraceGenerator):
                          always_redraw_samples=always_redraw_samples)
         self.standard_deviation = standard_deviation
         self.sampling_mode = sampling_mode
+
+        if correct_std_for_discrete_sampling:
+            if self.n_traces == 1:
+                raise RuntimeWarning('Standard deviation cannot be estimated'
+                                     'for a single trace!')
+            elif self.sampling_mode == 'uncorrelated_deterministic':
+                for i in range(len(self.standard_deviation)):
+                    samples = sample_1dim_gaussian_distribution(
+                        std=self.standard_deviation[i],
+                        n_samples=self.n_traces
+                    )
+                    actual_std = np.std(samples)
+                    if actual_std < 1e-20:
+                        raise RuntimeError('The standard deviation was '
+                                           'estimated close to 0!')
+                    self.standard_deviation[i] *= \
+                        self.standard_deviation[i] / actual_std
 
     @property
     def n_traces(self) -> int:
@@ -446,7 +500,8 @@ class NTGQuasiStatic(NoiseTraceGenerator):
                  self.n_samples_per_trace))
 
             for i, std in enumerate(self.standard_deviation):
-                samples = sample_1dim_gaussian_distribution(std, self._n_traces)
+                samples = sample_1dim_gaussian_distribution(
+                    std, self._n_traces)
                 for j in range(self._n_traces):
                     self._noise_samples[i, i * self._n_traces + j, :] \
                         = samples[j] * np.ones(self.n_samples_per_trace)
@@ -638,3 +693,370 @@ class NTGColoredNoise(NoiseTraceGenerator):
             np.mean(spectral_density_or_spectrum, axis=0)[1:-1] -
             self.noise_spectral_density(sample_frequencies)[1:-1])
         return deviation_norm
+
+
+###############################################################################
+
+try:
+    import jax.numpy as jnp
+    from jax import jit, vmap
+    import jax
+    _HAS_JAX = True
+except ImportError:
+    from unittest import mock
+    jit = mock.Mock()
+    jnp = mock.Mock()
+    vmap = mock.Mock()
+    jax = mock.Mock()
+    _HAS_JAX = False
+    
+
+@jit
+def _inverse_cumulative_gaussian_distribution_function_jnp(
+        z: Union[float, np.array, jnp.ndarray], std: float, mean: float):
+    """
+    Calculates the inverse cumulative function for the gaussian distribution.
+
+    Parameters
+    ----------
+    z: Union[float, np.array, jnp.array]
+        Function value.
+
+    std: float
+        Standard deviation of the bell curve.
+
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
+    Returns
+    -------
+    selected_x: list of float
+        Noise samples.
+
+    """
+    return std * jnp.sqrt(2) * jax.scipy.special.erfinv(2 * z - 1) + mean
+
+
+@partial(jit,static_argnums=1)
+def _sample_1dim_gaussian_distribution_jnp(std: float, n_samples: int, mean: float = 0)\
+        -> jnp.ndarray:
+    """
+    Returns 'n_samples' samples from the one dimensional bell curve.
+
+    The samples are chosen such, that the integral over the bell curve between
+    two adjacent samples is always the same. The samples reproduce the correct
+    standard deviation only in the limit n_samples -> inf due to the
+    discreteness of the approximation. The error is to good approximation
+    1/n_samples.
+
+    Parameters
+    ----------
+    std: float
+        Standard deviation of the bell curve.
+
+    n_samples: int
+        Number of samples returned.
+
+    mean: float
+        Mean value of the gaussian distribution. Defaults to 0.
+
+    Returns
+    -------
+    selected_x: numpy array of shape:(n_samples, )
+        Noise samples.
+
+    """
+    z = jnp.linspace(start=0, stop=1, num=n_samples, endpoint=False)
+    z += 1 / (2 * n_samples)
+    # we distribute the total probability of 1 into n_samples equal parts.
+    # The z-values are in the center of each part.
+
+    x = _inverse_cumulative_gaussian_distribution_function_jnp(
+        z=jnp.expand_dims(z,0), std=jnp.expand_dims(std,1), mean=mean
+    )
+    # We use the inverse cumulative gaussian distribution to find the values x.
+    # The integral over the Gaussian distribution between x[i] and x[i+1]
+    # now always equals 1/n_samples.
+    return x
+
+
+class NTGQuasiStaticJAX(NoiseTraceGenerator):
+    """See docstring of class w/o JAX.
+    
+    Additional parameter: seed: int, optional: seed for jax.random.PRNGKey
+    """
+
+
+    def __init__(self, standard_deviation: List[float],
+                 n_samples_per_trace: int,
+                 n_traces: int = 1,
+                 noise_samples: Optional[np.ndarray] = None,
+                 always_redraw_samples: bool = True,
+                 correct_std_for_discrete_sampling: bool = True,
+                 sampling_mode: str = 'uncorrelated_deterministic',
+                 seed: Optional[int] = None):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
+        n_noise_operators = len(standard_deviation)
+        super().__init__(noise_samples=noise_samples,
+                         n_samples_per_trace=n_samples_per_trace,
+                         n_traces=n_traces,
+                         n_noise_operators=n_noise_operators,
+                         always_redraw_samples=always_redraw_samples)
+        self.standard_deviation = jnp.asarray(standard_deviation)
+        
+        self.sampling_mode = sampling_mode
+        self.seed = seed if seed is not None else random.randint(0,2**32-1)
+        self.rnd_key_first = jax.random.PRNGKey(self.seed)
+        self.rnd_key_arr = [self.rnd_key_first]
+        
+        if correct_std_for_discrete_sampling:
+            if self.n_traces == 1:
+                raise RuntimeWarning('Standard deviation cannot be estimated'
+                                     'for a single trace!')
+            elif self.sampling_mode == 'uncorrelated_deterministic':
+                    
+                        
+                n_std_dev = len(self.standard_deviation)
+                _noise_samples = _sample_1dim_gaussian_distribution_jnp(
+                    self.standard_deviation, self._n_traces)
+                _noise_samples = jnp.broadcast_to(
+                    jnp.expand_dims(jnp.tile(_noise_samples,n_std_dev)*
+                        jnp.repeat(jnp.eye(n_std_dev),self._n_traces,axis=1),2),
+                    (n_std_dev,self._n_traces*n_std_dev,self.n_samples_per_trace))
+                
+                actual_std = jnp.std(_noise_samples,axis=(1,2))
+                if jnp.any(actual_std < 1e-20):
+                    raise RuntimeError('The standard deviation was '
+                                       'estimated close to 0!')
+                self.standard_deviation *= \
+                    self.standard_deviation / actual_std
+                
+    @property
+    def n_traces(self) -> int:
+        """Number of traces.
+
+        The number of requested traces must be multiplied with the number of
+        standard deviations because if standard deviation is sampled
+        separately.
+
+        """
+        if self._n_traces:
+            if self.sampling_mode == 'uncorrelated_deterministic':
+                return self._n_traces * len(self.standard_deviation)
+            elif self.sampling_mode == 'monte_carlo':
+                return self._n_traces
+            else:
+                raise ValueError('Unsupported sampling mode!')
+        else:
+            return self.noise_samples.shape[1]
+
+    def _sample_noise(self) -> None:
+        """
+        Draws quasi static noise samples from a normal distribution.
+
+        Each noise contribution (corresponding to one noise operator) is
+        sampled separately. For each standard deviation n_traces traces are
+        calculated.
+
+        """
+        if self.sampling_mode == 'uncorrelated_deterministic':
+                
+            n_std_dev = len(self.standard_deviation)
+            _noise_samples = _sample_1dim_gaussian_distribution_jnp(
+                self.standard_deviation, self._n_traces)
+            self._noise_samples = jnp.broadcast_to(
+                jnp.expand_dims(jnp.tile(_noise_samples,n_std_dev)*
+                    jnp.repeat(jnp.eye(n_std_dev),self._n_traces,axis=1),2),
+                (n_std_dev,self._n_traces*n_std_dev,self.n_samples_per_trace))
+
+        elif self.sampling_mode == 'monte_carlo':
+            
+            self._noise_samples = jnp.einsum(
+                'i,ijk->ijk',
+                self.standard_deviation,
+                jax.random.normal(
+                    key=self.rnd_key_arr[-1],
+                    shape=(len(self.standard_deviation),self.n_traces,1))
+            )
+            self._noise_samples = jnp.repeat(
+                self._noise_samples, self.n_samples_per_trace, axis=2)
+            
+            self.rnd_key_arr.append(
+                jax.random.split(self.rnd_key_arr[-1],num=2)[1])
+            
+        else:
+            raise ValueError('Unsupported sampling mode!')
+
+
+def _fast_colored_noise_jnp(spectral_density: Callable, dt: float,
+                            n_samples: int, output_shape: tuple, key,
+                            r_power_of_two=False
+                            ) -> jnp.ndarray:
+    """See docstring of function without _jnp"""
+    f_max = 1 / dt
+    f_nyquist = f_max / 2
+    s0 = 1 / f_nyquist
+    if r_power_of_two:
+        actual_n_samples = int(2 ** jnp.ceil(jnp.log2(n_samples)))
+    else:
+        actual_n_samples = int(n_samples)
+
+    delta_white = jax.random.normal(key,(*output_shape, actual_n_samples))
+    delta_white_ft = jnp.fft.rfft(delta_white, axis=-1)
+    # Only positive frequencies since FFT is real and therefore symmetric
+    f = jnp.linspace(0, f_nyquist, actual_n_samples // 2 + 1)
+    f = spectral_density(f[1:])
+    f = jnp.pad(f,((1, 0),))
+    delta_colored = jnp.fft.irfft(delta_white_ft * jnp.sqrt(f / s0),
+                                 n=actual_n_samples, axis=-1)
+    # the ifft takes r//2 + 1 inputs to generate r outputs
+
+    return delta_colored
+
+
+class NTGColoredNoiseJAX(NoiseTraceGenerator):
+    """See docstring of class w/o JAX.
+    
+    Additional parameter: seed: int, optional: seed for jax.random.PRNGKey
+    """
+
+    def __init__(self,
+                 n_samples_per_trace: int,
+                 noise_spectral_density: Callable,
+                 dt: float,
+                 n_traces: int = 1,
+                 n_noise_operators: int = 1,
+                 always_redraw_samples: bool = True,
+                 low_frequency_extension_ratio: int = 1,
+                 seed: Optional[int] = None):
+        if not _HAS_JAX:
+            raise ImportError("JAX not available")
+        super().__init__(n_traces=n_traces,
+                         n_samples_per_trace=n_samples_per_trace,
+                         noise_samples=None,
+                         n_noise_operators=n_noise_operators,
+                         always_redraw_samples=always_redraw_samples)
+        self.noise_spectral_density = noise_spectral_density
+        self.dt = dt
+        if low_frequency_extension_ratio < 1:
+            raise ValueError("The low frequency extension ratio must be "
+                             "greater or equal to 1.")
+        self.low_frequency_extension_ratio = low_frequency_extension_ratio
+        if hasattr(dt, "__len__"):
+            raise ValueError('dt is supposed to be a scalar value!')
+            
+        self.seed = seed if seed is not None else random.randint(0,2**32-1)
+        self.rnd_key_first = jax.random.PRNGKey(self.seed)
+        self.rnd_key_arr = [self.rnd_key_first]
+            
+    def _sample_noise(self, **kwargs) -> None:
+        """Samples noise from an arbitrary colored spectrum. """
+        if self._n_noise_operators is None:
+            raise ValueError('Please specify the number of noise operators!')
+        if self._n_traces is None:
+            raise ValueError('Please specify the number of noise traces!')
+        if self._n_samples_per_trace is None:
+            raise ValueError('Please specify the number of noise samples per'
+                             'trace!')
+            
+        
+        noise_samples = _fast_colored_noise_jnp(
+            spectral_density=self.noise_spectral_density,
+            n_samples=
+            self.n_samples_per_trace * self.low_frequency_extension_ratio,
+            output_shape=(self.n_noise_operators, self.n_traces),
+            r_power_of_two=False,
+            dt=self.dt,
+            key=self.rnd_key_arr[-1])
+        self._noise_samples = noise_samples[:, :, :self.n_samples_per_trace]
+        
+        self.rnd_key_arr.append(
+            jax.random.split(self.rnd_key_arr[-1],num=2)[1])
+        
+    def plot_periodogram(self, n_average: int, scaling: str = 'density',
+                         log_plot: Optional[str] = None, draw_plot=True):
+        """Creates noise samples and plots the corresponding periodogram.
+
+        Parameters
+        ----------
+        n_average: int
+            Number of Periodograms which are averaged.
+
+        scaling: {'density', 'spectrum'}, optional
+            If 'density' then the power spectral density in units of V**2/Hz is
+            plotted.
+            If 'spectral' then the power spectrum in units of V**2 is plotted.
+            Defaults to 'density'.
+
+        log_plot: {None, 'semilogy', 'semilogx', 'loglog'}, optional
+            If None, then the plot is not plotted logarithmically. If
+            'semilogy' only the y-axis is plotted logarithmically, if
+            'semilogx' only the x-axis is plotted logarithmically, if 'loglog'
+            both axis are plotted logarithmically. Defaults to None.
+
+        draw_plot: bool, optional
+            If true, then the periodogram is plotted. Defaults to True.
+
+        Returns
+        -------
+        deviation_norm: float
+            The vector norm of the deviation between the actual power spectral
+            density and the power spectral densitry found in the periodogram.
+
+        """
+
+        noise_samples = fast_colored_noise(
+            spectral_density=self.noise_spectral_density,
+            n_samples=self.n_samples_per_trace,
+            output_shape=(n_average,),
+            r_power_of_two=False,
+            dt=self.dt
+        )
+
+        sample_frequencies, spectral_density_or_spectrum = signal.periodogram(
+            x=noise_samples,
+            fs=1 / self.dt,
+            return_onesided=True,
+            scaling=scaling,
+            axis=-1
+        )
+
+        if scaling == 'density':
+            y_label = 'Power Spectral Density (V**2/Hz)'
+        elif scaling == 'spectrum':
+            y_label = 'Power Spectrum (V**2)'
+        else:
+            raise ValueError('Unexpected scaling argument.')
+
+        if draw_plot:
+            plt.figure()
+
+            if log_plot is None:
+                plot_function = plt.plot
+            elif log_plot == 'semilogy':
+                plot_function = plt.semilogy
+            elif log_plot == 'semilogx':
+                plot_function = plt.semilogx
+            elif log_plot == 'loglog':
+                plot_function = plt.loglog
+            else:
+                raise ValueError('Unexpected plotting mode')
+
+            plot_function(sample_frequencies,
+                          np.mean(spectral_density_or_spectrum, axis=0),
+                          label='Periodogram')
+            plot_function(sample_frequencies,
+                          self.noise_spectral_density(sample_frequencies),
+                          label='Spectral Noise Density')
+
+            plt.ylabel(y_label)
+            plt.xlabel('Frequency (Hz)')
+            plt.legend(['Periodogram', 'Spectral Noise Density'])
+            plt.show()
+
+        deviation_norm = np.linalg.norm(
+            np.mean(spectral_density_or_spectrum, axis=0)[1:-1] -
+            self.noise_spectral_density(sample_frequencies)[1:-1])
+        return deviation_norm
+
