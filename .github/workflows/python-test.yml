@@ -35,12 +35,3 @@ jobs:
       run: |
         python -m pytest qopt_tests --cov=qopt --cov-report=xml
         # it is important to use python -m because it adds the current directory to the path!
-
-# Coverage upload fails and requires revisiting
-#    - name: Upload code coverage
-#      uses: codecov/codecov-action@v2
-#      with:
-#        file: ./coverage.xml
-#        name: ${{ matrix.python-version }}
-#        env_vars: OS,PYTHON
-#        fail_ci_if_error: true
