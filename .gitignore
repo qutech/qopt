@@ -13,3 +13,8 @@ qopt/examples/rabi_driving/__pycache__/lab_frame_setup.cpython-37.pyc
 .coverage
 coverage.xml
 temp/File Name
+temp/tensorflow/
+doc/latexbuild/
+~/tensorflow_datasets/
+logs/20220823-190009/train/events.out.tfevents.1661274009.DESKTOP-29V7IHI.12928.0.v2
+doc/short_latex_build/
