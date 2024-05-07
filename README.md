@@ -3,7 +3,6 @@
 [![Documentation Status](https://img.shields.io/readthedocs/qopt)](https://qopt.readthedocs.io/en/latest/)
 [![PyPI version](https://img.shields.io/pypi/v/qopt)](https://pypi.org/project/qopt/)
 [![License](https://img.shields.io/github/license/qutech/qopt)](https://github.com/qutech/qopt/blob/master/LICENSE)
-[![codecov](https://codecov.io/gh/qutech/qopt/branch/master/graph/badge.svg)](https://app.codecov.io/gh/qutech/qopt)
 
 ## Documentation
 The documentation can be found on 
