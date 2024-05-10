@@ -1,0 +1,48 @@
+{
+    "creators": [
+        {
+            "orcid": "0000-0002-7590-7876",
+            "affiliation": "RWTH Aachen University",
+            "name": "Teske, Julian David"
+        }
+    ],
+
+    "contributors": [
+        {
+            "affiliation": "RWTH Aachen University",
+            "name": "Gorjaew, Christian"
+        },
+        {
+            "orcid": "0000-0002-5177-6162",
+            "affiliation": "RWTH Aachen University",
+            "name": "Hangleiter, Tobias"
+        },
+        {
+            "affiliation": "RWTH Aachen University",
+            "name": "Surrey, Paul"
+        },
+        {
+            "affiliation": "RWTH Aachen University",
+            "name": "Max, Oberländer"
+        },
+        {
+            "orcid": "0000-0002-9399-1055",
+            "affiliation": "RWTH Aachen University",
+            "name": "Humpohl, Simon"
+        }
+    ],
+
+    "related_identifiers": [
+        {
+            "identifier": "10.1103/PhysRevApplied.17.034036",
+            "relation": "isDocumentedBy",
+            "resource_type": "publication-article"
+        }
+    ],
+
+    "license": "GPL-3.0",
+
+    "title": "qopt: A Simulation and Quantum Optimal Control Package",
+
+    "keywords": ["quantum computing", "optimal control"]
+}
