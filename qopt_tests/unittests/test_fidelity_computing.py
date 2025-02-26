@@ -39,9 +39,9 @@ class TestEntanglementFidelity(unittest.TestCase):
         self.assertAlmostEqual(axis[2], 0)
 
     def test_entanglement_average_fidelity(self):
-        a = 1 - q_fc.averge_gate_fidelity(sig_x, sig_y)
-        b = 1 - q_fc.averge_gate_fidelity(sig_x, sig_x)
-        c = 1 - q_fc.averge_gate_fidelity(
+        a = 1 - q_fc.average_gate_fidelity(sig_x, sig_y)
+        b = 1 - q_fc.average_gate_fidelity(sig_x, sig_x)
+        c = 1 - q_fc.average_gate_fidelity(
             sig_x, 1 / np.sqrt(2) * (sig_y + sig_x))
 
         a_e = 1 - q_fc.entanglement_fidelity(sig_x, sig_y)
@@ -56,8 +56,8 @@ class TestEntanglementFidelity(unittest.TestCase):
         e_sig_x = sig_x.exp(tau=.25j * math.pi)
         e_sig_y = sig_y.exp(tau=.25j * math.pi)
 
-        c = q_fc.averge_gate_fidelity(e_sig_x, e_sig_y)
-        d = q_fc.averge_gate_fidelity(e_sig_x, e_sig_x)
+        c = q_fc.average_gate_fidelity(e_sig_x, e_sig_y)
+        d = q_fc.average_gate_fidelity(e_sig_x, e_sig_x)
 
         self.assertAlmostEqual(c, .5)
         self.assertAlmostEqual(d, 1)

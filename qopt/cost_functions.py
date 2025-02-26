@@ -1871,6 +1871,73 @@ class LeakageLiouville(CostFunction):
                                   'yet.')
 
 
+class DiamondDistanceNoise(CostFunction):
+    r"""
+    Utilize QuTiP to calculate 
+
+    Attributes
+    ----------
+    solver : `Solver`
+        Object that compute the forward/backward evolution and propagator.
+        
+    label: list of str
+        The label serves as internal name of the cost function values. The
+        DataContainer class uses the label to distinct cost functions when
+        storing the data.
+
+    """
+
+    def __init__(self, solver: solver_algorithms.Solver,
+                 target: matrix.OperatorMatrix,
+                 label: Optional[List[str]] = None,
+                 dnorm_solver: str = "CLARABEL"):
+        
+        try:
+            from qutip import Qobj
+            from qutip.core.metrics import dnorm as qutip_dnorm
+        except ImportError:
+            raise ImportError('The DiamondDistance requires QuTiP.')
+        
+        super().__init__(solver=solver, label=label)
+
+        self.target = target
+        self.dnorm_solver = dnorm_solver
+        self._last_vals = None
+        
+    def costs(self):
+        """See base class. """
+        n_traces = self.solver.noise_trace_generator.n_traces
+        infidelities = np.zeros((n_traces,))
+
+        target = self.target
+
+        for i in range(n_traces):
+            final = self.solver.forward_propagators_noise[i][-1]
+
+            infidelities[i] = diamond_distance(
+                unitary=final, target_unitary=target, solver=self.dnorm_solver
+            )
+        
+        self._last_vals = np.real(infidelities)
+        return np.mean(np.real(infidelities))
+    
+    def grad(self):
+        raise NotImplementedError('No gradient for numerical optimizatio of DiamondNorm')
+    
+    
+def diamond_distance(unitary: matrix.OperatorMatrix,
+                     target_unitary: matrix.OperatorMatrix,
+                     solver: str = "CLARABEL"):
+    try:
+        from qutip import Qobj
+        from qutip.core.metrics import dnorm as qutip_dnorm
+    except ImportError:
+        raise ImportError('The diamond_distance requires QuTiP.')
+    
+    #normalize to 1 at most
+    return 0.5*qutip_dnorm(Qobj(unitary.data),Qobj(target_unitary.data),solver)
+
+
 @deprecated
 def derivative_entanglement_fidelity(
         control_hamiltonians: List[matrix.OperatorMatrix],
