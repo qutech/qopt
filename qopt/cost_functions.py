@@ -1994,8 +1994,8 @@ def derivative_entanglement_fidelity(
 
 
 @needs_refactoring
-def averge_gate_fidelity(unitary: matrix.OperatorMatrix,
-                         target_unitary: matrix.OperatorMatrix):
+def average_gate_fidelity(unitary: matrix.OperatorMatrix,
+                          target_unitary: matrix.OperatorMatrix):
     """
     Average gate fidelity.
 
