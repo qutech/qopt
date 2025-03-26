@@ -2177,3 +2177,258 @@ class LinearInterpTFJAX(TransferFunctionJAX):
         
         # deriv_by_opt_par = jnp.sum(cropped_derivs, axis=1)
         return jnp.asarray(deriv_by_opt_par)
+    
+    
+    
+class MatrixTFJAX(TransferFunctionJAX):
+
+    def __call__(self, y: jnp.array) -> jnp.array:
+        """Calculate the transferred optimization parameters (x).
+
+        Evaluates the transfer function at the raw optimization parameters (y)
+        to calculate the transferred optimization parameters (x).
+
+        Parameters
+        ----------
+        y: np.array, shape (num_y, num_par)
+            Raw optimization variables; num_y is the number of time slices of
+            the raw optimization parameters and num_par is the number of
+            distinct raw optimization parameters.
+
+        Returns
+        -------
+        u: np.array, shape (num_x, num_par)
+            Control parameters; num_u is the number of times slices for the
+            transferred optimization parameters.
+
+        """
+        self._check_dimensions_datatype(y)
+
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        x = jnp.einsum('ijk,jk->ik', self._transfer_matrix, y)
+        if self.offset is not None:
+            x += self.offset
+        return x
+
+    @property
+    def transfer_matrix(self) -> jnp.array:
+        """
+        If necessary, calculates the transfer matrix. Then returns it.
+
+        Returns
+        -------
+        T: ndarray, shape (num_u, num_x, num_ctrl)
+            Transfer matrix (the linearization of the control amplitudes).
+
+        """
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        return copy.deepcopy(self._transfer_matrix)
+
+    @abstractmethod
+    def _calculate_transfer_matrix(self):
+        """Create the transfer matrix. """
+        pass
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: jnp.array) -> jnp.array:
+        """ See base class.
+
+        """
+        shape = deriv_by_transferred_par.shape
+        assert len(shape) == 3
+        assert shape[0] == self.num_x
+        assert shape[2] == self.num_ctrls
+
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+
+        # T: shape (num_x, num_y, num_par)
+        # deriv_by_ctrl_amps: shape (num_x, num_f, num_par)
+        return jnp.einsum('ijk,ifk->jfk',
+                         self._transfer_matrix,
+                         deriv_by_transferred_par)
+    
+    
+class OversamplingMTFJAX(MatrixTFJAX):
+    """Oversamples and applies boundary conditions.
+
+    """
+    def __init__(
+            self,
+            oversampling: int = 1,
+            bound_type: Tuple = None,
+            num_ctrls: int = 1,
+            offset: float = 0):
+        super().__init__(
+            bound_type=bound_type,
+            oversampling=oversampling,
+            num_ctrls=num_ctrls,
+            offset=offset
+        )
+        self.name = "Oversampling"
+
+    def _calculate_transfer_matrix(self) -> None:
+        """See base class. """
+        # identity for each oversampling segment
+        transfer_matrix = jnp.eye(self._num_y)
+        transfer_matrix = jnp.repeat(transfer_matrix, self.oversampling, axis=0)
+
+        # add the padding elements
+        padding_start, padding_end = self.num_padding_elements
+        transfer_matrix = jnp.concatenate(
+            (jnp.zeros((padding_start, self._num_y)),
+             transfer_matrix,
+             jnp.zeros((padding_end, self._num_y))), axis=0)
+
+        # add control axis
+        transfer_matrix = jnp.expand_dims(transfer_matrix, axis=2)
+        transfer_matrix = jnp.repeat(transfer_matrix, self.num_ctrls, axis=2)
+
+        self._transfer_matrix = transfer_matrix
+        
+
+class ExponentialMTFJAX(MatrixTFJAX):
+    """
+    This transfer function model smooths the control amplitudes by exponential
+    saturation.
+
+    The functionality is meant to model the finite rise time of voltage
+    sources.
+
+    `Todo`
+        * add initial and final level. Currently fixed at 0 (or the offset)
+
+    """
+
+    def __init__(self, awg_rise_time: float, oversampling: int = 1,
+                 bound_type: Tuple = ('x', 0), offset: Optional[float] = None,
+                 num_ctrls: int = 1):
+        super().__init__(
+            oversampling=oversampling,
+            bound_type=bound_type,
+            num_ctrls=num_ctrls
+        )
+        self.awg_rise_time = awg_rise_time
+        self.offset = offset
+
+    @property
+    def transfer_matrix(self) -> jnp.ndarray:
+        """See base class."""
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+        return self._transfer_matrix
+
+
+    def _calculate_transfer_matrix(self) -> None:
+        """Calculate the transfer matrix as function of the oversampling, the
+        boundary conditions, the set x_times and the awg rise time.
+
+        Currently only equal time spacing is supported!"""
+
+        num_padding_start, num_padding_end = self.num_padding_elements
+        dudx = jnp.zeros(shape=(self.num_x - num_padding_start, self._num_y))
+
+        x_tau = self._y_times[0]
+
+        # calculate blocks
+        exp = jnp.zeros((self.oversampling,))
+        for j in range(self.oversampling):
+            t = (j + 1) * x_tau / self.oversampling
+            exp.at[j].set(jnp.exp(-(t / self.awg_rise_time)))
+        one_minus_exp = jnp.ones((self.oversampling,)) - exp
+
+        # build 2d gradient matrix
+
+        # for the padding at the beginning
+        dudx.at[0:self.oversampling, 0].set(one_minus_exp)
+        if self.num_x > self.oversampling:
+            dudx.at[self.oversampling:2 * self.oversampling, 0].set(exp)
+
+        # main part
+        for i in range(1, self._num_y - 1):
+            dudx.at[i * self.oversampling:(i + 1) *
+                 self.oversampling, i].set(one_minus_exp)
+
+            dudx.at[(i + 1) * self.oversampling:(i + 2) *
+                 self.oversampling, i].set(exp)
+
+        # at the end
+        dudx.at[(self._num_y - 1) * self.oversampling:
+             self._num_y * self.oversampling, self._num_y - 1].set(one_minus_exp)
+
+        for i in range(num_padding_end):
+            t = (i + 1) / self.oversampling * x_tau
+            dudx.at[self._num_y * self.oversampling + i, -1].set(jnp.exp(
+                -(t / self.awg_rise_time)))
+
+        # zeros for the first elements
+        dudx = jnp.concatenate((jnp.zeros(shape=(num_padding_start,
+                                               self._num_y)),
+                              dudx), axis=0)
+
+        dudx = jnp.repeat(
+            jnp.expand_dims(dudx, axis=2), repeats=self.num_ctrls, axis=2)
+        self._transfer_matrix = dudx
+
+    def gradient_chain_rule(
+            self, deriv_by_transferred_par: jnp.ndarray) -> jnp.ndarray:
+        """See base class. """
+        if self._transfer_matrix is None:
+            self._calculate_transfer_matrix()
+
+        # T: shape (num_u, num_x, num_ctrl)
+        # deriv_by_ctrl_amps: shape (num_u, num_f, num_ctrl)
+        return jnp.einsum('ijk,ifk->jfk', self._transfer_matrix,
+                         deriv_by_transferred_par)
+
+    @needs_refactoring
+    def reverse_state(self, amplitudes=None, times=None, targetfunc=None):
+        """
+        I assume only to be applied to Pulses generated by self.__call__(x)
+        If times is None:
+        We either need to know num_x or the oversampling. For now I assume that
+        self.num_x is valid for the input data.
+        :param amplitudes:
+        :param times
+        :param targetfunc:
+        :return:
+        """
+
+        num_ctrls = amplitudes.shape[1]
+        xtau = (self.xtimes[1] - self.xtimes[0])
+        if times is not None:
+            if times.size < 2:
+                # TODO: log warning
+                return amplitudes
+            tau = times[1] - times[0]
+            oversampling = int(round(xtau / tau))
+            num_x = times.size // oversampling
+        elif amplitudes is not None:
+            oversampling = amplitudes.size // num_ctrls // self._num_y
+            num_x = self._num_y
+        elif targetfunc is not None:
+            raise NotImplementedError
+        else:
+            raise ValueError(
+                "please specify the amplitues or the target function! (not yet "
+                "implemented for target functions)")
+
+        if amplitudes is not None:
+            x = jnp.zeros((num_x, num_ctrls))
+            t = 1 / oversampling * xtau
+            exp = jnp.exp(-(t / self.awg_rise_time))
+            for k in range(num_ctrls):
+                x.at[0, k].set((amplitudes[0, k] - self.start_value) / (
+                            1 - exp) + self.start_value)
+                for i in range(1, num_x):
+                    x.at[i, k].set((amplitudes[i * oversampling, k] - x[
+                        i - 1, k]) / (1 - exp) + x[i - 1, k])
+        elif targetfunc is not None:
+            raise NotImplementedError
+        else:
+            raise ValueError(
+                "please specify the amplitues or the target function! (not yet "
+                "implemented for target functions)")
+        return x
