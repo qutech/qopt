@@ -2934,7 +2934,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         if self._derivative_prop_noise_jnp is None:
             self._compute_propagation_derivatives_jnp()
         
-        self._derivative_prop_noise_jnp = \
+        self._derivative_prop_noise = \
             [[[matrix.DenseOperatorJAX(p) for p in ctrl] for ctrl in der_t]
              for der_t in self._derivative_prop_noise_jnp]
         
@@ -3016,7 +3016,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         _initial_state_rev_jnp = jnp.eye(self._prop_jnp[0].shape[0]) * (1+0j)
         
         cum_prop_reversed_noise = _cumprod_reversed_noise(
-            _initial_state_rev_jnp,self._prop_noise_jnp[::-1])
+            _initial_state_rev_jnp,self._prop_noise_jnp[:,::-1,:,:])
         
         sh = cum_prop_reversed_noise.shape
         
