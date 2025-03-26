@@ -2991,7 +2991,7 @@ class OperationNoiseInfidelityJAX(CostFunction):
 
             infidelities = 1 - jit(vmap(
                 _entanglement_fidelity_jnp,
-                in_axes=(None,0,None,None)),static_argnums=(2,))(
+                in_axes=(None,0,None,None)),static_argnums=(2,3))(
                     target,final,
                     self.computational_states,
                     self.map_to_closest_unitary
@@ -3657,11 +3657,11 @@ def _entanglement_fidelity_jnp_zphase_returnopt(target,prop,comp_states,to_close
                                       method="BFGS")
     return 1-res.fun, res.x
 
-@partial(jit,static_argnums=(3,4,5))
+@partial(jit,static_argnums=(3,4))
 def _entanglement_infidelity_super_op_jnp_zphase_wrapper(ph_arr,target,prop,dim_prop,comp_states):
     return 1-_entanglement_fidelity_super_operator_jnp(_rot_op_p(ph_arr)@target,prop,dim_prop,comp_states)
 
-@partial(jit,static_argnums=(2,3,4))
+@partial(jit,static_argnums=(2,3))
 def _entanglement_fidelity_super_op_jnp_zphase(target,prop,dim_prop,comp_states):
     res = jsco.minimize(_entanglement_infidelity_super_op_jnp_zphase_wrapper,
                                       x0=jnp.array([0.,0.],dtype=jnp.float64),args=(target,prop,dim_prop,comp_states),
