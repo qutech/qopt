@@ -2203,7 +2203,7 @@ class LindbladSControlNoise(LindbladSolver):
 
 try:
     import jax.numpy as jnp
-    from jax import jit, vmap
+    from jax import jit, vmap, pmap
     import jax
     _HAS_JAX = True
 except ImportError:
@@ -2211,6 +2211,7 @@ except ImportError:
     jit = mock.Mock()
     jnp = mock.Mock()
     vmap = mock.Mock()
+    pmap = mock.Mock()
     jax = mock.Mock()
     _HAS_JAX = False
 
@@ -2254,6 +2255,15 @@ def _compute_propagation_expm_both_noise(transferred_time,dyn_gen_noise,
     return vmap(_compute_propagation_expm_both,in_axes=(None,0,None))(
         transferred_time,dyn_gen_noise,derivative_directions)
 
+
+def _compute_propagation_expm_both_noise_pmap(transferred_time,dyn_gen_noise,
+                                         derivative_directions):
+    """Exponentiation of propagator and derivative for Monte-Carlo,
+    n_traces on first axis
+    """
+    return pmap(_compute_propagation_expm_both_noise,in_axes=(None,0,None))(
+        transferred_time,dyn_gen_noise,derivative_directions)
+
 def _compute_propagation_expm_loop(transferred_time,dyn_gen):
     """Internal loop of exponentiation of propagator"""
     return jax.scipy.linalg.expm(dyn_gen*transferred_time)
@@ -2269,6 +2279,11 @@ def _compute_propagation_expm(transferred_time,dyn_gen):
 def _compute_propagation_expm_noise(transferred_time,dyn_gen_noise):
     """Exponentiation of propagator for Monte-Carlo, n_traces on first axis"""
     return vmap(_compute_propagation_expm,in_axes=(None,0))(
+        transferred_time,dyn_gen_noise)
+
+def _compute_propagation_expm_noise_pmap(transferred_time,dyn_gen_noise):
+    """Exponentiation of propagator for Monte-Carlo, n_traces on first axis"""
+    return pmap(_compute_propagation_expm_noise,in_axes=(None,0))(
         transferred_time,dyn_gen_noise)
 
 def _cumprod_loop(res,el):
@@ -2712,7 +2727,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
             amplitude_function: Optional[AmplitudeFunction] = None,
             noise_amplitude_function: Optional[Callable[
                 [np.array, np.array, np.array,
-                 np.array], np.array]] = None
+                 np.array], np.array]] = None,
     ):
 
         super().__init__(
@@ -2744,7 +2759,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         self._derivative_prop_noise_jnp = None
         self._fwd_prop_noise_jnp = None
         self._reversed_prop_noise_jnp = None
-        
+                
     def set_optimization_parameters(self,
                                     y: Union[np.ndarray,jnp.ndarray]
                                     ) -> None:
@@ -2977,8 +2992,37 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
         elif (type(self.processes) == int and self.processes > 0) \
                 or self.processes is None:
             
-            raise NotImplementedError("No pool-multiprocess with jax calc, \
-                                      (TODO) perhaps add with pmap (?)")        
+            n_devices = jax.local_device_count()
+            
+            assert self.processes<=n_devices, f'Trying to use more devices than available ({n_devices})'
+            
+            n_monte_carlo_traces, n_t_steps, n, _ = self._dyn_gen_noise.shape
+            n_traces_per_device = n_monte_carlo_traces // self.processes
+            
+            assert n_monte_carlo_traces%self.processes==0, "can only divide "+\
+            f"{n_monte_carlo_traces=}/{self.processes=} without remainder"
+            
+            # Reshape the array to (processes, n_traces_per_device, n_t_steps, n, n)
+            reshaped_dyn_gen_noise = self._dyn_gen_noise.reshape(
+                (self.processes, n_traces_per_device, n_t_steps, n, n)
+            )
+            
+            if calculate_propagator_derivatives:
+                
+                self._prop_noise_jnp, self._derivative_prop_noise_jnp = \
+                    _compute_propagation_expm_both_noise_pmap(
+                        self._transferred_time_jnp,
+                        reshaped_dyn_gen_noise,
+                        derivative_directions[0])\
+                        
+                self._prop_noise_jnp = self._prop_noise_jnp[:,:,0,:,:,:]\
+                    .reshape(n_monte_carlo_traces,n_t_steps,n,n)
+                self._derivative_prop_noise_jnp = self._derivative_prop_noise_jnp\
+                    .reshape(n_monte_carlo_traces,n_t_steps,n,n)
+            else:
+                self._prop_noise_jnp = _compute_propagation_expm_noise_pmap(
+                    self._transferred_time_jnp,reshaped_dyn_gen_noise)\
+                    .reshape(n_monte_carlo_traces, n_t_steps, n, n)
             
 
         else:
