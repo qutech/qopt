@@ -3018,7 +3018,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
                 self._prop_noise_jnp = self._prop_noise_jnp[:,:,0,:,:,:]\
                     .reshape(n_monte_carlo_traces,n_t_steps,n,n)
                 self._derivative_prop_noise_jnp = self._derivative_prop_noise_jnp\
-                    .reshape(n_monte_carlo_traces,n_t_steps,n,n)
+                    .reshape(n_monte_carlo_traces,derivative_directions[0].shape[0],n_t_steps,n,n)
             else:
                 self._prop_noise_jnp = _compute_propagation_expm_noise_pmap(
                     self._transferred_time_jnp,reshaped_dyn_gen_noise)\
