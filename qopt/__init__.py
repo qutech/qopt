@@ -87,7 +87,38 @@ __author__ = 'Julian Teske, Forschungszentrum Juelich'
 try:
     import jax
     jax.config.update("jax_enable_x64", True)
-    #TODO: add new objects here/ import other stuff?
-    # __all__ += []
+    
+    from .amplitude_functions import IdentityAmpFuncJAX, UnaryAnalyticAmpFuncJAX, \
+        CustomAmpFuncJAX
+    from .cost_functions import OperationInfidelityJAX, \
+        OperationNoiseInfidelityJAX, LeakageErrorJAX, \
+        StateInfidelityJAX, \
+        StateNoiseInfidelityJAX, IncoherentLeakageErrorJAX, StateInfidelitySubspaceJAX, \
+        LeakageLiouvilleJAX
+    from .matrix import DenseOperatorJAX
+    from .noise import NTGColoredNoiseJAX, NTGQuasiStaticJAX
+    from .optimize import LeastSquaresOptimizerJAX, ScalarMinimizingOptimizerJAX
+    from .simulator import SimulatorJAX
+    from .solver_algorithms import SchroedingerSolverJAX, SchroedingerSMonteCarloJAX, \
+        SchroedingerSMCControlNoiseJAX, LindbladSolverJAX
+    from .transfer_function import IdentityTFJAX, OversamplingTFJAX, \
+        ExponentialMTFJAX, OversamplingMTFJAX
+
+    __all__ += [
+        'IdentityAmpFuncJAX', 'UnaryAnalyticAmpFuncJAX', 'CustomAmpFuncJAX',
+        'OperationInfidelityJAX', 'OperationNoiseInfidelityJAX',
+        'LeakageErrorJAX',
+        'StateInfidelityJAX', 'StateInfidelitySubspaceJAX',
+        'DenseOperatorJAX', 'StateNoiseInfidelityJAX',
+        'NTGColoredNoiseJAX','NTGQuasiStaticJAX',
+        'LeastSquaresOptimizerJAX', 'ScalarMinimizingOptimizerJAX',
+        'SimulatorJAX', 'SchroedingerSolverJAX',
+        'SchroedingerSMonteCarloJAX', 'SchroedingerSMCControlNoiseJAX', 'LindbladSolverJAX',
+        'IdentityTFJAX', 'OversamplingTFJAX',
+        'OversamplingMTFJAX',
+        'ExponentialMTFJAX', 'IncoherentLeakageErrorJAX',
+        'LeakageLiouvilleJAX',
+    ]
+    
 except ImportError:
     pass
