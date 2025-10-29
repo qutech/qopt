@@ -2401,7 +2401,7 @@ class SolverJAX(Solver):
 
         """
 
-        if jnp.array_equal(self._opt_pars, y):
+        if self._opt_pars is not None and jnp.array_equal(self._opt_pars, y):
             return
         else:
             #previously with copy (?)
@@ -2600,7 +2600,7 @@ class SchroedingerSolverJAX(SolverJAX):
         
     def set_optimization_parameters(self, y: Union[np.ndarray,jnp.ndarray]) -> None:
         """See base class. """
-        if not jnp.array_equal(self._opt_pars, y):
+        if self._opt_pars is None or not jnp.array_equal(self._opt_pars, y):
             self.reset_cached_propagators()
         super().set_optimization_parameters(y)
 
@@ -2764,7 +2764,7 @@ class SchroedingerSMonteCarloJAX(SchroedingerSolverJAX):
                                     y: Union[np.ndarray,jnp.ndarray]
                                     ) -> None:
         """See base class. """
-        if not jnp.array_equal(self._opt_pars, y):
+        if self._opt_pars is None or not jnp.array_equal(self._opt_pars, y):
             self.reset_cached_propagators()
         super().set_optimization_parameters(y)
 
